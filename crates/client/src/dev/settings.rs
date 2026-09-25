@@ -10,7 +10,8 @@
 //!   character), for running several clients on one computer.
 //! - `VENTURE_AUTOMATED=1`: nobody is at the keyboard, so take the suggested
 //!   name without asking (implied by `VENTURE_SCREENSHOT`).
-//! - `VENTURE_SAY=text`: say this in chat once in the game.
+//! - `VENTURE_SAY=text`: say this in chat once in the game (several messages
+//!   can be separated with `|`).
 //! - `VENTURE_SELECT_NEAREST=1`: select the nearest other player once one is in sight.
 //!
 //! Environment variables don't exist on the web, so there these are all unset.
@@ -33,8 +34,8 @@ pub struct DevSettings {
     /// Whether nobody is at the keyboard (a screenshot run), so prompts should
     /// take their defaults.
     pub automated: bool,
-    /// Something to say in chat once in the game.
-    pub say: Option<String>,
+    /// Messages to say in chat once in the game.
+    pub say: Vec<String>,
     /// Whether to select the nearest other player once one is in sight.
     pub select_nearest: bool,
 }
@@ -51,7 +52,9 @@ impl DevSettings {
             profile: std::env::var("VENTURE_PROFILE").ok().filter(|name| name.chars().all(char::is_alphanumeric)),
             automated: std::env::var_os("VENTURE_SCREENSHOT").is_some()
                 || std::env::var_os("VENTURE_AUTOMATED").is_some(),
-            say: std::env::var("VENTURE_SAY").ok(),
+            say: std::env::var("VENTURE_SAY")
+                .map(|say| say.split('|').map(str::to_string).collect())
+                .unwrap_or_default(),
             select_nearest: std::env::var_os("VENTURE_SELECT_NEAREST").is_some(),
         }
     }

@@ -1,10 +1,11 @@
 //! Characters: the placeholder character model, the player's own character,
-//! other players, and the names above them.
+//! other players, and the names and speech bubbles above them.
 
 pub mod model;
 pub mod nameplates;
 pub mod player;
 pub mod remote;
+pub mod speech;
 
 use bevy::prelude::*;
 
@@ -18,6 +19,7 @@ impl Plugin for CharactersPlugin {
             player::PlayerPlugin,
             remote::RemotePlayersPlugin,
             nameplates::NameplatesPlugin,
+            speech::SpeechPlugin,
         ));
     }
 }

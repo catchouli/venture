@@ -17,6 +17,7 @@ use venture_protocol::{ClientMessage, MAX_CHAT_CHARS, ServerMessage, clean_chat_
 use crate::dev::settings::DevSettings;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
+use crate::world::streaming::StreamingProgress;
 
 /// How many messages are shown.
 const VISIBLE_LINES: usize = 8;
@@ -176,12 +177,21 @@ fn send_typed_message(
     }
 }
 
-/// For development: says `VENTURE_SAY` once in the game.
-fn say_once_if_requested(dev: Res<DevSettings>, mut said: Local<bool>, mut to_server: MessageWriter<ToServer>) {
-    if let Some(text) = dev.say.as_ref().filter(|_| !*said) {
-        to_server.write(ToServer(ClientMessage::Chat { text: text.clone() }));
-        *said = true;
+/// For development: says the `VENTURE_SAY` messages once the world around
+/// the player has loaded.
+fn say_once_if_requested(
+    dev: Res<DevSettings>,
+    progress: Res<StreamingProgress>,
+    mut said: Local<bool>,
+    mut to_server: MessageWriter<ToServer>,
+) {
+    if *said || !progress.measured || progress.waiting > 0 {
+        return;
     }
+    for text in &dev.say {
+        to_server.write(ToServer(ClientMessage::Chat { text: text.clone() }));
+    }
+    *said = true;
 }
 
 fn show_only_while_playing(state: Res<State<ClientState>>, mut chat: Single<&mut Visibility, With<ChatBox>>) {

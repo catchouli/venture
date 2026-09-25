@@ -80,7 +80,8 @@ src/
     model.rs           the placeholder character and its animation
     player.rs          your character: prediction, steering, following, correction
     remote.rs          other players, interpolated between snapshots
-    nameplates.rs      names above characters, with orbs on the target
+    nameplates.rs      names above characters, with orbs on the target and speech bubbles
+    speech.rs          what characters said recently (shown in the bubbles)
   interaction/       the mouse and the world
     targeting.rs       what's hovered and selected
     clicks.rs          left clicks: select, follow, or run there
