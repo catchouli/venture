@@ -43,7 +43,12 @@ impl Plugin for ChatPlugin {
             (
                 record_messages,
                 show_messages.run_if(resource_changed::<ChatLog>),
-                (start_typing, send_typed_message).after(TextInputSystems).run_if(in_state(ClientState::Playing)),
+                // Starting to type is checked before sending, so the Enter that sends a
+                // message doesn't also start typing again straight away.
+                (start_typing, send_typed_message)
+                    .chain()
+                    .after(TextInputSystems)
+                    .run_if(in_state(ClientState::Playing)),
                 say_once_if_requested.run_if(in_state(ClientState::Playing)),
                 show_only_while_playing,
             ),
