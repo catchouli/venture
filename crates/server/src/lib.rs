@@ -21,6 +21,10 @@
 //!    code that changes players in the game).
 //! 5. [`dialogue`]: runs each player's private conversations with NPCs.
 //!
+//! Inventories are the exception that proves the rule: several modules may
+//! change them (shops, dialogue), but only through [`inventory::Inventory::apply`],
+//! which checks every change and makes it whole or not at all.
+//!
 //! Content scripts follow the same rule from the other side: a script can
 //! only queue commands ([`scripting`]), which [`npcs`] checks and applies.
 //! [`content`] loads the content pack and reloads it when it changes.
@@ -38,6 +42,7 @@ pub mod entities;
 pub mod gameplay;
 #[cfg(feature = "http")]
 pub mod http;
+pub mod inventory;
 pub mod link;
 mod names;
 pub mod npcs;
@@ -91,6 +96,8 @@ pub enum ServerSystems {
     Npcs,
     /// Conversations with NPCs.
     Dialogue,
+    /// Telling players about changes to their own state (such as their inventory).
+    Updates,
 }
 
 impl GameServer {
@@ -124,6 +131,7 @@ impl GameServer {
                 gameplay::GameplayPlugin,
                 npcs::NpcsPlugin,
                 dialogue::DialoguePlugin,
+                inventory::InventoryPlugin,
                 content::ContentPlugin,
             ));
     }

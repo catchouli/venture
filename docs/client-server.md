@@ -281,6 +281,21 @@ in the game. The sender's own message appears when the server's broadcast
 comes back, so every player sees exactly the same chat. Server messages
 (joins, leaves, warnings) arrive as `Notice { text }`.
 
+## Inventories
+
+Each player carries an **inventory** of 28 slots, which the server owns and
+saves in their profile. A slot is empty or holds some of one item; stackable
+items (like coins) share one slot, and others take a slot each.
+
+On the server, an inventory can only change through `Inventory::apply`, which
+takes a `Change` (items to take and items to give) and makes all of it or
+none of it. So a purchase can't take the coins and then fail to hand over the
+goods, nothing can be duplicated, and counts never go negative, whichever
+module asks for the change. Whenever an inventory changes, the server sends
+the player the whole thing (`Inventory { slots }`), which is small, and the
+client's bag window shows it. Item names, descriptions and icons come from
+the content pack's client files.
+
 ## Actions and chat commands
 
 The things a player can do are **actions**, defined in one place on the

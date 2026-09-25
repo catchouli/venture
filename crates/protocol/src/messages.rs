@@ -158,6 +158,11 @@ pub enum ServerMessage {
     },
     /// The conversation has ended (for example, the player walked away).
     DialogueEnded,
+    /// The player's inventory, slot by slot, sent whenever it changes.
+    Inventory {
+        /// Each slot: empty, or holding some of one item.
+        slots: Vec<Option<ItemStack>>,
+    },
     /// The content pack has changed: clients should fetch the new content manifest.
     ContentChanged {
         /// The new content version.
@@ -185,4 +190,13 @@ pub struct DialogueLine {
     pub speaker: Option<String>,
     /// What they say.
     pub text: String,
+}
+
+/// Some of one item, in an inventory slot.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemStack {
+    /// Which item (an id from the content pack's items).
+    pub item: String,
+    /// How many. Always at least 1.
+    pub count: u32,
 }

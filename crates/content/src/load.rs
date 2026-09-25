@@ -3,8 +3,18 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::client::{ClientContent, parse_appearances};
-use crate::definitions::{AppearanceDef, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NpcDef, Placement};
+use crate::client::{ClientContent, parse_appearances, parse_items};
+use crate::definitions::{
+    AppearanceDef, COINS, ItemDef, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS,
+    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement,
+};
+
+/// The file saying what new characters start with.
+const NEW_CHARACTERS_FILE: &str = "new_characters.ron";
+/// The largest an icon file may be, in bytes.
+const MAX_ICON_BYTES: usize = 64 * 1024;
+/// The first bytes of every PNG file.
+const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
 /// A problem with the content pack, and which file it's in.
 #[derive(Clone, Debug, PartialEq)]
@@ -26,6 +36,10 @@ impl std::fmt::Display for ContentError {
 pub struct ContentPack {
     /// Appearances, by id.
     pub appearances: BTreeMap<String, AppearanceDef>,
+    /// Items, by id.
+    pub items: BTreeMap<String, ItemDef>,
+    /// What new characters start with.
+    pub new_characters: NewCharacterDef,
     /// NPCs, in file order.
     pub npcs: Vec<NpcDef>,
     /// Script sources, by file name within `scripts/`.
@@ -63,8 +77,53 @@ impl ContentPack {
             }
         }
 
+        let mut icons = HashSet::new();
+        for (relative, bytes) in read_binary_files(folder, "icons", "png", &mut errors) {
+            if !bytes.starts_with(&PNG_SIGNATURE) {
+                errors.push(error(&relative, "this isn't a PNG image".to_string()));
+            } else if bytes.len() > MAX_ICON_BYTES {
+                errors.push(error(&relative, format!("icons must be at most {} KB", MAX_ICON_BYTES / 1024)));
+            }
+            icons.insert(file_name(&relative));
+            client_files.push((to_slashes(&relative), bytes));
+        }
+
+        for (relative, text) in read_files(folder, "items", "ron", &mut errors) {
+            match parse_items(&text) {
+                Ok(items) => {
+                    for item in items {
+                        check_item(&item, &icons, &relative, &mut errors);
+                        if pack.items.contains_key(&item.id) {
+                            errors.push(error(&relative, format!("there's already an item called \"{}\"", item.id)));
+                        }
+                        pack.items.insert(item.id.clone(), item);
+                    }
+                    client_files.push((to_slashes(&relative), text.into_bytes()));
+                }
+                Err(message) => errors.push(error(&relative, message)),
+            }
+        }
+        if !pack.items.is_empty() && !pack.items.contains_key(COINS) {
+            errors.push(error(Path::new("items"), format!("there must be an item called \"{COINS}\" (money)")));
+        }
+
+        if let Ok(text) = std::fs::read_to_string(folder.join(NEW_CHARACTERS_FILE)) {
+            let file = Path::new(NEW_CHARACTERS_FILE);
+            match ron::from_str::<NewCharacterDef>(&text) {
+                Ok(new_characters) => {
+                    for stack in &new_characters.items {
+                        if !pack.items.contains_key(&stack.item) {
+                            errors.push(error(file, format!("there's no item called \"{}\"", stack.item)));
+                        }
+                    }
+                    pack.new_characters = new_characters;
+                }
+                Err(message) => errors.push(error(file, message.to_string())),
+            }
+        }
+
         for (relative, text) in read_files(folder, "scripts", "rhai", &mut errors) {
-            let name = relative.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = file_name(&relative);
             #[cfg(feature = "scripts")]
             if let Err(message) = crate::script_hooks::check_script(&text) {
                 errors.push(error(&relative, message));
@@ -73,8 +132,7 @@ impl ContentPack {
         }
 
         for (relative, text) in read_files(folder, "dialogue", "yarn", &mut errors) {
-            let name = relative.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-            pack.dialogue.insert(name, text);
+            pack.dialogue.insert(file_name(&relative), text);
         }
         // Compiled together, since nodes can jump between files. The compiler's
         // messages name the file.
@@ -129,6 +187,20 @@ fn check_appearance(appearance: &AppearanceDef, file: &Path, errors: &mut Vec<Co
     }
 }
 
+fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, format!("item \"{}\": {message}", item.id)));
+    let name_length = item.name.trim().chars().count();
+    if name_length == 0 || name_length > MAX_ITEM_NAME_CHARS {
+        problem(format!("its name must be 1 to {MAX_ITEM_NAME_CHARS} characters"));
+    }
+    if item.description.chars().count() > MAX_ITEM_DESCRIPTION_CHARS {
+        problem(format!("its description must be at most {MAX_ITEM_DESCRIPTION_CHARS} characters"));
+    }
+    if !icons.contains(&item.icon) {
+        problem(format!("there's no icon called \"{}\" in icons/", item.icon));
+    }
+}
+
 fn check_npc(npc: &NpcDef, pack: &ContentPack, file: &Path, errors: &mut Vec<ContentError>) {
     let mut problem = |message: String| errors.push(error(file, format!("NPC \"{}\": {message}", npc.id)));
     let name_length = npc.name.trim().chars().count();
@@ -155,15 +227,35 @@ fn check_npc(npc: &NpcDef, pack: &ContentPack, file: &Path, errors: &mut Vec<Con
     }
 }
 
-/// Reads every file with the given extension in a subfolder (sorted by
-/// name, so loading is repeatable), returning paths relative to the pack.
-/// A missing subfolder is fine: it just has no files.
+/// Reads every text file with the given extension in a subfolder (see
+/// [`read_binary_files`]).
 fn read_files(
     folder: &Path,
     subfolder: &str,
     extension: &str,
     errors: &mut Vec<ContentError>,
 ) -> Vec<(PathBuf, String)> {
+    read_binary_files(folder, subfolder, extension, errors)
+        .into_iter()
+        .filter_map(|(relative, bytes)| match String::from_utf8(bytes) {
+            Ok(text) => Some((relative, text)),
+            Err(_) => {
+                errors.push(error(&relative, "it isn't UTF-8 text".to_string()));
+                None
+            }
+        })
+        .collect()
+}
+
+/// Reads every file with the given extension in a subfolder (sorted by
+/// name, so loading is repeatable), returning paths relative to the pack.
+/// A missing subfolder is fine: it just has no files.
+fn read_binary_files(
+    folder: &Path,
+    subfolder: &str,
+    extension: &str,
+    errors: &mut Vec<ContentError>,
+) -> Vec<(PathBuf, Vec<u8>)> {
     let Ok(entries) = std::fs::read_dir(folder.join(subfolder)) else { return Vec::new() };
     let mut paths: Vec<PathBuf> = entries
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
@@ -174,8 +266,8 @@ fn read_files(
         .into_iter()
         .filter_map(|path| {
             let relative = path.strip_prefix(folder).unwrap_or(&path).to_path_buf();
-            match std::fs::read_to_string(&path) {
-                Ok(text) => Some((relative, text)),
+            match std::fs::read(&path) {
+                Ok(bytes) => Some((relative, bytes)),
                 Err(problem) => {
                     errors.push(error(&relative, format!("can't read it: {problem}")));
                     None
@@ -187,6 +279,10 @@ fn read_files(
 
 fn error(file: &Path, message: String) -> ContentError {
     ContentError { file: file.to_path_buf(), message }
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 fn to_slashes(path: &Path) -> String {
@@ -228,6 +324,21 @@ mod tests {
         let pack = ContentPack::load(&folder.0).unwrap();
         assert_eq!(pack.npcs.len(), 1);
         assert_eq!(pack.client.manifest.files.len(), 1, "only appearances go to clients");
+    }
+
+    #[test]
+    fn items_need_icons_and_coins() {
+        let items = r#"[(id: "bread", name: "Bread", description: "A loaf.", icon: "bread.png", value: 4)]"#;
+        let folder = TestPack::new("items", &[("items/food.ron", items), ("icons/loaf.png", "not a picture")]);
+        let messages: Vec<String> = ContentPack::load(&folder.0).unwrap_err().iter().map(ToString::to_string).collect();
+        assert_eq!(
+            messages,
+            [
+                "icons/loaf.png: this isn't a PNG image",
+                "items/food.ron: item \"bread\": there's no icon called \"bread.png\" in icons/",
+                "items: there must be an item called \"coins\" (money)",
+            ]
+        );
     }
 
     #[test]

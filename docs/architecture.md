@@ -85,13 +85,16 @@ src/
     remote.rs          other players and NPCs, interpolated between snapshots
     nameplates.rs      names above characters, with orbs on the target and speech bubbles
     speech.rs          what characters said recently (shown in the bubbles)
-  interaction/       the mouse and the world
+  interaction/       the player acting on the world
+    actions.rs         the things a player can do, however they ask (click, chat command, later keys)
+    orders.rs          ordering the character about: run, follow, walk over to talk
     targeting.rs       what's hovered and selected
     clicks.rs          left clicks: select, follow, talk, or run there
     move_marker.rs     the glowing move marker
   ui/                the interface
-    chat.rs, name_prompt.rs, target_frame.rs, connection_overlay.rs,
-    cursor.rs, text_input.rs
+    chat.rs, dialogue_window.rs, inventory.rs (the bag), name_prompt.rs,
+    target_frame.rs, connection_overlay.rs, cursor.rs, text_input.rs,
+    tooltip.rs, widgets.rs (shared pieces such as the close button)
   dev/               development tools
     debug_hud.rs, screenshot.rs, settings.rs
   common/            helpers

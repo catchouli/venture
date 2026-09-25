@@ -5,7 +5,9 @@ use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{EntityKind, ServerMessage};
 
+use crate::content::LoadedContent;
 use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
+use crate::inventory::{Change, Inventory};
 use crate::link::{ConnectionId, Link};
 use crate::names::random_name;
 use crate::npcs::Npc;
@@ -58,7 +60,12 @@ struct Sessions<'w, 's> {
     ids: ResMut<'w, EntityIds>,
     online: ResMut<'w, OnlineProfiles>,
     rules: Res<'w, GameRules>,
-    players: Query<'w, 's, (Entity, &'static Player, &'static NetworkId, &'static DisplayName, &'static Position)>,
+    content: Res<'w, LoadedContent>,
+    players: Query<
+        'w,
+        's,
+        (Entity, &'static Player, &'static NetworkId, &'static DisplayName, &'static Position, &'static Inventory),
+    >,
     npcs: Query<'w, 's, (&'static Npc, &'static NetworkId, &'static DisplayName, &'static Position)>,
 }
 
@@ -68,7 +75,8 @@ fn handle_session_requests(mut requests: MessageReader<SessionRequest>, mut sess
             SessionRequest::Hello { connection, profile } => sessions.log_in(*connection, profile),
             SessionRequest::ChooseName { connection, profile, name } => {
                 let position = sessions.spawn_point.0.unwrap_or(sessions.world.manifest.spawn_point);
-                let new_profile = Profile { name: name.clone(), position };
+                let inventory = sessions.starting_inventory().slots().to_vec();
+                let new_profile = Profile { name: name.clone(), position, inventory };
                 sessions.store.save(profile, &new_profile);
                 sessions.enter_game(*connection, profile.clone(), new_profile);
             }
@@ -105,12 +113,13 @@ impl Sessions<'_, '_> {
             self.world.manifest.spawn_point
         });
         let name = DisplayName(saved.name);
+        let inventory = Inventory::from_saved(saved.inventory);
 
         // Tell the newcomer about themselves, and everyone and everything already here.
         let welcome =
             ServerMessage::Welcome { you: id, name: name.0.clone(), position: position.0, rules: self.rules.0 };
         self.link.send(connection, &welcome);
-        for (_, _, &NetworkId(other), other_name, &other_position) in &self.players {
+        for (_, _, &NetworkId(other), other_name, &other_position, _) in &self.players {
             self.link.send(connection, &appeared(other, other_name, EntityKind::Player, other_position));
         }
         for (npc, &NetworkId(npc_id), npc_name, &npc_position) in &self.npcs {
@@ -124,8 +133,10 @@ impl Sessions<'_, '_> {
 
         info!("{} joined as {id:?}.", name.0);
         self.online.0.insert(profile.clone());
-        let player =
-            self.commands.spawn((Player { connection, profile }, NetworkId(id), name, position, Mover::default())).id();
+        let player = self
+            .commands
+            .spawn((Player { connection, profile }, NetworkId(id), name, position, Mover::default(), inventory))
+            .id();
         self.set_stage(connection, Stage::Playing { player });
     }
 
@@ -133,9 +144,9 @@ impl Sessions<'_, '_> {
     fn leave(&mut self, connection: ConnectionId) {
         let Some(state) = self.connections.0.remove(&connection) else { return };
         let Stage::Playing { player } = state.stage else { return };
-        let Ok((entity, leaver, &NetworkId(id), name, &Position(position))) = self.players.get(player) else { return };
+        let Ok((entity, leaver, &NetworkId(id), name, &position, inventory)) = self.players.get(player) else { return };
 
-        self.store.save(&leaver.profile, &Profile { name: name.0.clone(), position });
+        self.store.save(&leaver.profile, &profile_of(name, position, inventory));
         self.online.0.remove(&leaver.profile);
         let others: Vec<ConnectionId> =
             self.players.iter().filter(|(e, ..)| *e != entity).map(|(_, player, ..)| player.connection).collect();
@@ -143,6 +154,18 @@ impl Sessions<'_, '_> {
         self.link.broadcast(others, &ServerMessage::Notice { text: format!("{} has left.", name.0) });
         info!("{} left.", name.0);
         self.commands.entity(entity).despawn();
+    }
+
+    /// What a new character carries (see `new_characters.ron` in the content).
+    fn starting_inventory(&self) -> Inventory {
+        let pack = &self.content.pack;
+        let mut inventory = Inventory::empty();
+        for stack in &pack.new_characters.items {
+            if let Err(problem) = inventory.apply(&Change::give(&stack.item, stack.count), &pack.items) {
+                warn!("New characters can't be given {} {}: {problem:?}", stack.count, stack.item);
+            }
+        }
+        inventory
     }
 
     fn set_stage(&mut self, connection: ConnectionId, stage: Stage) {
@@ -156,7 +179,7 @@ fn autosave(
     time: Res<Time>,
     mut timer: ResMut<AutosaveTimer>,
     store: Res<ProfileStore>,
-    players: Query<(&Player, &DisplayName, &Position)>,
+    players: Query<(&Player, &DisplayName, &Position, &Inventory)>,
 ) {
     if timer.0.tick(time.delta()).just_finished() {
         save_all(&store, &players);
@@ -167,7 +190,7 @@ fn autosave(
 fn save_everyone_on_exit(
     mut exits: MessageReader<AppExit>,
     store: Option<Res<ProfileStore>>,
-    players: Query<(&Player, &DisplayName, &Position)>,
+    players: Query<(&Player, &DisplayName, &Position, &Inventory)>,
 ) {
     if exits.read().next().is_some()
         && let Some(store) = store
@@ -177,8 +200,13 @@ fn save_everyone_on_exit(
     }
 }
 
-fn save_all(store: &ProfileStore, players: &Query<(&Player, &DisplayName, &Position)>) {
-    for (player, name, &Position(position)) in players {
-        store.save(&player.profile, &Profile { name: name.0.clone(), position });
+fn save_all(store: &ProfileStore, players: &Query<(&Player, &DisplayName, &Position, &Inventory)>) {
+    for (player, name, &position, inventory) in players {
+        store.save(&player.profile, &profile_of(name, position, inventory));
     }
+}
+
+/// What to save about a player.
+fn profile_of(name: &DisplayName, Position(position): Position, inventory: &Inventory) -> Profile {
+    Profile { name: name.0.clone(), position, inventory: inventory.slots().to_vec() }
 }

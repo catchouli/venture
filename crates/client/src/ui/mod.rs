@@ -1,13 +1,16 @@
-//! The interface drawn over the game: chat, the dialogue window, the name
-//! prompt, the target frame, the connection overlay, text fields and the cursor.
+//! The interface drawn over the game: chat, the dialogue window, the bag, the
+//! name prompt, the target frame, the connection overlay, text fields,
+//! tooltips and the cursor.
 
 pub mod chat;
 pub mod connection_overlay;
 pub mod cursor;
 pub mod dialogue_window;
+pub mod inventory;
 pub mod name_prompt;
 pub mod target_frame;
 pub mod text_input;
+pub mod tooltip;
 pub mod widgets;
 
 use bevy::prelude::*;
@@ -21,6 +24,8 @@ impl Plugin for UiPlugin {
             text_input::TextInputPlugin,
             chat::ChatPlugin,
             dialogue_window::DialogueWindowPlugin,
+            inventory::InventoryPlugin,
+            tooltip::TooltipPlugin,
             name_prompt::NamePromptPlugin,
             target_frame::TargetFramePlugin,
             connection_overlay::ConnectionOverlayPlugin,
