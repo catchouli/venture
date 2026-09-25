@@ -10,6 +10,14 @@
 //!   character), for running several clients on one computer.
 //! - `VENTURE_AUTOMATED=1`: nobody is at the keyboard, so take the suggested
 //!   name without asking (implied by `VENTURE_SCREENSHOT`).
+//! - `VENTURE_CLASS=mage`: the class automated runs make new characters as
+//!   (the first class if not set).
+//! - `VENTURE_NAME=name`: the name automated runs make new characters with
+//!   (the server's suggestion if not set).
+//! - `VENTURE_BODY=feminine`: the body type automated runs make new
+//!   characters with (androgynous if not set).
+//! - `VENTURE_SHOW_CREATION=1`: show the character creation screen even in an
+//!   automated run (and take the screenshot there).
 //! - `VENTURE_SAY=text`: say this in chat once in the game (several messages
 //!   can be separated with `|`).
 //! - `VENTURE_OPEN=bag,journal`: open these windows once in the game.
@@ -45,6 +53,14 @@ pub struct DevSettings {
     pub open: Vec<String>,
     /// Dialogue replies to pick, in order (numbered from 1).
     pub choose: Vec<u32>,
+    /// The class automated runs make new characters as.
+    pub class: Option<String>,
+    /// The name automated runs make new characters with.
+    pub name: Option<String>,
+    /// The body type automated runs make new characters with.
+    pub body: Option<venture_protocol::BodyType>,
+    /// Whether to show character creation even in an automated run.
+    pub show_creation: bool,
 }
 
 impl DevSettings {
@@ -66,6 +82,12 @@ impl DevSettings {
             open: std::env::var("VENTURE_OPEN")
                 .map(|open| open.split(',').map(|name| name.trim().to_string()).collect())
                 .unwrap_or_default(),
+            class: std::env::var("VENTURE_CLASS").ok(),
+            name: std::env::var("VENTURE_NAME").ok(),
+            body: std::env::var("VENTURE_BODY").ok().and_then(|wanted| {
+                venture_protocol::BodyType::ALL.into_iter().find(|body| body.name().eq_ignore_ascii_case(&wanted))
+            }),
+            show_creation: std::env::var_os("VENTURE_SHOW_CREATION").is_some(),
             choose: numbers("VENTURE_CHOOSE").unwrap_or_default().into_iter().map(|n| n as u32).collect(),
         }
     }

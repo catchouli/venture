@@ -1,9 +1,9 @@
 //! Players' inventories: the items each one carries, in a fixed number of
-//! slots.
+//! slots, and their money (Miasma).
 //!
 //! An [`Inventory`] can only change through [`Inventory::apply`], which makes
-//! a whole [`Change`] (items taken and items given) or none of it. So a trade
-//! can never take the coins and fail to hand over the goods, items can't be
+//! a whole [`Change`] (items and Miasma taken and given) or none of it. So a
+//! trade can never take the Miasma and fail to hand over the goods, items can't be
 //! duplicated, and counts never go below zero, whichever module asks (shops,
 //! dialogue, quests). Changed inventories are sent to their players
 //! automatically.
@@ -19,7 +19,7 @@ use crate::entities::Player;
 use crate::link::Link;
 
 /// How many slots an inventory has.
-pub const INVENTORY_SLOTS: usize = 28;
+pub const INVENTORY_SLOTS: usize = 50;
 
 /// Sends players their inventories when they change.
 pub struct InventoryPlugin;
@@ -34,6 +34,7 @@ impl Plugin for InventoryPlugin {
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct Inventory {
     slots: Vec<Option<ItemStack>>,
+    miasma: u64,
 }
 
 /// Items to take from an inventory and items to give it, all at once.
@@ -43,17 +44,43 @@ pub struct Change {
     pub take: Vec<(String, u32)>,
     /// Items to give: (item id, how many).
     pub give: Vec<(String, u32)>,
+    /// Miasma to take.
+    pub pay: u64,
+    /// Miasma to give.
+    pub earn: u64,
 }
 
 impl Change {
     /// A change that only gives items.
     pub fn give(item: &str, count: u32) -> Self {
-        Self { take: Vec::new(), give: vec![(item.to_string(), count)] }
+        Self { give: vec![(item.to_string(), count)], ..Self::default() }
     }
 
     /// A change that only takes items.
     pub fn take(item: &str, count: u32) -> Self {
-        Self { take: vec![(item.to_string(), count)], give: Vec::new() }
+        Self { take: vec![(item.to_string(), count)], ..Self::default() }
+    }
+
+    /// A change that only takes Miasma.
+    pub fn pay(amount: u64) -> Self {
+        Self { pay: amount, ..Self::default() }
+    }
+
+    /// A change that only gives Miasma.
+    pub fn earn(amount: u64) -> Self {
+        Self { earn: amount, ..Self::default() }
+    }
+
+    /// Also takes this much Miasma.
+    pub fn and_pay(mut self, amount: u64) -> Self {
+        self.pay += amount;
+        self
+    }
+
+    /// Also gives this much Miasma.
+    pub fn and_earn(mut self, amount: u64) -> Self {
+        self.earn += amount;
+        self
     }
 
     /// Also takes these items.
@@ -74,6 +101,8 @@ impl Change {
 pub enum InventoryProblem {
     /// There aren't enough of this item to take.
     NotEnough(String),
+    /// There isn't enough Miasma to pay.
+    NotEnoughMiasma,
     /// There's no room for the items given.
     Full,
 }
@@ -81,16 +110,26 @@ pub enum InventoryProblem {
 impl Inventory {
     /// An inventory with nothing in it.
     pub fn empty() -> Self {
-        Self { slots: vec![None; INVENTORY_SLOTS] }
+        Self { slots: vec![None; INVENTORY_SLOTS], miasma: 0 }
     }
 
-    /// An inventory from a saved profile. Anything unusable (empty stacks,
-    /// slots beyond the inventory's size) is dropped.
-    pub fn from_saved(saved: Vec<Option<ItemStack>>) -> Self {
+    /// An inventory from a saved profile. Anything unusable (empty stacks)
+    /// is dropped, and items are packed into the first slots if there are
+    /// more saved slots than the inventory has.
+    pub fn from_saved(saved: Vec<Option<ItemStack>>, miasma: u64) -> Self {
         let mut slots: Vec<Option<ItemStack>> =
-            saved.into_iter().map(|slot| slot.filter(|stack| stack.count > 0)).take(INVENTORY_SLOTS).collect();
+            saved.into_iter().map(|slot| slot.filter(|stack| stack.count > 0)).collect();
+        if slots.len() > INVENTORY_SLOTS {
+            slots.retain(Option::is_some);
+            slots.truncate(INVENTORY_SLOTS);
+        }
         slots.resize(INVENTORY_SLOTS, None);
-        Self { slots }
+        Self { slots, miasma }
+    }
+
+    /// How much Miasma they have.
+    pub fn miasma(&self) -> u64 {
+        self.miasma
     }
 
     /// Every slot, in order.
@@ -115,6 +154,8 @@ impl Inventory {
     /// Makes the whole change, or (if any of it can't be done) none of it.
     /// `items` says which items stack.
     pub fn apply(&mut self, change: &Change, items: &BTreeMap<String, ItemDef>) -> Result<(), InventoryProblem> {
+        let miasma = self.miasma.checked_sub(change.pay).ok_or(InventoryProblem::NotEnoughMiasma)?;
+        let miasma = miasma.checked_add(change.earn).ok_or(InventoryProblem::Full)?;
         let mut slots = self.slots.clone();
         for (item, count) in &change.take {
             take(&mut slots, item, *count)?;
@@ -124,6 +165,7 @@ impl Inventory {
             give(&mut slots, item, *count, stackable)?;
         }
         self.slots = slots;
+        self.miasma = miasma;
         Ok(())
     }
 }
@@ -175,7 +217,8 @@ pub fn describe_items(item: &str, count: u32, items: &BTreeMap<String, ItemDef>)
 
 fn send_changed_inventories(mut link: ResMut<Link>, players: Query<(&Player, &Inventory), Changed<Inventory>>) {
     for (player, inventory) in &players {
-        link.send(player.connection, &ServerMessage::Inventory { slots: inventory.slots.clone() });
+        let message = ServerMessage::Inventory { slots: inventory.slots.clone(), miasma: inventory.miasma };
+        link.send(player.connection, &message);
     }
 }
 
@@ -192,15 +235,15 @@ mod tests {
             stackable,
             value: 1,
         };
-        BTreeMap::from([("coins".to_string(), item("coins", true)), ("bread".to_string(), item("bread", false))])
+        BTreeMap::from([("arrows".to_string(), item("arrows", true)), ("bread".to_string(), item("bread", false))])
     }
 
     #[test]
     fn stackable_items_share_a_slot_and_others_take_one_each() {
         let mut inventory = Inventory::empty();
-        inventory.apply(&Change::give("coins", 10).and_give("bread", 2), &items()).unwrap();
-        inventory.apply(&Change::give("coins", 5), &items()).unwrap();
-        assert_eq!(inventory.count("coins"), 15);
+        inventory.apply(&Change::give("arrows", 10).and_give("bread", 2), &items()).unwrap();
+        inventory.apply(&Change::give("arrows", 5), &items()).unwrap();
+        assert_eq!(inventory.count("arrows"), 15);
         assert_eq!(inventory.count("bread"), 2);
         assert_eq!(inventory.slots().iter().flatten().count(), 3);
     }
@@ -208,16 +251,16 @@ mod tests {
     #[test]
     fn a_change_happens_completely_or_not_at_all() {
         let mut inventory = Inventory::empty();
-        inventory.apply(&Change::give("coins", 3), &items()).unwrap();
+        inventory.apply(&Change::give("arrows", 3), &items()).unwrap();
         let before = inventory.clone();
 
-        // Not enough coins: the bread isn't handed over either.
-        let purchase = Change::take("coins", 4).and_give("bread", 1);
-        assert_eq!(inventory.apply(&purchase, &items()), Err(InventoryProblem::NotEnough("coins".to_string())));
+        // Not enough arrows to trade: the bread isn't handed over either.
+        let purchase = Change::take("arrows", 4).and_give("bread", 1);
+        assert_eq!(inventory.apply(&purchase, &items()), Err(InventoryProblem::NotEnough("arrows".to_string())));
         assert_eq!(inventory, before);
 
-        // No room: the coins aren't taken.
-        let too_much = Change::take("coins", 1).and_give("bread", INVENTORY_SLOTS as u32);
+        // No room: the arrows aren't taken.
+        let too_much = Change::take("arrows", 1).and_give("bread", INVENTORY_SLOTS as u32);
         assert_eq!(inventory.apply(&too_much, &items()), Err(InventoryProblem::Full));
         assert_eq!(inventory, before);
     }
@@ -226,18 +269,32 @@ mod tests {
     fn taking_empties_slots_and_frees_room() {
         let mut inventory = Inventory::empty();
         inventory.apply(&Change::give("bread", INVENTORY_SLOTS as u32), &items()).unwrap();
-        assert_eq!(inventory.apply(&Change::give("coins", 1), &items()), Err(InventoryProblem::Full));
-        // Swapping a loaf for coins works, because the loaf's slot is freed first.
-        inventory.apply(&Change::take("bread", 1).and_give("coins", 4), &items()).unwrap();
-        assert_eq!(inventory.count("coins"), 4);
+        assert_eq!(inventory.apply(&Change::give("arrows", 1), &items()), Err(InventoryProblem::Full));
+        // Swapping a loaf for arrows works, because the loaf's slot is freed first.
+        inventory.apply(&Change::take("bread", 1).and_give("arrows", 4), &items()).unwrap();
+        assert_eq!(inventory.count("arrows"), 4);
     }
 
     #[test]
     fn saved_inventories_are_cleaned_up() {
-        let stack = |count| Some(ItemStack { item: "coins".to_string(), count });
-        let inventory = Inventory::from_saved(vec![stack(0), stack(5)]);
+        let stack = |count| Some(ItemStack { item: "arrows".to_string(), count });
+        let inventory = Inventory::from_saved(vec![stack(0), stack(5)], 7);
         assert_eq!(inventory.slots().len(), INVENTORY_SLOTS);
         assert_eq!(inventory.slot(0), None);
-        assert_eq!(inventory.count("coins"), 5);
+        assert_eq!(inventory.count("arrows"), 5);
+        assert_eq!(inventory.miasma(), 7);
+    }
+
+    #[test]
+    fn miasma_is_paid_and_earned_with_the_rest_of_a_change() {
+        let mut inventory = Inventory::from_saved(Vec::new(), 10);
+        let purchase = Change::give("bread", 1).and_pay(4);
+        inventory.apply(&purchase, &items()).unwrap();
+        assert_eq!((inventory.miasma(), inventory.count("bread")), (6, 1));
+        let too_dear = Change::give("bread", 1).and_pay(7);
+        assert_eq!(inventory.apply(&too_dear, &items()), Err(InventoryProblem::NotEnoughMiasma));
+        assert_eq!(inventory.count("bread"), 1, "nothing changed");
+        inventory.apply(&Change::take("bread", 1).and_earn(2), &items()).unwrap();
+        assert_eq!(inventory.miasma(), 8);
     }
 }

@@ -3,13 +3,13 @@
 //! A shop is opened by an NPC's dialogue (`<<open_shop elsies_bakery>>`),
 //! which sends an [`OpenShop`] here. The player then buys and sells through
 //! [`ShopRequest`]s, until they close it or walk away. Every trade is one
-//! inventory [`Change`] (coins for goods, or goods for coins), so it happens
+//! inventory [`Change`] (Miasma for goods, or goods for Miasma), so it happens
 //! completely or not at all.
 
 use std::collections::{BTreeMap, HashMap};
 
 use bevy::prelude::*;
-use venture_content::{COINS, ItemDef, ShopDef};
+use venture_content::{ItemDef, ShopDef};
 use venture_protocol::{ServerMessage, ShopStock};
 use venture_simulation::TALK_RANGE;
 
@@ -109,11 +109,13 @@ fn buy(
     items: &BTreeMap<String, ItemDef>,
 ) -> Option<String> {
     let stock = shop.stock.get(index as usize)?;
-    let cost = stock.price.checked_mul(count)?;
-    let change = Change::take(COINS, cost).and_give(&stock.item, count);
+    let cost = u64::from(stock.price) * u64::from(count);
+    let change = Change::give(&stock.item, count).and_pay(cost);
     Some(match inventory.apply(&change, items) {
-        Ok(()) => format!("You buy: {} for {cost} coins.", describe_items(&stock.item, count, items)),
-        Err(InventoryProblem::NotEnough(_)) => "You don't have enough coins for that.".to_string(),
+        Ok(()) => format!("You buy: {} for {cost} Miasma.", describe_items(&stock.item, count, items)),
+        Err(InventoryProblem::NotEnoughMiasma | InventoryProblem::NotEnough(_)) => {
+            "You don't have enough Miasma for that.".to_string()
+        }
         Err(InventoryProblem::Full) => "You have no room in your bag for that.".to_string(),
     })
 }
@@ -130,12 +132,14 @@ fn sell(
     let Some(price) = items.get(&item).and_then(ItemDef::sell_price) else {
         return Some(format!("{} won't buy that.", shop.name));
     };
-    let payment = price.checked_mul(count)?;
-    let change = Change::take(&item, count).and_give(COINS, payment);
+    let payment = u64::from(price) * u64::from(count);
+    let change = Change::take(&item, count).and_earn(payment);
     Some(match inventory.apply(&change, items) {
-        Ok(()) => format!("You sell: {} for {payment} coins.", describe_items(&item, count, items)),
-        Err(InventoryProblem::NotEnough(_)) => "You don't have that many to sell.".to_string(),
-        Err(InventoryProblem::Full) => "You have no room in your bag for the coins.".to_string(),
+        Ok(()) => format!("You sell: {} for {payment} Miasma.", describe_items(&item, count, items)),
+        Err(InventoryProblem::NotEnough(_) | InventoryProblem::NotEnoughMiasma) => {
+            "You don't have that many to sell.".to_string()
+        }
+        Err(InventoryProblem::Full) => "You can't carry any more Miasma.".to_string(),
     })
 }
 
@@ -174,11 +178,7 @@ mod tests {
             stackable,
             value,
         };
-        BTreeMap::from([
-            ("coins".to_string(), item("coins", true, 0)),
-            ("bread".to_string(), item("bread", false, 4)),
-            ("pipe".to_string(), item("pipe", false, 0)),
-        ])
+        BTreeMap::from([("bread".to_string(), item("bread", false, 4)), ("pipe".to_string(), item("pipe", false, 0))])
     }
 
     fn bakery() -> ShopDef {
@@ -189,20 +189,19 @@ mod tests {
         }
     }
 
-    fn inventory_with(coins: u32) -> Inventory {
+    fn inventory_with(miasma: u64) -> Inventory {
         let mut inventory = Inventory::empty();
-        inventory.apply(&Change::give("coins", coins).and_give("pipe", 1), &items()).unwrap();
+        inventory.apply(&Change::give("pipe", 1).and_earn(miasma), &items()).unwrap();
         inventory
     }
 
     #[test]
-    fn buying_swaps_coins_for_goods() {
+    fn buying_swaps_miasma_for_goods() {
         let mut inventory = inventory_with(12);
-        assert_eq!(buy(&bakery(), 0, 2, &mut inventory, &items()).unwrap(), "You buy: bread (2) for 10 coins.");
-        assert_eq!((inventory.count("coins"), inventory.count("bread")), (2, 2));
-        assert_eq!(buy(&bakery(), 0, 1, &mut inventory, &items()).unwrap(), "You don't have enough coins for that.");
+        assert_eq!(buy(&bakery(), 0, 2, &mut inventory, &items()).unwrap(), "You buy: bread (2) for 10 Miasma.");
+        assert_eq!((inventory.miasma(), inventory.count("bread")), (2, 2));
+        assert_eq!(buy(&bakery(), 0, 1, &mut inventory, &items()).unwrap(), "You don't have enough Miasma for that.");
         assert_eq!(buy(&bakery(), 5, 1, &mut inventory, &items()), None, "no such stock");
-        assert_eq!(buy(&bakery(), 0, u32::MAX, &mut inventory, &items()), None, "the cost would overflow");
     }
 
     #[test]
@@ -221,8 +220,8 @@ mod tests {
             sell(&bakery(), bread_slot, 2, &mut inventory, &items()).unwrap(),
             "You don't have that many to sell."
         );
-        assert_eq!(sell(&bakery(), bread_slot, 1, &mut inventory, &items()).unwrap(), "You sell: bread for 2 coins.");
-        assert_eq!(inventory.count("coins"), 2);
+        assert_eq!(sell(&bakery(), bread_slot, 1, &mut inventory, &items()).unwrap(), "You sell: bread for 2 Miasma.");
+        assert_eq!(inventory.miasma(), 2);
         assert_eq!(sell(&bakery(), 27, 1, &mut inventory, &items()), None, "an empty slot");
     }
 }

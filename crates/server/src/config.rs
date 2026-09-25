@@ -20,6 +20,9 @@ pub struct ServerConfig {
     pub paths: PathsConfig,
     /// Rules for players.
     pub player: PlayerConfig,
+    /// The names of characters with admin powers (ignoring case). Names are
+    /// unique, and each belongs to one login token.
+    pub admins: Vec<String>,
 }
 
 /// Where the server listens.

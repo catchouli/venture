@@ -20,6 +20,7 @@ use venture_protocol::{ClientMessage, MAX_CHAT_CHARS, ServerMessage, clean_chat_
 
 use crate::dev::settings::DevSettings;
 use crate::interaction::actions::{Action, PerformAction};
+use crate::interaction::admin_commands;
 use crate::interaction::targeting::{TargetKind, Targetable};
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
@@ -243,7 +244,20 @@ impl ChatSender<'_> {
             self.to_server.write(ToServer(ClientMessage::Chat { text }));
             return;
         };
-        let name = command.split_whitespace().next().unwrap_or_default();
+        let mut words = command.split_whitespace();
+        let name = words.next().unwrap_or_default();
+        let arguments: Vec<&str> = words.collect();
+        if let Some(parsed) = admin_commands::parse(name, &arguments) {
+            match parsed {
+                Ok(command) => {
+                    self.to_server.write(ToServer(ClientMessage::Admin(command)));
+                }
+                Err(usage) => {
+                    self.system.write(SystemMessage(usage));
+                }
+            }
+            return;
+        }
         match Action::named(name) {
             Some(action) => {
                 self.actions.write(PerformAction(action));

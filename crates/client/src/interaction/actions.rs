@@ -13,6 +13,7 @@
 use bevy::prelude::*;
 use venture_protocol::ClientMessage;
 
+use crate::interaction::admin_commands::ADMIN_COMMANDS;
 use crate::interaction::orders::Orders;
 use crate::interaction::targeting::{Target, TargetKind, Targetable};
 use crate::network::ClientState;
@@ -96,11 +97,24 @@ fn perform_actions(
             (Action::Talk, Some((_, Targetable { id, .. }))) => orders.ask(ClientMessage::Interact { target: id }),
             (Action::Town, _) => orders.ask(ClientMessage::ReturnToTown),
             (Action::Help, _) => {
+                // Admins also get the admin commands, marked as such.
+                let mut commands: Vec<(String, &str)> =
+                    Action::ALL.iter().map(|action| (action.name().to_string(), action.description())).collect();
+                let actions = commands.len();
+                if orders.is_admin() {
+                    let admin = ADMIN_COMMANDS.iter().map(|(name, usage, description)| {
+                        (format!("{name} {usage}").trim_end().to_string(), *description)
+                    });
+                    commands.extend(admin);
+                }
+                let width = commands.iter().map(|(name, _)| name.len()).max().unwrap_or(0);
                 system.write(SystemMessage("Commands:".to_string()));
-                let width = Action::ALL.iter().map(|action| action.name().len()).max().unwrap_or(0);
-                for action in Action::ALL {
-                    let line = format!("  /{:width$}  {}", action.name(), action.description());
-                    system.write(SystemMessage(line));
+                for (index, (name, description)) in commands.iter().enumerate() {
+                    if index == actions {
+                        system.write(SystemMessage("Admin commands:".to_string()));
+                    }
+                    let marker = if index >= actions { " [admin]" } else { "" };
+                    system.write(SystemMessage(format!("  /{name:width$}  {description}{marker}")));
                 }
             }
         }

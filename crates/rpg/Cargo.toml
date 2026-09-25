@@ -1,0 +1,13 @@
+[package]
+name = "venture_rpg"
+description = "The RPG rules: stats, levels, health and mana, attack rolls and damage. Based on the SRD 5.1, adapted for real time."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[lints]
+workspace = true

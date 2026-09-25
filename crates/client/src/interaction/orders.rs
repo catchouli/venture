@@ -62,6 +62,11 @@ impl Orders<'_, '_> {
         player.1.following = Some(Following { target, follow: Follow::default(), talk_on_arrival: true });
     }
 
+    /// Whether the player is an admin.
+    pub fn is_admin(&self) -> bool {
+        self.player.as_ref().is_some_and(|player| player.1.admin)
+    }
+
     /// Asks the server for something without predicting anything (for
     /// requests the server will probably turn down, and explain why).
     pub fn ask(&mut self, message: ClientMessage) {

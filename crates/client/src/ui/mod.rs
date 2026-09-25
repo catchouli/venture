@@ -1,14 +1,14 @@
 //! The interface drawn over the game: chat, the dialogue window, the toolbar,
-//! the bag, the quest journal, shops, the name prompt, the target frame, the
+//! the bag, the quest journal, shops, character creation, the target frame, the
 //! connection overlay, text fields, tooltips and the cursor.
 
+pub mod character_creation;
 pub mod chat;
 pub mod connection_overlay;
 pub mod cursor;
 pub mod dialogue_window;
 pub mod inventory;
 pub mod journal;
-pub mod name_prompt;
 pub mod shop;
 pub mod target_frame;
 pub mod text_input;
@@ -32,7 +32,7 @@ impl Plugin for UiPlugin {
             toolbar::ToolbarPlugin,
             shop::ShopPlugin,
             tooltip::TooltipPlugin,
-            name_prompt::NamePromptPlugin,
+            character_creation::CharacterCreationPlugin,
             target_frame::TargetFramePlugin,
             connection_overlay::ConnectionOverlayPlugin,
             cursor::CursorPlugin,

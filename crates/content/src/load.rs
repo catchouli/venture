@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::client::{ClientContent, parse_appearances, parse_items};
 use crate::definitions::{
-    AppearanceDef, COINS, ItemDef, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS,
+    AppearanceDef, ClassDef, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS,
     MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef, ShopDef,
 };
 
@@ -44,6 +44,8 @@ pub struct ContentPack {
     pub shops: BTreeMap<String, ShopDef>,
     /// Quests, by id.
     pub quests: BTreeMap<String, QuestDef>,
+    /// Classes, in the order players are offered them (the first is the default).
+    pub classes: Vec<ClassDef>,
     /// NPCs, in file order.
     pub npcs: Vec<NpcDef>,
     /// Script sources, by file name within `scripts/`.
@@ -107,8 +109,20 @@ impl ContentPack {
                 Err(message) => errors.push(error(&relative, message)),
             }
         }
-        if !pack.items.is_empty() && !pack.items.contains_key(COINS) {
-            errors.push(error(Path::new("items"), format!("there must be an item called \"{COINS}\" (money)")));
+
+        for (relative, text) in read_files(folder, "classes", "ron", &mut errors) {
+            match ron::from_str::<Vec<ClassDef>>(&text) {
+                Ok(classes) => {
+                    for class in classes {
+                        check_class(&class, &relative, &mut errors);
+                        if pack.classes.iter().any(|other| other.id == class.id) {
+                            errors.push(error(&relative, format!("there's already a class called \"{}\"", class.id)));
+                        }
+                        pack.classes.push(class);
+                    }
+                }
+                Err(message) => errors.push(error(&relative, message.to_string())),
+            }
         }
 
         if let Ok(text) = std::fs::read_to_string(folder.join(NEW_CHARACTERS_FILE)) {
@@ -258,6 +272,19 @@ fn check_shop(shop: &ShopDef, pack: &ContentPack, file: &Path, errors: &mut Vec<
     }
 }
 
+fn check_class(class: &ClassDef, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, format!("class \"{}\": {message}", class.id)));
+    if class.name.trim().is_empty() {
+        problem("it needs a name".to_string());
+    }
+    if !(1..=MAX_HIT_DIE).contains(&class.rules.hit_die) {
+        problem(format!("its hit_die must be from 1 to {MAX_HIT_DIE}"));
+    }
+    if !class.stats.is_valid() {
+        problem("its stats must each be from 1 to 99".to_string());
+    }
+}
+
 fn check_quest(quest: &QuestDef, file: &Path, errors: &mut Vec<ContentError>) {
     let mut problem = |message: String| errors.push(error(file, format!("quest \"{}\": {message}", quest.id)));
     if quest.name.trim().is_empty() {
@@ -289,6 +316,7 @@ fn check_dialogue_command(text: &str, pack: &ContentPack) -> Result<(), String> 
                 return Err(format!("<<{text}>>: there's no shop called \"{shop}\""));
             }
         }
+        DialogueCommand::GiveMiasma { .. } | DialogueCommand::TakeMiasma { .. } => {}
         DialogueCommand::SetQuest { quest, stage } => match pack.quests.get(&quest) {
             None => return Err(format!("<<{text}>>: there's no quest called \"{quest}\"")),
             Some(def) if def.stage_index(&stage).is_none() => {
@@ -426,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn items_need_icons_and_coins() {
+    fn items_need_icons() {
         let items = r#"[(id: "bread", name: "Bread", description: "A loaf.", icon: "bread.png", value: 4)]"#;
         let folder = TestPack::new("items", &[("items/food.ron", items), ("icons/loaf.png", "not a picture")]);
         let messages: Vec<String> = ContentPack::load(&folder.0).unwrap_err().iter().map(ToString::to_string).collect();
@@ -435,7 +463,6 @@ mod tests {
             [
                 "icons/loaf.png: this isn't a PNG image",
                 "items/food.ron: item \"bread\": there's no icon called \"bread.png\" in icons/",
-                "items: there must be an item called \"coins\" (money)",
             ]
         );
     }

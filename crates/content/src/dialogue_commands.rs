@@ -25,6 +25,17 @@ pub enum DialogueCommand {
         /// How many (1 if not given).
         count: u32,
     },
+    /// `<<give_miasma AMOUNT>>`: pay the player.
+    GiveMiasma {
+        /// How much.
+        amount: u64,
+    },
+    /// `<<take_miasma AMOUNT>>`: take the player's money. Check they have
+    /// enough first, with `miasma()`.
+    TakeMiasma {
+        /// How much.
+        amount: u64,
+    },
     /// `<<set_quest QUEST STAGE>>`: move a quest on to a stage (starting it
     /// if need be). Quests only move forward: setting an earlier stage, or
     /// the one it's at, does nothing.
@@ -43,16 +54,26 @@ pub enum DialogueCommand {
 }
 
 /// The functions the game provides to dialogue, on top of Yarn Spinner's own.
-pub const DIALOGUE_FUNCTIONS: [&str; 4] = [
+pub const DIALOGUE_FUNCTIONS: [&str; 5] = [
     // player_name(): the name of the player in the conversation.
     "player_name",
     // item_count(item): how many of an item the player carries.
     "item_count",
+    // miasma(): how much money the player has.
+    "miasma",
     // has_room_for(item): whether the player's bag has room for one more of an item.
     "has_room_for",
     // quest_stage(quest): the stage the player has reached in a quest ("" if not started).
     "quest_stage",
 ];
+
+/// Reads an amount of Miasma in a command.
+fn miasma_amount(word: &str) -> Result<u64, String> {
+    match word.parse::<u64>() {
+        Ok(amount) if amount > 0 => Ok(amount),
+        _ => Err(format!("\"{word}\" isn't an amount of Miasma (a whole number from 1)")),
+    }
+}
 
 impl DialogueCommand {
     /// Reads a command from the text of a Yarn command (what's between `<<` and `>>`).
@@ -78,14 +99,29 @@ impl DialogueCommand {
                 Ok(Self::TakeItem { item: item.to_string(), count: count(words.get(2))? })
             }
             ["open_shop", shop] => Ok(Self::OpenShop { shop: shop.to_string() }),
+            ["give_miasma", amount] => Ok(Self::GiveMiasma { amount: miasma_amount(amount)? }),
+            ["take_miasma", amount] => Ok(Self::TakeMiasma { amount: miasma_amount(amount)? }),
+            ["give_miasma" | "take_miasma", ..] => Err(format!("<<{text}>>: write it as <<{} AMOUNT>>", words[0])),
             ["set_quest", quest, stage] => Ok(Self::SetQuest { quest: quest.to_string(), stage: stage.to_string() }),
             ["set_quest", ..] => Err(format!("<<{text}>>: write it as <<set_quest QUEST STAGE>>")),
             ["give_item" | "take_item", ..] => Err(format!("<<{text}>>: write it as <<{} ITEM [COUNT]>>", words[0])),
             ["open_shop", ..] => Err(format!("<<{text}>>: write it as <<open_shop SHOP>>")),
             _ => Err(format!(
-                "<<{text}>> isn't a command the game knows (commands: give_item, take_item, set_quest, open_shop)"
+                "<<{text}>> isn't a command the game knows (commands: give_item, take_item, give_miasma, take_miasma, set_quest, open_shop)"
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod miasma_tests {
+    use super::*;
+
+    #[test]
+    fn miasma_commands_are_read() {
+        assert_eq!(DialogueCommand::parse("give_miasma 30"), Ok(DialogueCommand::GiveMiasma { amount: 30 }));
+        assert_eq!(DialogueCommand::parse("take_miasma 5"), Ok(DialogueCommand::TakeMiasma { amount: 5 }));
+        assert!(DialogueCommand::parse("give_miasma lots").is_err());
     }
 }
 

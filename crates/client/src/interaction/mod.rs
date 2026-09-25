@@ -3,6 +3,7 @@
 //! orders, and the actions a player can take.
 
 pub mod actions;
+pub mod admin_commands;
 pub mod clicks;
 pub mod move_marker;
 pub mod orders;

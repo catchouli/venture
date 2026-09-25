@@ -147,7 +147,7 @@ fn receive_from_server(
             }
             ConnectionEvent::Message(message) => {
                 match &message {
-                    ServerMessage::NameNeeded { .. } => next_state.set(ClientState::ChoosingName),
+                    ServerMessage::CharacterNeeded { .. } => next_state.set(ClientState::ChoosingName),
                     ServerMessage::Welcome { .. } => {
                         session.disconnect_reason = None;
                         next_state.set(ClientState::Playing);

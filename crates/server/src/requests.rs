@@ -10,15 +10,16 @@
 //!
 //! and only then does it become a [`SessionRequest`] (for [`crate::sessions`]),
 //! a [`PlayerRequest`] (for [`crate::gameplay`]), a [`DialogueRequest`] (for
-//! [`crate::dialogue`]) or a [`ShopRequest`] (for [`crate::shops`]). Too many
-//! strikes and the connection is closed.
+//! [`crate::dialogue`]), a [`ShopRequest`] (for [`crate::shops`]) or an
+//! [`AdminRequest`] (for [`crate::admin`]). Too many strikes and the
+//! connection is closed.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{
-    ClientMessage, EntityId, PROTOCOL_VERSION, ServerMessage, clean_chat_text, clean_name, is_valid_token,
+    AdminCommand, ClientMessage, EntityId, PROTOCOL_VERSION, ServerMessage, clean_chat_text, clean_name, is_valid_token,
 };
 use venture_simulation::steering_direction;
 
@@ -33,6 +34,8 @@ const MAX_STRIKES: u32 = 10;
 const MESSAGE_BURST: f32 = 40.0;
 /// ...and per second after that.
 const MESSAGES_PER_SECOND: f32 = 20.0;
+/// The longest a class id may be, in bytes.
+const MAX_CLASS_ID_BYTES: usize = 64;
 /// The most items one purchase or sale may involve.
 const MAX_TRADE_COUNT: u32 = 100;
 /// Chat messages a player may send in a burst...
@@ -50,6 +53,7 @@ impl Plugin for RequestsPlugin {
             .add_message::<PlayerRequest>()
             .add_message::<DialogueRequest>()
             .add_message::<ShopRequest>()
+            .add_message::<AdminRequest>()
             .add_systems(FixedUpdate, receive_messages.in_set(ServerSystems::Requests));
     }
 }
@@ -73,7 +77,7 @@ pub(crate) enum Stage {
     AwaitingHello,
     /// Waiting for the server to finish logging it in. Messages are ignored.
     Joining,
-    /// A new player: waiting for [`ClientMessage::ChooseName`].
+    /// A new player: waiting for [`ClientMessage::CreateCharacter`].
     AwaitingName { profile: ProfileKey },
     /// In the game, as this player entity.
     Playing { player: Entity },
@@ -90,13 +94,17 @@ pub enum SessionRequest {
         profile: ProfileKey,
     },
     /// Create a new character.
-    ChooseName {
+    CreateCharacter {
         /// Who is creating it.
         connection: ConnectionId,
         /// The profile to save it to.
         profile: ProfileKey,
-        /// The character's (cleaned) name.
+        /// The character's (cleaned) name. Not yet checked for being taken.
         name: String,
+        /// The chosen class's id. Not yet checked against the content.
+        class: String,
+        /// The chosen body type.
+        body: venture_protocol::BodyType,
     },
     /// The connection has closed.
     Leave {
@@ -139,6 +147,15 @@ pub struct DialogueRequest {
     pub player: Entity,
     /// What they chose.
     pub choice: DialogueChoice,
+}
+
+/// An admin command, for [`crate::admin`] (which checks the player is an admin).
+#[derive(Message)]
+pub struct AdminRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// The command.
+    pub command: AdminCommand,
 }
 
 /// A player's request to the shop they have open, for [`crate::shops`].
@@ -190,6 +207,7 @@ fn receive_messages(
     mut players: MessageWriter<PlayerRequest>,
     mut dialogue: MessageWriter<DialogueRequest>,
     mut shops: MessageWriter<ShopRequest>,
+    mut admin: MessageWriter<AdminRequest>,
 ) {
     let now = time.elapsed_secs();
     while let Some(event) = link.next_event() {
@@ -222,6 +240,9 @@ fn receive_messages(
                     Verdict::Shop(request) => {
                         shops.write(request);
                     }
+                    Verdict::Admin(request) => {
+                        admin.write(request);
+                    }
                     Verdict::Reply(message) => link.send(id, &message),
                     Verdict::Ignore => {}
                     Verdict::Strike => {
@@ -247,6 +268,7 @@ enum Verdict {
     Player(PlayerRequest),
     Dialogue(DialogueRequest),
     Shop(ShopRequest),
+    Admin(AdminRequest),
     /// Answer the client directly, without changing anything.
     Reply(ServerMessage),
     Ignore,
@@ -276,14 +298,22 @@ fn judge(id: ConnectionId, connection: &mut Connection, bytes: &[u8], world: &Se
             connection.stage = Stage::Joining;
             Verdict::Session(SessionRequest::Hello { connection: id, profile: ProfileKey::from_token(&token) })
         }
-        (Stage::AwaitingName { profile }, ClientMessage::ChooseName { name }) => match clean_name(&name) {
-            Ok(name) => {
-                let request = SessionRequest::ChooseName { connection: id, profile: profile.clone(), name };
-                connection.stage = Stage::Joining;
-                Verdict::Session(request)
+        (Stage::AwaitingName { .. }, ClientMessage::CreateCharacter { class, .. })
+            if class.len() > MAX_CLASS_ID_BYTES =>
+        {
+            Verdict::Strike
+        }
+        (Stage::AwaitingName { profile }, ClientMessage::CreateCharacter { name, class, body }) => {
+            match clean_name(&name) {
+                Ok(name) => {
+                    let request =
+                        SessionRequest::CreateCharacter { connection: id, profile: profile.clone(), name, class, body };
+                    connection.stage = Stage::Joining;
+                    Verdict::Session(request)
+                }
+                Err(reason) => Verdict::Reply(ServerMessage::CharacterRejected { reason }),
             }
-            Err(reason) => Verdict::Reply(ServerMessage::NameRejected { reason }),
-        },
+        }
         (Stage::Joining, _) => Verdict::Ignore,
         (&Stage::Playing { player }, message) => judge_player_message(player, connection, message, world, now),
         _ => Verdict::Strike,
@@ -340,7 +370,11 @@ fn judge_player_message(
             return Verdict::Shop(ShopRequest { player, action: ShopAction::Sell { slot, count } });
         }
         ClientMessage::CloseShop => return Verdict::Shop(ShopRequest { player, action: ShopAction::Close }),
-        ClientMessage::Hello { .. } | ClientMessage::ChooseName { .. } => return Verdict::Strike,
+        ClientMessage::Admin(AdminCommand::SetClass { class }) if class.len() > MAX_CLASS_ID_BYTES => {
+            return Verdict::Strike;
+        }
+        ClientMessage::Admin(command) => return Verdict::Admin(AdminRequest { player, command }),
+        ClientMessage::Hello { .. } | ClientMessage::CreateCharacter { .. } => return Verdict::Strike,
     };
     Verdict::Player(PlayerRequest { player, action })
 }

@@ -19,6 +19,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 
+use crate::dev::settings::DevSettings;
 use crate::network::ClientState;
 use crate::world::streaming::StreamingProgress;
 
@@ -70,9 +71,18 @@ fn create_target(mut pending: ResMut<PendingScreenshot>, mut images: ResMut<Asse
     pending.target = images.add(image);
 }
 
-/// Points each new camera at the offscreen image, drawing the interface there too.
-fn render_offscreen(mut commands: Commands, pending: Res<PendingScreenshot>, cameras: Query<Entity, Added<Camera3d>>) {
-    for camera in &cameras {
+/// Points each new camera at the offscreen image, drawing the interface there
+/// too. (Cameras that already draw into an image of their own, such as the
+/// character creation preview, are left alone.)
+fn render_offscreen(
+    mut commands: Commands,
+    pending: Res<PendingScreenshot>,
+    cameras: Query<(Entity, &RenderTarget), Added<Camera3d>>,
+) {
+    for (camera, target) in &cameras {
+        if matches!(target, RenderTarget::Image(_)) {
+            continue;
+        }
         commands.entity(camera).insert((RenderTarget::Image(pending.target.clone().into()), IsDefaultUiCamera));
     }
 }
@@ -83,9 +93,16 @@ fn take_screenshot_when_loaded(
     mut pending: ResMut<PendingScreenshot>,
     progress: Res<StreamingProgress>,
     state: Res<State<ClientState>>,
+    dev: Res<DevSettings>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    let loaded = *state.get() == ClientState::Playing && progress.measured && progress.waiting == 0;
+    // Normally the world must be in view; with VENTURE_SHOW_CREATION, the
+    // character creation screen is what's wanted.
+    let loaded = match state.get() {
+        ClientState::ChoosingName => dev.show_creation,
+        ClientState::Playing => !dev.show_creation && progress.measured && progress.waiting == 0,
+        _ => false,
+    };
     if !loaded && !pending.taken {
         pending.frames = 0;
         return;

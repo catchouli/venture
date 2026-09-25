@@ -1,6 +1,7 @@
 //! The message types.
 
 use serde::{Deserialize, Serialize};
+use venture_rpg::Abilities;
 use venture_simulation::Rules;
 
 /// Identifies something in the game world (a player or an NPC) for as long
@@ -12,7 +13,12 @@ pub struct EntityId(pub u32);
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EntityKind {
     /// Another player.
-    Player,
+    Player {
+        /// Their level (their combat level).
+        level: u32,
+        /// How they look.
+        look: PlayerLook,
+    },
     /// A non-player character.
     Npc {
         /// Its appearance (an id from the content pack's appearances).
@@ -30,10 +36,14 @@ pub enum ClientMessage {
         /// The client's login token (see `docs/client-server.md`).
         token: String,
     },
-    /// The name for a new character, after the server asks with [`ServerMessage::NameNeeded`].
-    ChooseName {
+    /// Make a new character, after the server asks with [`ServerMessage::CharacterNeeded`].
+    CreateCharacter {
         /// The requested name.
         name: String,
+        /// The chosen class (an id from [`ServerMessage::CharacterNeeded`]'s classes).
+        class: String,
+        /// The chosen body type.
+        body: BodyType,
     },
     /// Run to a point, finding a way around obstacles.
     MoveTo {
@@ -91,19 +101,41 @@ pub enum ClientMessage {
     },
     /// Close the open shop.
     CloseShop,
+    /// An admin command (refused unless the player is an admin).
+    Admin(AdminCommand),
+}
+
+/// A command only admins may use.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum AdminCommand {
+    /// Set your own level (`/setlevel 10`), with the points it would have given.
+    SetLevel {
+        /// The new level.
+        level: u32,
+    },
+    /// Start your character over at level 1 (`/reset`).
+    Reset,
+    /// Change your class (`/setclass mage`), refunding your points.
+    SetClass {
+        /// The class's id or name.
+        class: String,
+    },
 }
 
 /// Events from the server.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ServerMessage {
     /// This token has no character yet: the client should ask the player for
-    /// a name and reply with [`ClientMessage::ChooseName`].
-    NameNeeded {
+    /// a name and a class, and reply with [`ClientMessage::CreateCharacter`].
+    CharacterNeeded {
         /// A random name to offer.
         suggestion: String,
+        /// The classes to choose from (the first is the default).
+        classes: Vec<ClassChoice>,
     },
-    /// The chosen name isn't allowed; the client should ask again.
-    NameRejected {
+    /// The new character can't be made as asked (such as a name that's
+    /// taken); the client should ask again.
+    CharacterRejected {
         /// Why, in words to show the player.
         reason: String,
     },
@@ -117,6 +149,23 @@ pub enum ServerMessage {
         position: (f32, f32),
         /// The server's game rules, which the client's prediction must follow too.
         rules: Rules,
+        /// Whether the player is an admin (so the client lists admin commands).
+        admin: bool,
+        /// How the player's character looks.
+        look: PlayerLook,
+    },
+    /// The player's own character sheet, sent whenever it changes.
+    Character(CharacterSheet),
+    /// A player's level or look has changed (sent to everyone, the player too).
+    PlayerChanged {
+        /// Whose.
+        id: EntityId,
+        /// Their level.
+        level: u32,
+        /// How they look (their class shows in their outfit).
+        look: PlayerLook,
+        /// Whether they went up a level (and everyone should see a level-up effect).
+        celebrate: bool,
     },
     /// The server won't accept this connection (for example, a different
     /// protocol version). The connection is closed after this.
@@ -178,6 +227,8 @@ pub enum ServerMessage {
     Inventory {
         /// Each slot: empty, or holding some of one item.
         slots: Vec<Option<ItemStack>>,
+        /// Their money.
+        miasma: u64,
     },
     /// The player's quest journal, sent whenever it changes: every quest
     /// they've started, in the order they started them.
@@ -252,4 +303,114 @@ pub struct QuestEntry {
     pub journal: String,
     /// Whether it's finished.
     pub complete: bool,
+}
+
+/// A class a new character can be, in [`ServerMessage::CharacterNeeded`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ClassChoice {
+    /// Its id, to send back.
+    pub id: String,
+    /// Its name.
+    pub name: String,
+    /// What it's like.
+    pub description: String,
+    /// What its characters wear (for the preview).
+    pub outfit: Outfit,
+}
+
+/// A character's build. It only changes how they look.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum BodyType {
+    /// Broader shoulders, narrower hips.
+    Masculine,
+    /// Narrower shoulders and waist, wider hips.
+    Feminine,
+    /// In between.
+    #[default]
+    Androgynous,
+}
+
+impl BodyType {
+    /// Every body type, in the order they're offered.
+    pub const ALL: [BodyType; 3] = [BodyType::Masculine, BodyType::Feminine, BodyType::Androgynous];
+
+    /// Its name, as shown to players.
+    pub fn name(self) -> &'static str {
+        match self {
+            BodyType::Masculine => "Masculine",
+            BodyType::Feminine => "Feminine",
+            BodyType::Androgynous => "Androgynous",
+        }
+    }
+}
+
+/// The cut of what a character wears (until equipment shows for itself).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OutfitStyle {
+    /// A plain tunic and trousers.
+    #[default]
+    Tunic,
+    /// A tunic with plates of armour strapped over it.
+    Armour,
+    /// A long robe.
+    Robe,
+}
+
+/// What a character wears: its cut and colours (sRGB, each 0 to 1).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Outfit {
+    /// The cut.
+    pub style: OutfitStyle,
+    /// The main colour (the tunic or robe).
+    pub main: (f32, f32, f32),
+    /// The second colour (armour plates, trim, trousers).
+    pub trim: (f32, f32, f32),
+}
+
+impl Default for Outfit {
+    fn default() -> Self {
+        Self { style: OutfitStyle::Tunic, main: (0.46, 0.31, 0.19), trim: (0.30, 0.26, 0.22) }
+    }
+}
+
+/// How a player's character looks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PlayerLook {
+    /// Their build.
+    pub body: BodyType,
+    /// What they wear.
+    pub outfit: Outfit,
+}
+
+/// Everything about the player's own character, for the stats tab
+/// ([`ServerMessage::Character`]). The server works out the secondary stats,
+/// so the client never has to repeat the rules.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CharacterSheet {
+    /// Their class's name.
+    pub class: String,
+    /// Their level.
+    pub level: u32,
+    /// Experience earned towards the next level.
+    pub experience: u64,
+    /// Experience the next level takes in all (0 at the top level).
+    pub experience_to_next: u64,
+    /// Their ability scores.
+    pub stats: Abilities,
+    /// Stat points to spend.
+    pub stat_points: u32,
+    /// Skill points to spend.
+    pub skill_points: u32,
+    /// Most health.
+    pub max_health: u32,
+    /// Most mana.
+    pub max_mana: u32,
+    /// Armour class.
+    pub armour_class: i32,
+    /// Added to attack rolls.
+    pub attack_bonus: i32,
+    /// Added to damage.
+    pub damage_bonus: i32,
+    /// Attacks per second.
+    pub attacks_per_second: f32,
 }

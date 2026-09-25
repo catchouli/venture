@@ -37,6 +37,8 @@
 // lists and query types are normal here.
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
+pub mod admin;
+pub mod character;
 pub mod config;
 pub mod content;
 pub mod dialogue;
@@ -81,7 +83,13 @@ pub struct GameServer {
     pub content: ContentSetup,
     /// Where new characters start, if not the world's spawn point (for development).
     pub spawn_override: Option<(f32, f32)>,
+    /// The names of characters with admin powers.
+    pub admins: Vec<String>,
 }
+
+/// The names of characters with admin powers (see [`admin`]).
+#[derive(Resource, Clone, Default)]
+pub struct Admins(pub Vec<String>);
 
 /// The game rules this server plays by.
 #[derive(Resource, Clone, Copy)]
@@ -119,6 +127,7 @@ impl GameServer {
             .insert_resource(self.profiles)
             .insert_resource(self.link)
             .insert_resource(GameRules(self.rules))
+            .insert_resource(Admins(self.admins))
             .insert_resource(sessions::SpawnPoint(self.spawn_override))
             .configure_sets(
                 FixedUpdate,
@@ -142,6 +151,8 @@ impl GameServer {
                 inventory::InventoryPlugin,
                 shops::ShopsPlugin,
                 quests::QuestsPlugin,
+                character::CharacterPlugin,
+                admin::AdminPlugin,
                 content::ContentPlugin,
             ));
     }

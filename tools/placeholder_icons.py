@@ -66,19 +66,17 @@ def detail(shape):
 
 # Icons ----------------------------------------------------------------------
 
-GOLD = (232, 184, 62)
 CRUST = (196, 128, 58)
 DARK_CRUST = (150, 88, 38)
 
 
-def coins():
-    layers = []
-    for i, (cx, cy) in enumerate([(12, 22), (20, 21), (16, 16)]):
-        layers.append((ellipse(cx, cy, 8.5, 5), GOLD))
-        layers.append((detail(ellipse(cx, cy, 5.5, 3)), (208, 156, 44)))
-    layers.append((circle(20, 12, 7.5), (242, 198, 76)))
-    layers.append((detail(ring(20, 12, 5, 1.2)), (200, 150, 40)))
-    return layers
+def miasma():
+    return [
+        (circle(16, 17, 10), (132, 72, 176)),
+        (detail(circle(13, 14, 5)), (186, 134, 226)),
+        (detail(capsule(16, 7, 13, 3, 1.6)), (160, 104, 204)),  # a wisp rising off it
+        (detail(circle(19, 21, 2)), (98, 50, 140)),
+    ]
 
 
 def bread():
@@ -119,7 +117,7 @@ def old_pipe():
 
 
 ICONS = {
-    "coins.png": coins,
+    "miasma.png": miasma,
     "bread.png": bread,
     "meat_pie.png": meat_pie,
     "sweet_roll.png": sweet_roll,

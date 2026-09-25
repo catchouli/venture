@@ -6488,6 +6488,8 @@ dependencies = [
  "ron",
  "serde",
  "sha2",
+ "venture_protocol",
+ "venture_rpg",
  "yarnspinner",
 ]
 
@@ -6504,7 +6506,15 @@ version = "0.1.0"
 dependencies = [
  "postcard",
  "serde",
+ "venture_rpg",
  "venture_simulation",
+]
+
+[[package]]
+name = "venture_rpg"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -6526,6 +6536,7 @@ dependencies = [
  "venture_content",
  "venture_navigation",
  "venture_protocol",
+ "venture_rpg",
  "venture_simulation",
  "venture_world",
  "yarnspinner",
