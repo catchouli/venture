@@ -21,24 +21,22 @@ the engine, so the future server can use them, and they are easy to test.
 
 | Crate | Purpose |
 | --- | --- |
-| `venture_server` | The authoritative game server: simulation, persistence, and sending chunk and entity data to clients. It uses `venture_worldgen` to generate terrain and `venture_world` for data. |
+| `venture_simulation` | Game rules both sides run: movement, speed limits, validation. The client uses them to predict and the server to decide. |
 | `venture_protocol` | Messages between client and server, and how they're encoded. |
-| `venture_content` | Loading, checking and hot-reloading authored content: data (RON), dialogue (Yarn Spinner) and scripts (Rhai). See [content-authoring.md](content-authoring.md). |
+| `venture_content` | Loading, checking and hot-reloading the content pack: data (RON), dialogue (Yarn Spinner) and scripts (Rhai). See [content-authoring.md](content-authoring.md). |
+| `venture_server` | The authoritative game server. It also hosts the web client and the content pack for LAN play. |
 
 ## Client and server
 
-For now the client generates the world itself, which is enough for developing
-terrain and visuals. In the full game:
+The server is authoritative, and the client predicts the player's own
+movement so it feels instant. The server streams the world settings and
+content to clients. The full design is in [client-server.md](client-server.md),
+and the build order in [plan-client-server.md](plan-client-server.md).
 
-- The **server is authoritative**. It generates chunks (or loads them from a
-  cache), applies authored overlays and live world state, and sends chunk data
-  to clients as players move.
-- The client only renders and predicts. Chunk data arriving from the network
-  goes into the same `ChunkStore` that local generation fills today, so
-  nothing downstream changes. This is why meshing only uses chunk data (and
-  neighbouring chunks' data), never the generator.
-- The terrain is deterministic, so a client *could* generate it too, to save
-  bandwidth, and only receive changes. Either way, the server decides.
+For now the client still generates and simulates everything itself. Chunk
+meshing only uses chunk data (and neighbouring chunks' data), never the
+generator directly, so switching to server-provided data won't change the
+rendering code.
 
 ## Client structure
 
