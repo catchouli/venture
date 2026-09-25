@@ -7,11 +7,11 @@
 
 use bevy::prelude::*;
 use venture_navigation::Point;
-use venture_protocol::{ClientMessage, EntityId, ServerMessage};
+use venture_protocol::{ClientMessage, EntityId, PlayerLook, ServerMessage};
 use venture_simulation::{Follow, FollowOutcome, INTERACT_DISTANCE, Movement, Rules, step};
 
 use crate::camera::{CameraHeading, CameraMode, wasd_direction};
-use crate::characters::model::{CharacterAssets, Gait, spawn_character};
+use crate::characters::model::{CharacterAssets, Gait, rebuild_body, spawn_character};
 use crate::characters::nameplates::Nameplate;
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::interaction::targeting::Target;
@@ -42,6 +42,7 @@ impl Plugin for PlayerPlugin {
             Update,
             (
                 place_on_welcome,
+                restyle_when_changed,
                 steer_with_keyboard.run_if(in_state(ClientState::Playing)),
                 stop_following_when_deselected,
                 predict_following,
@@ -67,6 +68,10 @@ pub struct LocalPlayer {
     pub movement: Movement,
     /// Who the character is following, if anyone.
     pub following: Option<Following>,
+    /// Whether the player is an admin (so admin commands are listed).
+    pub admin: bool,
+    /// How the character looks, as the server last said.
+    pub look: PlayerLook,
 }
 
 /// Following another character.
@@ -93,33 +98,65 @@ struct SteeringSent {
 
 /// Creates the character on the first welcome, and puts it where the server
 /// says on every welcome (such as after reconnecting).
+///
+/// (Also see [`restyle_when_changed`], for a new look while playing.)
 fn place_on_welcome(
     mut commands: Commands,
     mut events: MessageReader<FromServer>,
     assets: Res<CharacterAssets>,
     store: Res<ChunkStore>,
     mut rules: ResMut<GameRules>,
-    mut players: Query<(&mut LocalPlayer, &mut Transform, &mut Nameplate)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut players: Query<(Entity, &mut LocalPlayer, &mut Transform, &mut Nameplate)>,
 ) {
     for FromServer(message) in events.read() {
-        let ServerMessage::Welcome { you, name, position: (x, y), rules: server_rules } = message else { continue };
+        let ServerMessage::Welcome { you, name, position: (x, y), rules: server_rules, admin, look: server_look } =
+            message
+        else {
+            continue;
+        };
+        let look = assets.player_look(you.0, server_look, &mut materials);
         rules.0 = *server_rules;
         let translation = to_bevy(*x, *y, ground_height(&store, *x, *y).unwrap_or(0.0));
-        if let Ok((mut player, mut transform, mut nameplate)) = players.single_mut() {
+        if let Ok((entity, mut player, mut transform, mut nameplate)) = players.single_mut() {
+            rebuild_body(&mut commands, entity, &assets, &look);
             player.id = *you;
             player.movement = Movement::Idle;
             player.following = None;
+            player.admin = *admin;
+            player.look = *server_look;
             transform.translation = translation;
             nameplate.0.clone_from(name);
             continue;
         }
-        let look = assets.player_look(you.0);
         let character = spawn_character(&mut commands, &assets, Transform::from_translation(translation), &look);
         commands.entity(character).insert((
             Name::new("Player"),
-            LocalPlayer { id: *you, movement: Movement::Idle, following: None },
+            LocalPlayer { id: *you, movement: Movement::Idle, following: None, admin: *admin, look: *server_look },
             Nameplate(name.clone()),
         ));
+    }
+}
+
+/// Rebuilds the character in a new look when the server says it has changed
+/// (such as a new class). A level change alone leaves the body as it is.
+fn restyle_when_changed(
+    mut commands: Commands,
+    mut events: MessageReader<FromServer>,
+    assets: Res<CharacterAssets>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    player: Option<Single<(Entity, &mut LocalPlayer)>>,
+) {
+    let Some(player) = player else { return };
+    let (entity, mut player) = player.into_inner();
+    for FromServer(message) in events.read() {
+        if let ServerMessage::PlayerChanged { id, look, .. } = message
+            && *id == player.id
+            && *look != player.look
+        {
+            player.look = *look;
+            rebuild_body(&mut commands, entity, &assets, &assets.player_look(id.0, look, &mut materials));
+        }
     }
 }
 

@@ -2,13 +2,6 @@
 // see tools/placeholder_icons.py).
 [
     (
-        id: "coins",
-        name: "Coins",
-        description: "Money. Every shop in the land takes it.",
-        icon: "coins.png",
-        stackable: true,
-    ),
-    (
         id: "bread",
         name: "Bread",
         description: "A crusty loaf from Elsie's ovens, still a little warm.",

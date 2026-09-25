@@ -50,9 +50,14 @@ Done: the content pack (milestone 2), then dialogue, items, inventories, a
 shop and the first quest (milestone 3). Still to come for content: saved Yarn
 variables, item use (eating), and more shops and quests as the world grows.
 
-## Next: the game
+## Next: combat (milestone 4)
+
+Classes, levels, stats, skills, equipment, creatures and fighting: see
+[plan-combat.md](plan-combat.md). Step 1 (the RPG rules, classes and
+character creation, levels and stats, Miasma, admins) is done.
+
+## Then: the game
 
 - Proper character models and animation (imported, rigged models to replace the placeholder).
-- Targeting: selecting creatures and players, with the sword cursor to attack.
 - Skills design (see [vision.md](vision.md)), then the first gathering skill
   (felling trees) and the first crafting skill.

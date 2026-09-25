@@ -1,5 +1,7 @@
 //! A placeholder human character, 1.8 metres tall, built from simple shapes
-//! with jointed limbs, and a procedural run and idle animation.
+//! with jointed limbs, and a procedural run and idle animation. Its build
+//! follows the character's body type, and its clothes their outfit (a tunic,
+//! armour plates over one, or a robe).
 //!
 //! The character faces +Z in its own space. Its origin is on the ground
 //! between its feet. Proportions follow a real adult (about 7.5 heads tall).
@@ -8,6 +10,7 @@ use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
 use venture_content::{AppearanceDef, Colour};
+use venture_protocol::{BodyType, OutfitStyle, PlayerLook};
 
 /// Distance covered by one full running cycle (two steps), in metres.
 const STRIDE_LENGTH: f32 = 2.6;
@@ -82,22 +85,23 @@ enum JointKind {
 #[derive(Resource)]
 pub struct CharacterAssets {
     meshes: CharacterMeshes,
-    skin: Handle<StandardMaterial>,
-    hair: Handle<StandardMaterial>,
     linen: Handle<StandardMaterial>,
     leather: Handle<StandardMaterial>,
-    trousers: Handle<StandardMaterial>,
     boots: Handle<StandardMaterial>,
     belt: Handle<StandardMaterial>,
-    /// Tunic colours, so characters are easier to tell apart.
-    tunics: Vec<Handle<StandardMaterial>>,
+    /// Skin tones, so players look different from one another.
+    skins: Vec<Handle<StandardMaterial>>,
+    /// Hair colours, likewise.
+    hairs: Vec<Handle<StandardMaterial>>,
 }
 
 struct CharacterMeshes {
     unit_sphere: Handle<Mesh>,
+    unit_cube: Handle<Mesh>,
     torso: Handle<Mesh>,
     belt: Handle<Mesh>,
     skirt: Handle<Mesh>,
+    robe: Handle<Mesh>,
     neck: Handle<Mesh>,
     upper_arm: Handle<Mesh>,
     forearm: Handle<Mesh>,
@@ -112,9 +116,11 @@ impl FromWorld for CharacterAssets {
         let mut meshes = world.resource_mut::<Assets<Mesh>>();
         let character_meshes = CharacterMeshes {
             unit_sphere: meshes.add(Sphere::new(1.0).mesh().ico(3).expect("valid subdivision")),
+            unit_cube: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
             torso: meshes.add(Capsule3d::new(0.15, 0.3)),
             belt: meshes.add(Cylinder::new(0.16, 0.06)),
             skirt: meshes.add(ConicalFrustum { radius_top: 0.19, radius_bottom: 0.24, height: 0.22 }),
+            robe: meshes.add(ConicalFrustum { radius_top: 0.18, radius_bottom: 0.3, height: 0.78 }),
             neck: meshes.add(Cylinder::new(0.055, 0.1)),
             upper_arm: meshes.add(Capsule3d::new(0.052, 0.2)),
             forearm: meshes.add(Capsule3d::new(0.045, 0.18)),
@@ -124,7 +130,7 @@ impl FromWorld for CharacterAssets {
             foot: meshes.add(Cuboid::new(0.11, 0.08, 0.25)),
         };
         let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
-        let mut material = |r: f32, g: f32, b: f32, roughness: f32| {
+        let mut material = |(r, g, b): Colour, roughness: f32| {
             materials.add(StandardMaterial {
                 base_color: Color::srgb(r, g, b),
                 perceptual_roughness: roughness,
@@ -133,49 +139,76 @@ impl FromWorld for CharacterAssets {
         };
         Self {
             meshes: character_meshes,
-            skin: material(0.86, 0.66, 0.53, 0.7),
-            hair: material(0.30, 0.19, 0.11, 0.6),
-            linen: material(0.78, 0.73, 0.62, 0.9),
-            leather: material(0.46, 0.31, 0.19, 0.7),
-            trousers: material(0.30, 0.26, 0.22, 0.9),
-            boots: material(0.20, 0.14, 0.10, 0.6),
-            belt: material(0.16, 0.10, 0.07, 0.5),
-            tunics: vec![
-                material(0.46, 0.31, 0.19, 0.7),
-                material(0.25, 0.35, 0.22, 0.8),
-                material(0.45, 0.18, 0.15, 0.8),
-                material(0.22, 0.28, 0.42, 0.8),
-                material(0.40, 0.36, 0.30, 0.8),
-                material(0.35, 0.22, 0.38, 0.8),
-            ],
+            linen: material((0.78, 0.73, 0.62), 0.9),
+            leather: material((0.46, 0.31, 0.19), 0.7),
+            boots: material((0.20, 0.14, 0.10), 0.6),
+            belt: material((0.16, 0.10, 0.07), 0.5),
+            skins: SKIN_TONES.iter().map(|&colour| material(colour, 0.7)).collect(),
+            hairs: HAIR_COLOURS.iter().map(|&colour| material(colour, 0.6)).collect(),
         }
     }
 }
 
-/// The colours a character is drawn in.
+/// Skin tones players are given (picked by their id).
+const SKIN_TONES: [Colour; 5] =
+    [(0.86, 0.66, 0.53), (0.93, 0.76, 0.64), (0.72, 0.52, 0.38), (0.55, 0.38, 0.26), (0.40, 0.27, 0.18)];
+/// Hair colours players are given (picked by their id).
+const HAIR_COLOURS: [Colour; 6] = [
+    (0.30, 0.19, 0.11),
+    (0.12, 0.09, 0.07),
+    (0.62, 0.42, 0.20),
+    (0.78, 0.66, 0.42),
+    (0.50, 0.20, 0.10),
+    (0.60, 0.58, 0.55),
+];
+
+/// How a character is drawn: their build, the cut of their clothes, and colours.
 #[derive(Clone)]
 pub struct Look {
+    /// Build.
+    pub body: BodyType,
+    /// The cut of their clothes.
+    pub outfit: OutfitStyle,
     /// Skin.
     pub skin: Handle<StandardMaterial>,
     /// Hair.
     pub hair: Handle<StandardMaterial>,
-    /// Tunic.
+    /// Tunic or robe.
     pub tunic: Handle<StandardMaterial>,
     /// Trousers.
     pub trousers: Handle<StandardMaterial>,
+    /// Armour plates and trim.
+    pub trim: Handle<StandardMaterial>,
 }
 
 impl CharacterAssets {
-    /// A player's look: the usual colours, with a tunic picked by `variant`
-    /// (any number; it wraps around) so players are easier to tell apart.
-    pub fn player_look(&self, variant: u32) -> Look {
+    /// A player's look: their build and outfit, with a skin tone and hair
+    /// colour picked by `variant` (their id, say), so players look different.
+    pub fn player_look(&self, variant: u32, look: &PlayerLook, materials: &mut Assets<StandardMaterial>) -> Look {
+        let mut material = |(r, g, b): Colour, roughness: f32| {
+            materials.add(StandardMaterial {
+                base_color: Color::srgb(r, g, b),
+                perceptual_roughness: roughness,
+                ..default()
+            })
+        };
+        let outfit = look.outfit;
+        let hash = variant.wrapping_mul(2_654_435_761);
         Look {
-            skin: self.skin.clone(),
-            hair: self.hair.clone(),
-            tunic: self.tunics[variant as usize % self.tunics.len()].clone(),
-            trousers: self.trousers.clone(),
+            body: look.body,
+            outfit: outfit.style,
+            skin: self.skins[hash as usize % self.skins.len()].clone(),
+            hair: self.hairs[(hash >> 8) as usize % self.hairs.len()].clone(),
+            tunic: material(outfit.main, 0.8),
+            trousers: material(darker(outfit.main), 0.9),
+            trim: material(outfit.trim, 0.6),
         }
     }
+}
+
+/// A colour a little darker (for trousers under a tunic of that colour).
+fn darker((r, g, b): Colour) -> Colour {
+    (r * 0.6, g * 0.6, b * 0.6)
 }
 
 /// The look described by a content appearance, with new materials.
@@ -188,10 +221,72 @@ pub fn appearance_look(materials: &mut Assets<StandardMaterial>, appearance: &Ap
         })
     };
     Look {
+        body: appearance.body,
+        outfit: appearance.outfit,
         skin: material(appearance.skin, 0.7),
         hair: material(appearance.hair, 0.6),
         tunic: material(appearance.tunic, 0.8),
         trousers: material(appearance.trousers, 0.9),
+        // NPC armour is plain wood.
+        trim: material((0.55, 0.40, 0.25), 0.6),
+    }
+}
+
+/// The proportions of a build.
+struct Build {
+    /// How far out the shoulders are, in metres.
+    shoulder_x: f32,
+    /// How far apart the legs are (from the middle), in metres.
+    hip_x: f32,
+    /// Scale of the torso.
+    torso: Vec3,
+    /// Scale of the hips.
+    hips: Vec3,
+    /// Scale of the tunic's skirt.
+    skirt: Vec3,
+    /// Whether to shape a bust.
+    bust: bool,
+    /// Hair: short, to the jaw, or long down the back.
+    hair: HairLength,
+}
+
+enum HairLength {
+    Short,
+    Medium,
+    Long,
+}
+
+impl Build {
+    fn of(body: BodyType) -> Self {
+        match body {
+            BodyType::Masculine => Self {
+                shoulder_x: 0.23,
+                hip_x: 0.095,
+                torso: Vec3::new(1.4, 1.0, 0.9),
+                hips: Vec3::new(0.16, 0.11, 0.12),
+                skirt: Vec3::new(1.05, 1.0, 0.85),
+                bust: false,
+                hair: HairLength::Short,
+            },
+            BodyType::Feminine => Self {
+                shoulder_x: 0.2,
+                hip_x: 0.1,
+                torso: Vec3::new(1.18, 1.0, 0.82),
+                hips: Vec3::new(0.19, 0.12, 0.13),
+                skirt: Vec3::new(1.22, 1.0, 0.92),
+                bust: true,
+                hair: HairLength::Long,
+            },
+            BodyType::Androgynous => Self {
+                shoulder_x: 0.215,
+                hip_x: 0.097,
+                torso: Vec3::new(1.28, 1.0, 0.85),
+                hips: Vec3::new(0.175, 0.11, 0.125),
+                skirt: Vec3::new(1.12, 1.0, 0.88),
+                bust: false,
+                hair: HairLength::Medium,
+            },
+        }
     }
 }
 
@@ -213,6 +308,9 @@ pub fn rebuild_body(commands: &mut Commands, owner: Entity, assets: &CharacterAs
 fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, look: &Look) {
     let tunic = &look.tunic;
     let m = &assets.meshes;
+    let build = Build::of(look.body);
+    let robed = look.outfit == OutfitStyle::Robe;
+    let armoured = look.outfit == OutfitStyle::Armour;
     let joint = |kind| Joint { owner, kind };
 
     // A mesh part, placed relative to its parent.
@@ -222,34 +320,87 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
     let sphere = |material: &Handle<StandardMaterial>, position: Vec3, radii: Vec3| {
         part(&m.unit_sphere, material, Transform::from_translation(position).with_scale(radii))
     };
+    let block = |material: &Handle<StandardMaterial>, position: Vec3, size: Vec3| {
+        part(&m.unit_cube, material, Transform::from_translation(position).with_scale(size))
+    };
+    // Sleeves match a robe; otherwise they're the linen shirt under the tunic.
+    let sleeves = if robed { tunic } else { &assets.linen };
+    let belt = if robed { &look.trim } else { &assets.belt };
 
     let body = commands
         .spawn((joint(JointKind::Body), Transform::from_xyz(0.0, 0.95, 0.0), Visibility::default()))
         .with_children(|body| {
-            // Hips, tunic and belt.
-            body.spawn(sphere(&look.trousers, Vec3::new(0.0, 0.02, 0.0), Vec3::new(0.17, 0.11, 0.12)));
-            body.spawn(part(&m.skirt, tunic, scaled(0.0, -0.06, 0.0, Vec3::new(1.1, 1.0, 0.85))));
-            body.spawn(part(&m.torso, tunic, scaled(0.0, 0.30, 0.0, Vec3::new(1.3, 1.0, 0.85))));
-            body.spawn(part(&m.belt, &assets.belt, scaled(0.0, 0.06, 0.0, Vec3::new(1.25, 1.0, 0.85))));
+            // Hips, then a tunic's skirt or a robe down to the ankles, and a belt.
+            body.spawn(sphere(&look.trousers, Vec3::new(0.0, 0.02, 0.0), build.hips));
+            if robed {
+                let robe_scale = Vec3::new(build.skirt.x * 0.95, 1.0, build.skirt.z);
+                body.spawn(part(&m.robe, tunic, scaled(0.0, -0.36, 0.0, robe_scale)));
+            } else {
+                body.spawn(part(&m.skirt, tunic, scaled(0.0, -0.06, 0.0, build.skirt)));
+            }
+            body.spawn(part(&m.torso, tunic, scaled(0.0, 0.30, 0.0, build.torso)));
+            if build.bust {
+                body.spawn(sphere(tunic, Vec3::new(0.0, 0.38, 0.07), Vec3::new(0.13, 0.06, 0.055)));
+            }
+            body.spawn(part(&m.belt, belt, scaled(0.0, 0.06, 0.0, Vec3::new(build.torso.x * 0.96, 1.0, 0.85))));
+            // Armour: wooden plates strapped over the chest and back.
+            if armoured {
+                let width = 0.2 * build.torso.x;
+                body.spawn(block(
+                    &look.trim,
+                    Vec3::new(0.0, 0.34, 0.125 + if build.bust { 0.03 } else { 0.0 }),
+                    Vec3::new(width, 0.26, 0.035),
+                ));
+                body.spawn(block(&look.trim, Vec3::new(0.0, 0.34, -0.13), Vec3::new(width, 0.28, 0.035)));
+                body.spawn(block(&assets.belt, Vec3::new(0.0, 0.28, 0.0), Vec3::new(width + 0.02, 0.03, 0.29)));
+            }
             // Neck, head and hair. The top of the hair is 1.8 m above the ground.
             body.spawn(part(&m.neck, &look.skin, Transform::from_xyz(0.0, 0.60, 0.0)));
             body.spawn(sphere(&look.skin, Vec3::new(0.0, 0.72, 0.0), Vec3::new(0.106, 0.127, 0.115)));
-            body.spawn(sphere(&look.hair, Vec3::new(0.0, 0.745, -0.015), Vec3::new(0.117, 0.12, 0.128)));
+            match build.hair {
+                // Cropped close to the head.
+                HairLength::Short => {
+                    body.spawn(sphere(&look.hair, Vec3::new(0.0, 0.752, -0.018), Vec3::new(0.113, 0.11, 0.124)));
+                }
+                // A bob to the jaw, covering the sides of the head.
+                HairLength::Medium => {
+                    body.spawn(sphere(&look.hair, Vec3::new(0.0, 0.745, -0.015), Vec3::new(0.117, 0.12, 0.128)));
+                    body.spawn(sphere(&look.hair, Vec3::new(0.0, 0.70, -0.04), Vec3::new(0.124, 0.1, 0.105)));
+                    for x in [-0.098, 0.098] {
+                        body.spawn(sphere(&look.hair, Vec3::new(x, 0.69, 0.0), Vec3::new(0.03, 0.075, 0.075)));
+                    }
+                }
+                // Long: down the back, and locks either side of the face to the shoulders.
+                HairLength::Long => {
+                    body.spawn(sphere(&look.hair, Vec3::new(0.0, 0.745, -0.015), Vec3::new(0.117, 0.12, 0.128)));
+                    body.spawn(sphere(&look.hair, Vec3::new(0.0, 0.70, -0.045), Vec3::new(0.124, 0.11, 0.105)));
+                    body.spawn(sphere(&look.hair, Vec3::new(0.0, 0.55, -0.09), Vec3::new(0.1, 0.19, 0.055)));
+                    for x in [-0.1, 0.1] {
+                        body.spawn(sphere(&look.hair, Vec3::new(x, 0.63, 0.0), Vec3::new(0.032, 0.13, 0.06)));
+                    }
+                }
+            }
         })
         .id();
     commands.entity(owner).add_child(body);
 
     for side in [Side::Left, Side::Right] {
         let x = side.sign();
+        // Armour has bigger shoulder guards in its plates' colour.
+        let (guard, guard_size) = if armoured { (&look.trim, 0.095) } else { (&assets.leather, 0.075) };
         let shoulder = commands
-            .spawn((joint(JointKind::Shoulder(side)), Transform::from_xyz(0.22 * x, 0.52, 0.0), Visibility::default()))
+            .spawn((
+                joint(JointKind::Shoulder(side)),
+                Transform::from_xyz(build.shoulder_x * x, 0.52, 0.0),
+                Visibility::default(),
+            ))
             .with_children(|shoulder| {
-                shoulder.spawn(sphere(&assets.leather, Vec3::ZERO, Vec3::splat(0.075)));
-                shoulder.spawn(part(&m.upper_arm, &assets.linen, Transform::from_xyz(0.0, -0.14, 0.0)));
+                shoulder.spawn(sphere(guard, Vec3::ZERO, Vec3::splat(guard_size)));
+                shoulder.spawn(part(&m.upper_arm, sleeves, Transform::from_xyz(0.0, -0.14, 0.0)));
                 shoulder
                     .spawn((joint(JointKind::Elbow), Transform::from_xyz(0.0, -0.28, 0.0), Visibility::default()))
                     .with_children(|elbow| {
-                        elbow.spawn(part(&m.forearm, &assets.linen, Transform::from_xyz(0.0, -0.13, 0.0)));
+                        elbow.spawn(part(&m.forearm, sleeves, Transform::from_xyz(0.0, -0.13, 0.0)));
                         elbow.spawn(sphere(&look.skin, Vec3::new(0.0, -0.28, 0.0), Vec3::new(0.04, 0.055, 0.03)));
                     });
             })
@@ -257,7 +408,11 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
         commands.entity(body).add_child(shoulder);
 
         let hip = commands
-            .spawn((joint(JointKind::Hip(side)), Transform::from_xyz(0.095 * x, 0.92, 0.0), Visibility::default()))
+            .spawn((
+                joint(JointKind::Hip(side)),
+                Transform::from_xyz(build.hip_x * x, 0.92, 0.0),
+                Visibility::default(),
+            ))
             .with_children(|hip| {
                 hip.spawn(part(&m.thigh, &look.trousers, Transform::from_xyz(0.0, -0.21, 0.0)));
                 hip.spawn((joint(JointKind::Knee(side)), Transform::from_xyz(0.0, -0.44, 0.0), Visibility::default()))

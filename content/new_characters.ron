@@ -1,7 +1,7 @@
-// What new characters start with.
+// What new characters start with, whatever their class.
 (
+    miasma: 25,
     items: [
-        (item: "coins", count: 25),
         (item: "bread", count: 1),
     ],
 )

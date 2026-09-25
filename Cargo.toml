@@ -5,6 +5,7 @@ members = [
     "crates/worldgen",
     "crates/navigation",
     "crates/simulation",
+    "crates/rpg",
     "crates/protocol",
     "crates/content",
     "crates/server",
@@ -22,6 +23,7 @@ venture_world = { path = "crates/world" }
 venture_worldgen = { path = "crates/worldgen" }
 venture_navigation = { path = "crates/navigation" }
 venture_simulation = { path = "crates/simulation" }
+venture_rpg = { path = "crates/rpg" }
 venture_protocol = { path = "crates/protocol" }
 venture_content = { path = "crates/content" }
 venture_server = { path = "crates/server", default-features = false }

@@ -239,10 +239,15 @@ Deliberately simple, so people can get into the game quickly:
 - On first visit, the browser creates a random **token** (a long random ID)
   and keeps it in `localStorage`. The desktop client keeps it in a file.
 - On connecting, the client sends its token. If the server has a profile for
-  it, that profile is loaded into memory. If not, the server **creates a new
-  temporary profile** (with a generated name) at the spawn point.
-- A profile holds: name, position, stats, experience, skills, inventory and
-  quest state. The server saves it when the player leaves, and every
+  it, that profile is loaded into memory. If not, the server asks for a new
+  character (`CharacterNeeded`, offering a name and the classes), and the
+  player chooses a name, a class and a body type (`CreateCharacter`).
+  **Names are unique**, ignoring case: a taken name is turned away
+  (`CharacterRejected`) and the player picks another.
+- A profile holds: name, position, class, body type, level, experience,
+  ability scores, unspent stat and skill points, Miasma, inventory and
+  quest state. Fields added over time have defaults, so older profiles still
+  load (and their coins become Miasma). The server saves it when the player leaves, and every
   minute or so while they play.
 - Storage: one RON file per profile in the server's data folder, named by a
   hash of the token (so the files don't reveal tokens). This is easy to
@@ -283,16 +288,16 @@ comes back, so every player sees exactly the same chat. Server messages
 
 ## Inventories
 
-Each player carries an **inventory** of 28 slots, which the server owns and
-saves in their profile. A slot is empty or holds some of one item; stackable
-items (like coins) share one slot, and others take a slot each.
+Each player carries an **inventory** of 50 slots and their **Miasma** (money),
+which the server owns and saves in their profile. A slot is empty or holds
+some of one item; stackable items share one slot, and others take a slot each.
 
 On the server, an inventory can only change through `Inventory::apply`, which
-takes a `Change` (items to take and items to give) and makes all of it or
-none of it. So a purchase can't take the coins and then fail to hand over the
+takes a `Change` (items and Miasma to take and to give) and makes all of it or
+none of it. So a purchase can't take the Miasma and then fail to hand over the
 goods, nothing can be duplicated, and counts never go negative, whichever
 module asks for the change. Whenever an inventory changes, the server sends
-the player the whole thing (`Inventory { slots }`), which is small, and the
+the player the whole thing (`Inventory { slots, miasma }`), which is small, and the
 client's bag window shows it. Item names, descriptions and icons come from
 the content pack's client files.
 
@@ -302,9 +307,10 @@ A shop opens when an NPC's dialogue runs `<<open_shop ...>>`: the server
 ends the conversation and sends `ShopOpened { npc, name, stock }`. The client
 shows the shop beside the bag. `Buy { index, count }` and `Sell { slot, count }`
 (counts from 1 to 100, checked by the gate) each become one inventory
-`Change`, coins for goods or goods for coins, so a trade happens completely or
-not at all. The server answers every trade with a `Notice` saying how it went
-("You buy: Bread (2) for 10 coins.", "You don't have enough coins for that.").
+`Change`, Miasma for goods or goods for Miasma, so a trade happens completely
+or not at all. The server answers every trade with a `Notice` saying how it
+went ("You buy: Bread (2) for 10 Miasma.", "You don't have enough Miasma for
+that.").
 Shops pay half an item's value, and won't buy items worth nothing (such as
 quest items). The shop closes with `CloseShop`, or when the player walks more
 than 6 m away (`ShopClosed`). The server keeps the stock as it was when the
@@ -322,6 +328,25 @@ name, the journal text for its current stage, and whether it's complete. The
 text comes from the server, so clients never see quest stages they haven't
 reached. The NPC whose conversation moved a quest on can react through its
 script's `on_quest_stage` hook.
+
+## Characters, levels and admins
+
+Each player's **character** (class, body type, level, experience, ability
+scores and unspent points) lives on the server and changes only through its
+own methods, which follow the rules in `venture_rpg`. Whenever it changes,
+the server sends the player their character sheet (`Character`), including
+the secondary stats it worked out (health, mana, armour class, attack bonus,
+attack speed), so the client never repeats the rules. Other players see a
+player's level and look in `EntityAppeared` (`Player { level, look }`), and
+`PlayerChanged` when either changes; `celebrate` marks a level going up, and
+everyone nearby sees the level-up effect. A player's look is their body type
+and their class's outfit (equipment will take over from the class; see
+`docs/plan-combat.md`).
+
+**Admins** are listed by character name in `server.ron`. Their commands
+(`Admin(SetLevel | Reset | SetClass)`) go through the gate like any other,
+then to `admin.rs`, which checks the player really is an admin before doing
+anything; anyone else is told only admins can use them.
 
 ## Actions and chat commands
 

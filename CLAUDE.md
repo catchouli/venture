@@ -2,12 +2,16 @@
 
 - Read `docs/code-style.md` before writing code, and `docs/architecture.md` for where things go.
 - `venture_world`, `venture_worldgen` and `venture_navigation` must never depend on Bevy. Keep engine code in `venture_client`.
+- Every RPG rule (stats, levels, health, mana, attack rolls, damage, points per level) lives in `venture_rpg`, as small
+  tested functions. Don't write RPG maths anywhere else; the server and client both call it.
 - The server is authoritative for anything that matters (positions, items, damage, progress). Don't build game
   rules into the client; see `docs/client-server.md`.
 - On the server, client messages are only read and validated in `requests.rs` (the gate); players are only
   created/removed in `sessions.rs` and changed in `gameplay.rs`; profiles only touched in `profiles.rs`.
   Inventories only change through `Inventory::apply` (`inventory.rs`), which is checked and all-or-nothing;
-  quest logs only through `QuestLog::advance` (`quests.rs`), which only moves forward.
+  quest logs only through `QuestLog::advance` (`quests.rs`), which only moves forward; characters (class, level,
+  stats, points) only through `Character`'s methods (`character.rs`). Admin powers live only in `admin.rs`, which
+  checks the player is an admin every time.
   Keep it that way.
 - Content scripts never change the game directly: they queue `ScriptCommand`s (`scripting.rs`), which
   `npcs.rs` validates and applies. New script abilities go through that same path.

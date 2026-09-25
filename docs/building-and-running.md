@@ -64,8 +64,14 @@ file, and it takes its default. Misspelt settings are reported as errors.
     player: (
         max_move_distance: 150.0,   // metres one click can send a character
     ),
+    admins: ["cat"],    // characters with admin powers (/setlevel, /reset, /setclass), by name
 )
 ```
+
+Character names are unique (ignoring case), and each belongs to one login
+token, so an admin's name can't be taken by someone else. (Profiles made
+before names had to be unique can share a name; the server warns about them
+when it starts.)
 
 The `player` block holds the game rules, which are sent to clients when
 they join. The desktop client's `--local` mode reads the same file.
@@ -149,6 +155,8 @@ VENTURE_CAMERA="480,2640,0.6,0.3,30" VENTURE_SCREENSHOT=shot.png cargo run -p ve
 | `VENTURE_SAY=text` | Say this in chat once in the game (separate several messages with `\|`). Chat commands work too, such as `/talk`. |
 | `VENTURE_SELECT_NEAREST=1` | Select the character (player or NPC) nearest yours once one is in sight (to check the target frame, or with `VENTURE_SAY=/talk`). |
 | `VENTURE_OPEN=bag,journal` | Open these windows once in the game. |
+| `VENTURE_NAME=name`, `VENTURE_CLASS=mage`, `VENTURE_BODY=feminine` | The name, class and body type automated runs make new characters with. `VENTURE_NAME=cat` makes an admin (with the default `server.ron`), to try admin commands with `VENTURE_SAY=/setlevel 5`. |
+| `VENTURE_SHOW_CREATION=1` | Show character creation even in an automated run, and take the screenshot there (with `VENTURE_CLASS` and `VENTURE_BODY` choosing what the preview shows). |
 | `VENTURE_CHOOSE=1,2` | Pick these dialogue replies (numbered from 1), one per page, as conversations offer them. |
 | `VENTURE_PROFILE=name` | Use a separate login token (so a separate character), for running several clients on one computer. Automated `--local` runs normally start with fresh profiles; with a name, the profile is kept between runs, so a check can carry on over several runs. |
 | `VENTURE_AUTOMATED=1` | Take the suggested name without asking (implied by `VENTURE_SCREENSHOT`). |

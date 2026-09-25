@@ -76,6 +76,7 @@ impl Plugin for LocalServerPlugin {
 
         let (link_sender, link) = Link::new();
         app.insert_resource(LocalServerLink(link_sender));
-        GameServer { world, profiles, link, rules: config.rules(), content, spawn_override }.install(app);
+        let admins = config.admins.clone();
+        GameServer { world, profiles, link, rules: config.rules(), content, spawn_override, admins }.install(app);
     }
 }

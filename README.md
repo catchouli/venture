@@ -47,7 +47,9 @@ Controls: **left-click** the ground to run there, or run with **WASD**
 (relative to the camera). **Right-drag** or the **arrow keys** rotate and tilt
 the camera, and the **mouse wheel** zooms. Click a player or NPC to **select**
 them; click again to **follow** a player or **talk** to an NPC. **Escape** deselects. **Enter** chats. **I** opens your bag and **J** your quest journal.
-Talking to an NPC opens a **dialogue window**. Type **/help** in chat for commands such as **/follow**, **/talk** and **/town**. **F1** switches to a
+New players choose a name, a class (Fighter or Mage) and a body type, with a
+preview. Talking to an NPC opens a **dialogue window**. Type **/help** in chat for commands such as **/follow**, **/talk** and **/town**.
+Admins (listed by name in `server.ron`) also have **/setlevel**, **/reset** and **/setclass**. **F1** switches to a
 free camera for flying around (**WASD** to move, **Shift** to go faster).
 
 ## Documentation
@@ -59,11 +61,23 @@ free camera for flying around (**WASD** to move, **Shift** to go faster).
 | [World model](docs/world-model.md) | Units, coordinates, chunks, terrain, and how caves and buildings will fit in |
 | [World generation engine](docs/world-generation-engine.md) | How worlds are generated, and how authored content is layered on top |
 | [Client and server](docs/client-server.md) | Server authority, movement prediction, streaming, profiles, LAN hosting |
-| [Plan: client/server](docs/plan-client-server.md) | The next milestones, step by step |
-| [Content authoring](docs/content-authoring.md) | Writing NPCs, looks, scripts and dialogue (and later shops and quests) |
+| [Plan: client/server](docs/plan-client-server.md) | Milestones 1 to 3, step by step |
+| [Plan: combat](docs/plan-combat.md) | Milestone 4: classes, levels, stats, skills, equipment and fighting |
+| [Content authoring](docs/content-authoring.md) | Writing classes, NPCs, items, shops, quests, scripts and dialogue |
 | [Building and running](docs/building-and-running.md) | Desktop, web and dev tools in detail |
 | [Code style](docs/code-style.md) | Conventions that keep the code clean and maintainable |
 | [Roadmap](docs/roadmap.md) | What comes next |
+
+## Credits
+
+The core RPG rules (in `crates/rpg`) follow the System Reference Document 5.1,
+adapted for a real-time game:
+
+This work includes material taken from the System Reference Document 5.1
+("SRD 5.1") by Wizards of the Coast LLC and available at
+<https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is
+licensed under the Creative Commons Attribution 4.0 International License
+available at <https://creativecommons.org/licenses/by/4.0/legalcode>.
 
 ## Repository layout
 
@@ -73,10 +87,12 @@ crates/
   worldgen/  venture_worldgen  The world generation engine
   navigation/ venture_navigation Where characters can walk, and pathfinding
   simulation/ venture_simulation Game rules shared by server and client (movement)
+  rpg/       venture_rpg       The RPG rules: stats, levels, health, attacks (SRD 5.1 based)
   protocol/  venture_protocol  Messages between client and server
   content/   venture_content   The content pack: definitions, checking, client manifest
   server/    venture_server    The authoritative game server (also hosts the web client)
   client/    venture_client    The Bevy game client (browser and desktop)
-content/                       The content pack: NPCs, appearances and scripts
+content/                       The content pack: classes, NPCs, items, shops, quests, scripts, dialogue
+tools/                         Development tools (placeholder icons)
 docs/                          Design and technical documentation
 ```

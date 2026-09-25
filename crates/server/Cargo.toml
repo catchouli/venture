@@ -18,6 +18,7 @@ venture_navigation.workspace = true
 venture_simulation.workspace = true
 venture_protocol.workspace = true
 venture_content = { workspace = true, features = ["scripts"] }
+venture_rpg.workspace = true
 rhai.workspace = true
 yarnspinner.workspace = true
 notify = "8"

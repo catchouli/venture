@@ -1,6 +1,8 @@
 //! The kinds of things a content pack defines.
 
 use serde::{Deserialize, Serialize};
+use venture_protocol::{BodyType, Outfit, OutfitStyle};
+use venture_rpg::{Abilities, ClassRules};
 
 /// A colour as sRGB red, green and blue, each from 0 to 1.
 pub type Colour = (f32, f32, f32);
@@ -24,6 +26,12 @@ pub struct AppearanceDef {
     pub tunic: Colour,
     /// Trousers colour.
     pub trousers: Colour,
+    /// Their build (androgynous if not given).
+    #[serde(default)]
+    pub body: BodyType,
+    /// The cut of their clothes (a tunic if not given).
+    #[serde(default)]
+    pub outfit: OutfitStyle,
 }
 
 /// A non-player character.
@@ -93,10 +101,10 @@ pub struct ItemDef {
     pub description: String,
     /// Its picture: a PNG file in `icons/`.
     pub icon: String,
-    /// Whether any number of them share one inventory slot (like coins).
+    /// Whether any number of them share one inventory slot (like arrows).
     #[serde(default)]
     pub stackable: bool,
-    /// What it's worth, in coins. Shops buy it for half that; zero means
+    /// What it's worth, in Miasma. Shops buy it for half that; zero means
     /// shops won't buy it at all (quest items, for example).
     #[serde(default)]
     pub value: u32,
@@ -133,7 +141,7 @@ pub struct ShopDef {
 pub struct ShopItem {
     /// Which item (an [`ItemDef`] id).
     pub item: String,
-    /// What one costs, in coins.
+    /// What one costs, in Miasma.
     pub price: u32,
 }
 
@@ -180,16 +188,48 @@ impl QuestDef {
     }
 }
 
-/// What new characters start with.
+/// What new characters start with (whatever their class).
 ///
 /// ```ron
-/// (items: [(item: "coins", count: 25)])
+/// (miasma: 25, items: [(item: "bread", count: 1)])
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NewCharacterDef {
+    /// Their money.
+    #[serde(default)]
+    pub miasma: u64,
     /// The items in their bag.
+    #[serde(default)]
     pub items: Vec<ItemCount>,
+}
+
+/// A class, which players choose when they make a character.
+///
+/// ```ron
+/// (id: "fighter", name: "Fighter", description: "...",
+///  rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
+///  stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10))
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClassDef {
+    /// Unique name (saved in profiles, so don't rename lightly).
+    pub id: String,
+    /// The name shown to players.
+    pub name: String,
+    /// A sentence or two, shown when choosing a class.
+    pub description: String,
+    /// Its part in the RPG rules: health and mana per level.
+    pub rules: ClassRules,
+    /// The ability scores a new character of this class starts with.
+    pub stats: Abilities,
+    /// What its characters wear (until they wear equipment).
+    ///
+    /// ```ron
+    /// outfit: (style: Robe, main: (0.3, 0.3, 0.55), trim: (0.8, 0.7, 0.4))
+    /// ```
+    pub outfit: Outfit,
 }
 
 /// A number of one kind of item.
@@ -202,13 +242,13 @@ pub struct ItemCount {
     pub count: u32,
 }
 
-/// The item that is money. Shops take and pay it.
-pub const COINS: &str = "coins";
-
 /// The most characters in an item's name.
 pub(crate) const MAX_ITEM_NAME_CHARS: usize = 32;
 /// The most characters in an item's description.
 pub(crate) const MAX_ITEM_DESCRIPTION_CHARS: usize = 200;
+
+/// The largest a class's hit die may be.
+pub(crate) const MAX_HIT_DIE: u32 = 20;
 
 /// The most characters in an NPC's name.
 pub(crate) const MAX_NPC_NAME_CHARS: usize = 32;

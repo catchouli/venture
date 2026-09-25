@@ -52,7 +52,7 @@ title: Tomas
     Old Tomas: Is that... my pipe? You found it!
     <<take_item old_pipe>>
     <<set_quest tomas_pipe done>>
-    <<give_item coins 30>>
+    <<give_miasma 30>>
     Old Tomas: Here, take this for your trouble. And a story, whenever you like.
 <<elseif quest_stage("tomas_pipe") == "asked">>
     Old Tomas: Any sign of my pipe? I'm sure I had it at the forge.
@@ -87,7 +87,7 @@ Elsie: Mind the flour! Oh, it's you, {player_name()}.
     // Opening the shop ends the conversation at once.
     <<open_shop elsies_bakery>>
 -> Something smells good.
-    Elsie: That'll be the sweet rolls. Eight coins, and worth every one.
+    Elsie: That'll be the sweet rolls. Eight Miasma, and worth every drop.
 -> Need any help?
     Elsie: Not yet, dear. Once the mill's turning, I'll need all the flour I can get.
 -> Goodbye.

@@ -268,12 +268,13 @@ fn new_dialogue(
     let mut dialogue = Dialogue::new(Box::new(MemoryVariableStorage::new()), Box::new(text));
     // The functions listed in `venture_content::dialogue_commands::DIALOGUE_FUNCTIONS`.
     let player_name = player_name.to_string();
-    let (for_count, for_room, for_quests) = (state.clone(), state.clone(), state.clone());
+    let (for_count, for_room, for_quests, for_miasma) = (state.clone(), state.clone(), state.clone(), state.clone());
     let items = items.clone();
     dialogue
         .library_mut()
         .add_function("player_name", move || player_name.clone())
         .add_function("item_count", move |item: String| lock(&for_count).inventory.count(&item) as f32)
+        .add_function("miasma", move || lock(&for_miasma).inventory.miasma() as f32)
         .add_function("has_room_for", move |item: String| {
             let mut trial = lock(&for_room).inventory.clone();
             trial.apply(&Change::give(&item, 1), &items).is_ok()
@@ -337,6 +338,14 @@ fn run_command(text: &str, state: &mut PlayerState, pack: &ContentPack, effects:
         DialogueCommand::TakeItem { item, count } => match state.inventory.apply(&Change::take(&item, count), items) {
             Ok(()) => effects.notices.push(format!("You hand over: {}.", describe_items(&item, count, items))),
             Err(_) => warn!("Dialogue: <<{text}>> ran when the player didn't have them (check with item_count first)."),
+        },
+        DialogueCommand::GiveMiasma { amount } => match state.inventory.apply(&Change::earn(amount), items) {
+            Ok(()) => effects.notices.push(format!("You receive: {amount} Miasma.")),
+            Err(_) => effects.notices.push("You can't carry any more Miasma.".to_string()),
+        },
+        DialogueCommand::TakeMiasma { amount } => match state.inventory.apply(&Change::pay(amount), items) {
+            Ok(()) => effects.notices.push(format!("You pay: {amount} Miasma.")),
+            Err(_) => warn!("Dialogue: <<{text}>> ran when the player couldn't pay (check with miasma() first)."),
         },
         DialogueCommand::SetQuest { quest, stage } => {
             let Some(def) = pack.quests.get(&quest) else { return };

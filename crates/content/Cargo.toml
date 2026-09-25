@@ -15,6 +15,8 @@ scripts = ["dep:rhai", "dep:yarnspinner"]
 serde.workspace = true
 ron.workspace = true
 sha2.workspace = true
+venture_rpg.workspace = true
+venture_protocol.workspace = true
 rhai = { workspace = true, optional = true }
 yarnspinner = { workspace = true, optional = true }
 

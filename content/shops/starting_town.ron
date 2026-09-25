@@ -1,4 +1,4 @@
-// What the shops in the starting town sell, and for how much (in coins).
+// What the shops in the starting town sell, and for how much (in Miasma).
 // Shops buy anything with a value, for half of it. A shop opens from its
 // NPC's dialogue with <<open_shop ID>>.
 [

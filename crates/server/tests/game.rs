@@ -6,7 +6,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use venture_content::ContentPack;
-use venture_protocol::{ClientMessage, EntityId, EntityKind, PROTOCOL_VERSION, ServerMessage};
+use venture_protocol::{AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, PROTOCOL_VERSION, ServerMessage};
 use venture_server::content::LoadedContent;
 use venture_server::entities::NetworkId;
 use venture_server::npcs::Npc;
@@ -62,7 +62,9 @@ impl TestServer {
         let profiles = ProfileStore::new(&profile_folder).unwrap();
         let rules = Rules { max_move_distance: 30.0 };
         let content = ContentSetup { folder: profile_folder.clone(), pack, client: Default::default(), watch: false };
-        GameServer { world: flat_world(), profiles, link, rules, content, spawn_override: None }.install(&mut app);
+        let admins = vec!["Boss".to_string()];
+        GameServer { world: flat_world(), profiles, link, rules, content, spawn_override: None, admins }
+            .install(&mut app);
         Self { app, link: link_sender, profile_folder, delete_profiles: true }
     }
 
@@ -84,8 +86,12 @@ impl TestServer {
         let client = self.connect();
         client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: token.to_string() });
         self.run(2);
-        if client.receive().iter().any(|m| matches!(m, ServerMessage::NameNeeded { .. })) {
-            client.send(&ClientMessage::ChooseName { name: name.to_string() });
+        if client.receive().iter().any(|m| matches!(m, ServerMessage::CharacterNeeded { .. })) {
+            client.send(&ClientMessage::CreateCharacter {
+                name: name.to_string(),
+                class: "fighter".to_string(),
+                body: BodyType::Androgynous,
+            });
             self.run(2);
         }
         let id = client.receive_all_until_welcome();
@@ -175,13 +181,21 @@ fn new_players_choose_a_valid_name_and_enter_the_game() {
     let client = server.connect();
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
     server.run(2);
-    assert!(matches!(client.receive()[..], [ServerMessage::NameNeeded { .. }]));
+    assert!(matches!(client.receive()[..], [ServerMessage::CharacterNeeded { .. }]));
 
-    client.send(&ClientMessage::ChooseName { name: "!!".to_string() });
+    client.send(&ClientMessage::CreateCharacter {
+        name: "!!".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+    });
     server.run(2);
-    assert!(matches!(client.receive()[..], [ServerMessage::NameRejected { .. }]));
+    assert!(matches!(client.receive()[..], [ServerMessage::CharacterRejected { .. }]));
 
-    client.send(&ClientMessage::ChooseName { name: "  Aldric  ".to_string() });
+    client.send(&ClientMessage::CreateCharacter {
+        name: "  Aldric  ".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+    });
     server.run(2);
     let welcome = client.receive().into_iter().find(|m| matches!(m, ServerMessage::Welcome { .. }));
     assert!(
@@ -332,8 +346,9 @@ fn content_with(npcs: &str, script: &str) -> ContentPack {
 }
 
 /// Like [`content_with`], plus one dialogue file. Every test pack also has
-/// coins and bread, a bakery selling bread for 5 coins, a two-stage quest
-/// ("errand"), and new characters start with 25 coins and a loaf.
+/// bread, a bakery selling bread for 5 Miasma, a two-stage quest ("errand"),
+/// and new characters start with 25 Miasma and a loaf. There are two
+/// classes, Fighter and Mage.
 fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> ContentPack {
     let folder =
         std::env::temp_dir().join(format!("venture-test-content-{}-{}", std::process::id(), fastrand_suffix()));
@@ -349,12 +364,13 @@ fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> Co
     write("npcs/town.ron", npcs.as_bytes());
     write("scripts/greeter.rhai", script.as_bytes());
     write("items/things.ron", ITEMS.as_bytes());
+    write("classes/classes.ron", CLASSES.as_bytes());
     write("shops/bakery.ron", br#"[(id: "bakery", name: "The Bakery", stock: [(item: "bread", price: 5)])]"#);
     write(
         "quests/errand.ron",
         br#"[(id: "errand", name: "An Errand", stages: [(id: "asked", journal: "Tom wants a loaf."), (id: "done", journal: "I gave Tom a loaf.")])]"#,
     );
-    write("new_characters.ron", br#"(items: [(item: "coins", count: 25), (item: "bread", count: 1)])"#);
+    write("new_characters.ron", br#"(miasma: 25, items: [(item: "bread", count: 1)])"#);
     // Only the start of a PNG, but that's all the content check looks at.
     write("icons/thing.png", b"\x89PNG\r\n\x1a\n");
     if let Some(dialogue) = dialogue {
@@ -366,8 +382,18 @@ fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> Co
 }
 
 const ITEMS: &str = r#"[
-    (id: "coins", name: "Coins", description: "Money.", icon: "thing.png", stackable: true),
     (id: "bread", name: "Bread", description: "A loaf.", icon: "thing.png", value: 4),
+]"#;
+
+const CLASSES: &str = r#"[
+    (id: "fighter", name: "Fighter", description: "Hits things.",
+     rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
+     stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
+     outfit: (style: Armour, main: (0.4, 0.3, 0.2), trim: (0.6, 0.4, 0.3))),
+    (id: "mage", name: "Mage", description: "Casts things.",
+     rules: (hit_die: 6, mana_per_level: 8, casting_ability: Intelligence),
+     stats: (strength: 8, dexterity: 12, constitution: 12, intelligence: 15, wisdom: 13),
+     outfit: (style: Robe, main: (0.3, 0.3, 0.5), trim: (0.8, 0.7, 0.4))),
 ]"#;
 
 /// A different number each call, so test content folders don't collide.
@@ -395,7 +421,11 @@ fn npcs_from_content_appear_to_players() {
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
     server.run(2);
     client.receive();
-    client.send(&ClientMessage::ChooseName { name: "Visitor".to_string() });
+    client.send(&ClientMessage::CreateCharacter {
+        name: "Visitor".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+    });
     server.run(2);
     let (_, name) = first_npc(&client.receive()).expect("the greeter appears");
     assert_eq!(name, "Greeter Tom");
@@ -408,7 +438,11 @@ fn talking_to_a_distant_npc_walks_over_then_runs_its_script() {
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
     server.run(2);
     client.receive();
-    client.send(&ClientMessage::ChooseName { name: "Visitor".to_string() });
+    client.send(&ClientMessage::CreateCharacter {
+        name: "Visitor".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+    });
     server.run(2);
     let messages = client.receive();
     let (npc, _) = first_npc(&messages).unwrap();
@@ -563,7 +597,7 @@ fn conversations_are_private_and_branch_on_the_players_choices() {
 /// The latest inventory in a batch of messages, as (item, count) pairs.
 fn latest_inventory(messages: &[ServerMessage]) -> Option<Vec<(String, u32)>> {
     messages.iter().rev().find_map(|m| match m {
-        ServerMessage::Inventory { slots } => {
+        ServerMessage::Inventory { slots, .. } => {
             Some(slots.iter().flatten().map(|stack| (stack.item.clone(), stack.count)).collect())
         }
         _ => None,
@@ -576,10 +610,16 @@ fn new_characters_get_starting_items_and_keep_them() {
     let client = server.connect();
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
     server.run(2);
-    client.send(&ClientMessage::ChooseName { name: "Newcomer".to_string() });
+    client.send(&ClientMessage::CreateCharacter {
+        name: "Newcomer".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+    });
     server.run(2);
-    let expected = vec![("coins".to_string(), 25), ("bread".to_string(), 1)];
-    assert_eq!(latest_inventory(&client.receive()), Some(expected.clone()));
+    let expected = vec![("bread".to_string(), 1)];
+    let messages = client.receive();
+    assert_eq!(latest_inventory(&messages), Some(expected.clone()));
+    assert_eq!(latest_miasma(&messages), Some(25));
     client.disconnect();
     server.run(2);
 
@@ -587,15 +627,25 @@ fn new_characters_get_starting_items_and_keep_them() {
     let client = server.connect();
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
     server.run(2);
-    assert_eq!(latest_inventory(&client.receive()), Some(expected), "the bag comes back after a restart");
+    let messages = client.receive();
+    assert_eq!(latest_inventory(&messages), Some(expected), "the bag comes back after a restart");
+    assert_eq!(latest_miasma(&messages), Some(25));
 }
 
 const SHOPKEEPER: &str = "title: Tom\n---\nTom: Buying?\n-> Yes, please.\n    <<open_shop bakery>>\n===\n";
 
+/// The latest amount of Miasma in a batch of messages.
+fn latest_miasma(messages: &[ServerMessage]) -> Option<u64> {
+    messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Inventory { miasma, .. } => Some(*miasma),
+        _ => None,
+    })
+}
+
 /// The slot holding an item, in the latest inventory in a batch of messages.
 fn slot_of(messages: &[ServerMessage], item: &str) -> Option<u32> {
     messages.iter().rev().find_map(|m| match m {
-        ServerMessage::Inventory { slots } => {
+        ServerMessage::Inventory { slots, .. } => {
             slots.iter().position(|slot| slot.as_ref().is_some_and(|stack| stack.item == item)).map(|i| i as u32)
         }
         _ => None,
@@ -603,12 +653,16 @@ fn slot_of(messages: &[ServerMessage], item: &str) -> Option<u32> {
 }
 
 #[test]
-fn shops_open_from_dialogue_and_trade_coins_for_goods() {
+fn shops_open_from_dialogue_and_trade_miasma_for_goods() {
     let mut server = TestServer::with_content("shop", content_with_dialogue(TALKER, "", Some(SHOPKEEPER)));
     let client = server.connect();
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
     server.run(2);
-    client.send(&ClientMessage::ChooseName { name: "Shopper".to_string() });
+    client.send(&ClientMessage::CreateCharacter {
+        name: "Shopper".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+    });
     server.run(2);
     client.receive();
     let npc = server.npc();
@@ -625,20 +679,14 @@ fn shops_open_from_dialogue_and_trade_coins_for_goods() {
     });
     assert!(opened, "the shop opens: {messages:?}");
 
-    // 25 coins: two loaves cost 10.
+    // 25 Miasma: two loaves cost 10.
     client.send(&ClientMessage::Buy { index: 0, count: 2 });
     server.run(2);
     let messages = client.receive();
-    assert_eq!(notices(&messages), ["You buy: Bread (2) for 10 coins."]);
-    assert_eq!(
-        latest_inventory(&messages),
-        Some(vec![
-            ("coins".to_string(), 15),
-            ("bread".to_string(), 1),
-            ("bread".to_string(), 1),
-            ("bread".to_string(), 1)
-        ])
-    );
+    assert_eq!(notices(&messages), ["You buy: Bread (2) for 10 Miasma."]);
+    let loaf = ("bread".to_string(), 1);
+    assert_eq!(latest_inventory(&messages), Some(vec![loaf.clone(), loaf.clone(), loaf]));
+    assert_eq!(latest_miasma(&messages), Some(15));
 
     // Selling a loaf pays half its value of 4.
     let bread = slot_of(&messages, "bread").unwrap();
@@ -646,9 +694,8 @@ fn shops_open_from_dialogue_and_trade_coins_for_goods() {
     client.send(&ClientMessage::Buy { index: 0, count: 5 });
     server.run(2);
     let messages = client.receive();
-    assert_eq!(notices(&messages), ["You sell: Bread for 2 coins.", "You don't have enough coins for that."]);
-    let coins = latest_inventory(&messages).unwrap().into_iter().find(|(item, _)| item == "coins");
-    assert_eq!(coins, Some(("coins".to_string(), 17)));
+    assert_eq!(notices(&messages), ["You sell: Bread for 2 Miasma.", "You don't have enough Miasma for that."]);
+    assert_eq!(latest_miasma(&messages), Some(17));
 
     // Walking away closes the shop, and then nothing more can be bought.
     client.send(&ClientMessage::MoveTo { x: 90.0, y: 100.0 });
@@ -667,7 +714,7 @@ Tom: Could you bring me a loaf?
 <<elseif quest_stage(\"errand\") == \"asked\" and item_count(\"bread\") > 0>>
 <<take_item bread>>
 <<set_quest errand done>>
-<<give_item coins 30>>
+<<give_miasma 30>>
 Tom: Thank you!
 <<else>>
 Tom: Hello again.
@@ -693,7 +740,11 @@ fn quests_start_complete_and_reward_once() {
     let client = server.connect();
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
     server.run(2);
-    client.send(&ClientMessage::ChooseName { name: "Helper".to_string() });
+    client.send(&ClientMessage::CreateCharacter {
+        name: "Helper".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+    });
     server.run(2);
     assert_eq!(latest_journal(&client.receive()), Some(vec![]), "an empty journal to start with");
     let npc = server.npc();
@@ -705,12 +756,13 @@ fn quests_start_complete_and_reward_once() {
     let asked = ("An Errand".to_string(), "Tom wants a loaf.".to_string(), false);
     assert_eq!(latest_journal(&messages), Some(vec![asked]));
 
-    // Handing over the loaf completes it, pays 30 coins, and Tom's script celebrates out loud.
+    // Handing over the loaf completes it, pays 30 Miasma, and Tom's script celebrates out loud.
     client.send(&ClientMessage::Interact { target: npc });
     server.run(3);
     let messages = client.receive();
-    assert_eq!(notices(&messages), ["You hand over: Bread.", "Quest complete: An Errand!", "You receive: Coins (30)."]);
-    assert_eq!(latest_inventory(&messages), Some(vec![("coins".to_string(), 55)]));
+    assert_eq!(notices(&messages), ["You hand over: Bread.", "Quest complete: An Errand!", "You receive: 30 Miasma."]);
+    assert_eq!(latest_inventory(&messages), Some(vec![]));
+    assert_eq!(latest_miasma(&messages), Some(55));
     let done = ("An Errand".to_string(), "I gave Tom a loaf.".to_string(), true);
     assert_eq!(latest_journal(&messages), Some(vec![done.clone()]));
     let cheered = messages.iter().any(|m| {
@@ -735,4 +787,104 @@ fn quests_start_complete_and_reward_once() {
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
     server.run(2);
     assert_eq!(latest_journal(&client.receive()), Some(vec![done]), "the journal comes back after a restart");
+}
+
+/// The latest character sheet in a batch of messages.
+fn latest_sheet(messages: &[ServerMessage]) -> Option<venture_protocol::CharacterSheet> {
+    messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Character(sheet) => Some(sheet.clone()),
+        _ => None,
+    })
+}
+
+/// Connects and makes a new character of a class, returning the messages
+/// received (the welcome and all).
+fn create(server: &mut TestServer, token: &str, name: &str, class: &str) -> (TestClient, Vec<ServerMessage>) {
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: token.to_string() });
+    server.run(2);
+    client.receive();
+    client.send(&ClientMessage::CreateCharacter {
+        name: name.to_string(),
+        class: class.to_string(),
+        body: BodyType::Feminine,
+    });
+    server.run(2);
+    let messages = client.receive();
+    (client, messages)
+}
+
+#[test]
+fn new_characters_choose_a_class_and_a_unique_name() {
+    let mut server = TestServer::with_content("classes", content_with("[]", ""));
+    let (_, messages) = create(&mut server, TOKEN_A, "Aldric", "mage");
+    let sheet = latest_sheet(&messages).expect("a character sheet");
+    assert_eq!((sheet.class.as_str(), sheet.level, sheet.stats.intelligence), ("Mage", 1, 15));
+    assert_eq!(sheet.max_health, 7, "d6 + CON 12 (+1)");
+
+    // The same name, in any case, is taken; an unknown class is refused.
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_B.to_string() });
+    server.run(2);
+    let offered = client.receive().into_iter().find_map(|m| match m {
+        ServerMessage::CharacterNeeded { classes, .. } => Some(classes.into_iter().map(|c| c.name).collect::<Vec<_>>()),
+        _ => None,
+    });
+    assert_eq!(offered, Some(vec!["Fighter".to_string(), "Mage".to_string()]));
+    for (name, class) in [("ALDRIC", "fighter"), ("Brienne", "necromancer")] {
+        client.send(&ClientMessage::CreateCharacter {
+            name: name.to_string(),
+            class: class.to_string(),
+            body: BodyType::Feminine,
+        });
+        server.run(2);
+        assert!(matches!(client.receive()[..], [ServerMessage::CharacterRejected { .. }]), "{name} as a {class}");
+    }
+    client.send(&ClientMessage::CreateCharacter {
+        name: "Brienne".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+    });
+    server.run(2);
+    assert!(client.receive().iter().any(|m| matches!(m, ServerMessage::Welcome { admin: false, .. })));
+}
+
+#[test]
+fn only_admins_can_use_admin_commands() {
+    let mut server = TestServer::with_content("admin", content_with("[]", ""));
+    let (boss, messages) = create(&mut server, TOKEN_A, "Boss", "fighter");
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::Welcome { admin: true, .. })), "Boss is an admin");
+    let (visitor, _) = create(&mut server, TOKEN_B, "Visitor", "fighter");
+    boss.receive();
+
+    visitor.send(&ClientMessage::Admin(AdminCommand::SetLevel { level: 30 }));
+    server.run(2);
+    assert_eq!(notices(&visitor.receive()), ["Only admins can use that command."]);
+
+    // Levelling up: the points come with it, and everyone sees the celebration.
+    boss.send(&ClientMessage::Admin(AdminCommand::SetLevel { level: 5 }));
+    server.run(2);
+    let messages = boss.receive();
+    let sheet = latest_sheet(&messages).unwrap();
+    assert_eq!((sheet.level, sheet.stat_points, sheet.skill_points), (5, 8, 5));
+    assert!(
+        visitor.receive().iter().any(|m| matches!(m, ServerMessage::PlayerChanged { level: 5, celebrate: true, .. }))
+    );
+
+    // Changing class keeps the level and hands back every point.
+    boss.send(&ClientMessage::Admin(AdminCommand::SetClass { class: "MAGE".to_string() }));
+    server.run(2);
+    let sheet = latest_sheet(&boss.receive()).unwrap();
+    assert_eq!((sheet.class.as_str(), sheet.level, sheet.stats.intelligence, sheet.stat_points), ("Mage", 5, 15, 8));
+
+    boss.send(&ClientMessage::Admin(AdminCommand::SetClass { class: "bard".to_string() }));
+    boss.send(&ClientMessage::Admin(AdminCommand::Reset));
+    server.run(2);
+    let messages = boss.receive();
+    assert!(notices(&messages)[0].starts_with("There's no class called \"bard\""));
+    let sheet = latest_sheet(&messages).unwrap();
+    assert_eq!((sheet.level, sheet.stat_points, sheet.skill_points), (1, 0, 0));
+    assert!(
+        visitor.receive().iter().any(|m| matches!(m, ServerMessage::PlayerChanged { level: 1, celebrate: false, .. }))
+    );
 }

@@ -67,6 +67,11 @@ pub struct Health {
     pub max: f32,
 }
 
+/// A character's level (players now; creatures later), shown under their
+/// name when selected.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Level(pub u32);
+
 /// The selected target, if any.
 #[derive(Resource, Default)]
 pub struct Target(pub Option<Entity>);

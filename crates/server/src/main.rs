@@ -78,7 +78,9 @@ fn main() {
         TerminalCtrlCHandlerPlugin,
     ));
     let content = ContentSetup { folder: paths.content.clone(), pack, client: client_content, watch: true };
-    GameServer { world, profiles, link, rules: config.rules(), content, spawn_override: None }.install(&mut app);
+    let admins = config.admins.clone();
+    let server = GameServer { world, profiles, link, rules: config.rules(), content, spawn_override: None, admins };
+    server.install(&mut app);
     app.run();
 }
 

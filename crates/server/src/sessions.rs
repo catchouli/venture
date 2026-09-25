@@ -3,8 +3,9 @@
 
 use bevy::prelude::*;
 use venture_navigation::Point;
-use venture_protocol::{EntityKind, ServerMessage};
+use venture_protocol::{BodyType, ClassChoice, EntityKind, ServerMessage};
 
+use crate::character::{Admin, Character, class_or_default};
 use crate::content::LoadedContent;
 use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
 use crate::inventory::{Change, Inventory};
@@ -15,10 +16,12 @@ use crate::profiles::{Profile, ProfileKey, ProfileStore};
 use crate::quests::QuestLog;
 use crate::requests::{Connections, SessionRequest, Stage};
 use crate::world::ServerWorld;
-use crate::{GameRules, ServerSystems};
+use crate::{Admins, GameRules, ServerSystems};
 
 /// How often everyone's profile is saved while they play, in seconds.
 const AUTOSAVE_INTERVAL: f32 = 60.0;
+/// The item that was money before Miasma: old profiles' coins become Miasma.
+const OLD_COINS: &str = "coins";
 
 /// Handles joining, leaving and saving.
 pub struct SessionsPlugin;
@@ -49,6 +52,16 @@ impl Default for AutosaveTimer {
     }
 }
 
+/// Everything saved about a player in the game.
+type SavedParts = (
+    &'static Player,
+    &'static DisplayName,
+    &'static Position,
+    &'static Inventory,
+    &'static QuestLog,
+    &'static Character,
+);
+
 /// The resources joining and leaving need.
 #[derive(bevy::ecs::system::SystemParam)]
 struct Sessions<'w, 's> {
@@ -61,20 +74,9 @@ struct Sessions<'w, 's> {
     ids: ResMut<'w, EntityIds>,
     online: ResMut<'w, OnlineProfiles>,
     rules: Res<'w, GameRules>,
+    admins: Res<'w, Admins>,
     content: Res<'w, LoadedContent>,
-    players: Query<
-        'w,
-        's,
-        (
-            Entity,
-            &'static Player,
-            &'static NetworkId,
-            &'static DisplayName,
-            &'static Position,
-            &'static Inventory,
-            &'static QuestLog,
-        ),
-    >,
+    players: Query<'w, 's, (Entity, &'static NetworkId, SavedParts)>,
     npcs: Query<'w, 's, (&'static Npc, &'static NetworkId, &'static DisplayName, &'static Position)>,
 }
 
@@ -82,12 +84,8 @@ fn handle_session_requests(mut requests: MessageReader<SessionRequest>, mut sess
     for request in requests.read() {
         match request {
             SessionRequest::Hello { connection, profile } => sessions.log_in(*connection, profile),
-            SessionRequest::ChooseName { connection, profile, name } => {
-                let position = sessions.spawn_point.0.unwrap_or(sessions.world.manifest.spawn_point);
-                let inventory = sessions.starting_inventory().slots().to_vec();
-                let new_profile = Profile { name: name.clone(), position, inventory, quests: Vec::new() };
-                sessions.store.save(profile, &new_profile);
-                sessions.enter_game(*connection, profile.clone(), new_profile);
+            SessionRequest::CreateCharacter { connection, profile, name, class, body } => {
+                sessions.create_character(*connection, profile, name, class, *body);
             }
             SessionRequest::Leave { connection } => sessions.leave(*connection),
         }
@@ -95,8 +93,8 @@ fn handle_session_requests(mut requests: MessageReader<SessionRequest>, mut sess
 }
 
 impl Sessions<'_, '_> {
-    /// Loads the player's profile and enters the game, or asks for a name if
-    /// they're new.
+    /// Loads the player's profile and enters the game, or asks for a new
+    /// character if they don't have one.
     fn log_in(&mut self, connection: ConnectionId, profile: &ProfileKey) {
         if self.online.0.contains(profile) {
             let rejected = ServerMessage::Rejected { reason: "This character is already in the game.".to_string() };
@@ -106,47 +104,117 @@ impl Sessions<'_, '_> {
         }
         match self.store.load(profile) {
             Some(saved) => self.enter_game(connection, profile.clone(), saved),
-            None => {
-                self.set_stage(connection, Stage::AwaitingName { profile: profile.clone() });
-                self.link.send(connection, &ServerMessage::NameNeeded { suggestion: random_name() });
-            }
+            None => self.ask_for_character(connection, profile),
         }
     }
 
+    fn ask_for_character(&mut self, connection: ConnectionId, profile: &ProfileKey) {
+        self.set_stage(connection, Stage::AwaitingName { profile: profile.clone() });
+        let classes = if self.content.pack.classes.is_empty() {
+            vec![class_or_default(&self.content.pack, None)]
+        } else {
+            self.content.pack.classes.clone()
+        };
+        let classes = classes
+            .into_iter()
+            .map(|class| ClassChoice {
+                id: class.id,
+                name: class.name,
+                description: class.description,
+                outfit: class.outfit,
+            })
+            .collect();
+        self.link.send(connection, &ServerMessage::CharacterNeeded { suggestion: random_name(), classes });
+    }
+
+    /// Makes a new character, if the name is free and the class exists.
+    fn create_character(
+        &mut self,
+        connection: ConnectionId,
+        profile: &ProfileKey,
+        name: &str,
+        class_id: &str,
+        body: BodyType,
+    ) {
+        let pack = &self.content.pack;
+        let class_exists = pack.classes.iter().any(|class| class.id == class_id) || pack.classes.is_empty();
+        let problem = if !class_exists {
+            Some("Please choose one of the classes.".to_string())
+        } else if !self.store.claim_name(name, profile) {
+            Some(format!("Someone is already called {name}. Please choose another name."))
+        } else {
+            None
+        };
+        if let Some(reason) = problem {
+            self.set_stage(connection, Stage::AwaitingName { profile: profile.clone() });
+            self.link.send(connection, &ServerMessage::CharacterRejected { reason });
+            return;
+        }
+
+        let class = class_or_default(pack, Some(class_id));
+        let position = self.spawn_point.0.unwrap_or(self.world.manifest.spawn_point);
+        let mut new_profile = Profile::new(name.to_string(), position);
+        let character = Character::new(&class, body);
+        write_character(&mut new_profile, &character);
+        let inventory = self.starting_inventory();
+        new_profile.inventory = inventory.slots().to_vec();
+        new_profile.miasma = inventory.miasma();
+        self.store.save(profile, &new_profile);
+        self.enter_game(connection, profile.clone(), new_profile);
+    }
+
     /// Puts a character into the game and tells everyone.
-    fn enter_game(&mut self, connection: ConnectionId, profile: ProfileKey, saved: Profile) {
+    fn enter_game(&mut self, connection: ConnectionId, profile: ProfileKey, mut saved: Profile) {
+        convert_old_coins(&mut saved);
         let id = self.ids.allocate();
         let position = Position(if self.world.contains(saved.position) {
             saved.position
         } else {
             self.world.manifest.spawn_point
         });
-        let name = DisplayName(saved.name);
-        let inventory = Inventory::from_saved(saved.inventory);
+        let name = DisplayName(saved.name.clone());
+        let class = class_or_default(&self.content.pack, saved.class.as_deref());
+        let character = read_character(&saved, &self.content.pack);
+        let look = character.look(&class);
+        let inventory = Inventory::from_saved(saved.inventory, saved.miasma);
         let quests = QuestLog::from_saved(saved.quests);
+        let admin = self.admins.0.iter().any(|admin| admin.eq_ignore_ascii_case(&name.0));
+        let kind = EntityKind::Player { level: character.level(), look };
 
         // Tell the newcomer about themselves, and everyone and everything already here.
+        let rules = self.rules.0;
         let welcome =
-            ServerMessage::Welcome { you: id, name: name.0.clone(), position: position.0, rules: self.rules.0 };
+            ServerMessage::Welcome { you: id, name: name.0.clone(), position: position.0, rules, admin, look };
         self.link.send(connection, &welcome);
-        for (_, _, &NetworkId(other), other_name, &other_position, ..) in &self.players {
-            self.link.send(connection, &appeared(other, other_name, EntityKind::Player, other_position));
+        for (_, &NetworkId(other), (_, other_name, &other_position, _, _, other_character)) in &self.players {
+            let other_class = class_or_default(&self.content.pack, Some(&other_character.class));
+            let other_kind =
+                EntityKind::Player { level: other_character.level(), look: other_character.look(&other_class) };
+            self.link.send(connection, &appeared(other, other_name, other_kind, other_position));
         }
         for (npc, &NetworkId(npc_id), npc_name, &npc_position) in &self.npcs {
             self.link.send(connection, &appeared(npc_id, npc_name, npc.kind(), npc_position));
         }
         // Tell everyone else about the newcomer.
-        let others: Vec<ConnectionId> = self.players.iter().map(|(_, player, ..)| player.connection).collect();
-        self.link.broadcast(others.iter().copied(), &appeared(id, &name, EntityKind::Player, position));
+        let others: Vec<ConnectionId> = self.players.iter().map(|(_, _, (player, ..))| player.connection).collect();
+        self.link.broadcast(others.iter().copied(), &appeared(id, &name, kind, position));
         let notice = ServerMessage::Notice { text: format!("{} has joined.", name.0) };
         self.link.broadcast(others.into_iter().chain([connection]), &notice);
 
-        info!("{} joined as {id:?}.", name.0);
+        info!("{} joined as {id:?}{}.", name.0, if admin { " (an admin)" } else { "" });
         self.online.0.insert(profile.clone());
-        let player = self
-            .commands
-            .spawn((Player { connection, profile }, NetworkId(id), name, position, Mover::default(), inventory, quests))
-            .id();
+        let mut player = self.commands.spawn((
+            Player { connection, profile },
+            NetworkId(id),
+            name,
+            position,
+            Mover::default(),
+            (inventory, quests, character),
+        ));
+        if admin {
+            player.insert(Admin);
+        }
+        let player = player.id();
         self.set_stage(connection, Stage::Playing { player });
     }
 
@@ -154,14 +222,13 @@ impl Sessions<'_, '_> {
     fn leave(&mut self, connection: ConnectionId) {
         let Some(state) = self.connections.0.remove(&connection) else { return };
         let Stage::Playing { player } = state.stage else { return };
-        let Ok((entity, leaver, &NetworkId(id), name, &position, inventory, quests)) = self.players.get(player) else {
-            return;
-        };
+        let Ok((entity, &NetworkId(id), parts)) = self.players.get(player) else { return };
+        let (leaver, name, ..) = parts;
 
-        self.store.save(&leaver.profile, &profile_of(name, position, inventory, quests));
+        self.store.save(&leaver.profile, &profile_of(parts));
         self.online.0.remove(&leaver.profile);
         let others: Vec<ConnectionId> =
-            self.players.iter().filter(|(e, ..)| *e != entity).map(|(_, player, ..)| player.connection).collect();
+            self.players.iter().filter(|(e, ..)| *e != entity).map(|(_, _, (player, ..))| player.connection).collect();
         self.link.broadcast(others.iter().copied(), &ServerMessage::EntityLeft { id });
         self.link.broadcast(others, &ServerMessage::Notice { text: format!("{} has left.", name.0) });
         info!("{} left.", name.0);
@@ -172,10 +239,10 @@ impl Sessions<'_, '_> {
     fn starting_inventory(&self) -> Inventory {
         let pack = &self.content.pack;
         let mut inventory = Inventory::empty();
-        for stack in &pack.new_characters.items {
-            if let Err(problem) = inventory.apply(&Change::give(&stack.item, stack.count), &pack.items) {
-                warn!("New characters can't be given {} {}: {problem:?}", stack.count, stack.item);
-            }
+        let mut change = Change::earn(pack.new_characters.miasma);
+        change.give = pack.new_characters.items.iter().map(|stack| (stack.item.clone(), stack.count)).collect();
+        if let Err(problem) = inventory.apply(&change, &pack.items) {
+            warn!("New characters can't be given their starting items: {problem:?}");
         }
         inventory
     }
@@ -187,12 +254,39 @@ impl Sessions<'_, '_> {
     }
 }
 
-fn autosave(
-    time: Res<Time>,
-    mut timer: ResMut<AutosaveTimer>,
-    store: Res<ProfileStore>,
-    players: Query<(&Player, &DisplayName, &Position, &Inventory, &QuestLog)>,
-) {
+/// A saved character, given the default class (and its stats) if it was
+/// made before classes existed.
+fn read_character(saved: &Profile, pack: &venture_content::ContentPack) -> Character {
+    let class = class_or_default(pack, saved.class.as_deref());
+    let mut character = Character::new(&class, saved.body);
+    character.progress =
+        venture_rpg::Progress { level: saved.level.clamp(1, venture_rpg::MAX_LEVEL), experience: saved.experience };
+    character.stats = saved.stats.filter(venture_rpg::Abilities::is_valid).unwrap_or(class.stats);
+    character.stat_points = saved.stat_points;
+    character.skill_points = saved.skill_points;
+    character
+}
+
+fn write_character(profile: &mut Profile, character: &Character) {
+    profile.class = Some(character.class.clone());
+    profile.body = character.body;
+    profile.level = character.progress.level;
+    profile.experience = character.progress.experience;
+    profile.stats = Some(character.stats);
+    profile.stat_points = character.stat_points;
+    profile.skill_points = character.skill_points;
+}
+
+/// Turns coins (the money before Miasma) in an old profile's bag into Miasma.
+fn convert_old_coins(profile: &mut Profile) {
+    for slot in &mut profile.inventory {
+        if let Some(stack) = slot.take_if(|stack| stack.item == OLD_COINS) {
+            profile.miasma = profile.miasma.saturating_add(u64::from(stack.count));
+        }
+    }
+}
+
+fn autosave(time: Res<Time>, mut timer: ResMut<AutosaveTimer>, store: Res<ProfileStore>, players: Query<SavedParts>) {
     if timer.0.tick(time.delta()).just_finished() {
         save_all(&store, &players);
     }
@@ -202,7 +296,7 @@ fn autosave(
 fn save_everyone_on_exit(
     mut exits: MessageReader<AppExit>,
     store: Option<Res<ProfileStore>>,
-    players: Query<(&Player, &DisplayName, &Position, &Inventory, &QuestLog)>,
+    players: Query<SavedParts>,
 ) {
     if exits.read().next().is_some()
         && let Some(store) = store
@@ -212,13 +306,45 @@ fn save_everyone_on_exit(
     }
 }
 
-fn save_all(store: &ProfileStore, players: &Query<(&Player, &DisplayName, &Position, &Inventory, &QuestLog)>) {
-    for (player, name, &position, inventory, quests) in players {
-        store.save(&player.profile, &profile_of(name, position, inventory, quests));
+fn save_all(store: &ProfileStore, players: &Query<SavedParts>) {
+    for parts in players {
+        store.save(&parts.0.profile, &profile_of(parts));
     }
 }
 
 /// What to save about a player.
-fn profile_of(name: &DisplayName, Position(position): Position, inventory: &Inventory, quests: &QuestLog) -> Profile {
-    Profile { name: name.0.clone(), position, inventory: inventory.slots().to_vec(), quests: quests.saved() }
+fn profile_of(
+    (_, name, &Position(position), inventory, quests, character): (
+        &Player,
+        &DisplayName,
+        &Position,
+        &Inventory,
+        &QuestLog,
+        &Character,
+    ),
+) -> Profile {
+    let mut profile = Profile::new(name.0.clone(), position);
+    write_character(&mut profile, character);
+    profile.inventory = inventory.slots().to_vec();
+    profile.miasma = inventory.miasma();
+    profile.quests = quests.saved();
+    profile
+}
+
+#[cfg(test)]
+mod tests {
+    use venture_protocol::ItemStack;
+
+    use super::*;
+
+    #[test]
+    fn old_coins_become_miasma() {
+        let mut profile = Profile::new("Aldric".to_string(), (0.0, 0.0));
+        let stack = |item: &str, count| Some(ItemStack { item: item.to_string(), count });
+        profile.inventory = vec![stack("coins", 25), stack("bread", 1), stack("coins", 5)];
+        profile.miasma = 2;
+        convert_old_coins(&mut profile);
+        assert_eq!(profile.miasma, 32);
+        assert_eq!(profile.inventory, vec![None, stack("bread", 1), None]);
+    }
 }

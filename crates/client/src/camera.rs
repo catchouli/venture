@@ -283,7 +283,16 @@ fn orbit_controls(
 
 /// Zooms the camera with the mouse wheel. Following the character, it can't
 /// zoom out as far as the free camera.
-fn zoom_controls(mouse_scroll: Res<AccumulatedMouseScroll>, mode: Res<CameraMode>, mut orbit: Single<&mut Orbit>) {
+fn zoom_controls(
+    mouse_scroll: Res<AccumulatedMouseScroll>,
+    mode: Res<CameraMode>,
+    ui: Query<&Interaction>,
+    mut orbit: Single<&mut Orbit>,
+) {
+    // The wheel over a window (such as the bag) scrolls the window instead.
+    if ui.iter().any(|interaction| *interaction != Interaction::None) {
+        return;
+    }
     // Browsers report scrolling in pixels, most desktops in lines.
     let scroll_lines = match mouse_scroll.unit {
         MouseScrollUnit::Line => mouse_scroll.delta.y,

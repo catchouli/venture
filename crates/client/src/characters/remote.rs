@@ -6,20 +6,21 @@
 //! that moment (standard entity interpolation).
 //!
 //! NPCs are drawn in their content appearance. When the content changes,
-//! their bodies are rebuilt in the new colours.
+//! their bodies are rebuilt in the new colours. Players are drawn in their
+//! build and their class's outfit, rebuilt if that changes (such as a new class).
 
 use std::collections::{HashMap, VecDeque};
 
 use bevy::prelude::*;
 use venture_navigation::Point;
-use venture_protocol::{EntityId, EntityKind, ServerMessage};
+use venture_protocol::{EntityId, EntityKind, PlayerLook, ServerMessage};
 
 use crate::characters::model::{CharacterAssets, Gait, Look, appearance_look, rebuild_body, spawn_character};
 use crate::characters::nameplates::Nameplate;
 use crate::characters::player::LocalPlayer;
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::content::ContentStore;
-use crate::interaction::targeting::{TargetKind, Targetable};
+use crate::interaction::targeting::{Level, TargetKind, Targetable};
 use crate::network::{ClientState, FromServer};
 use crate::world::query::ground_height;
 use crate::world::streaming::ChunkStore;
@@ -52,6 +53,10 @@ struct RemoteEntities(HashMap<EntityId, Entity>);
 #[derive(Resource, Default)]
 struct NpcLooks(HashMap<String, Look>);
 
+/// How another player looks, as the server last said.
+#[derive(Component, PartialEq)]
+struct PlayerAppearance(PlayerLook);
+
 /// Someone else's character.
 #[derive(Component)]
 struct RemoteEntity {
@@ -73,6 +78,7 @@ fn follow_server_events(
     mut remotes: ResMut<RemoteEntities>,
     me: Option<Single<&LocalPlayer>>,
     mut others: Query<&mut RemoteEntity>,
+    mut players: Query<(&mut Level, &mut PlayerAppearance)>,
 ) {
     let now = time.elapsed_secs();
     let my_id = me.map(|me| me.id);
@@ -83,7 +89,9 @@ fn follow_server_events(
                     continue;
                 }
                 let (look, target_kind, appearance) = match kind {
-                    EntityKind::Player => (assets.player_look(id.0), TargetKind::Player, None),
+                    EntityKind::Player { look, .. } => {
+                        (assets.player_look(id.0, look, &mut materials), TargetKind::Player, None)
+                    }
                     EntityKind::Npc { appearance } => {
                         let look = npc_look(appearance, &content, &mut looks, &mut materials, &assets);
                         (look, TargetKind::Npc, Some(appearance.clone()))
@@ -97,7 +105,19 @@ fn follow_server_events(
                     Nameplate(name.clone()),
                     Targetable { id: *id, kind: target_kind },
                 ));
+                if let EntityKind::Player { level, look } = kind {
+                    commands.entity(entity).insert((Level(*level), PlayerAppearance(*look)));
+                }
                 remotes.0.insert(*id, entity);
+            }
+            ServerMessage::PlayerChanged { id, level, look, .. } => {
+                let Some(&entity) = remotes.0.get(id) else { continue };
+                let Ok((mut shown_level, mut appearance)) = players.get_mut(entity) else { continue };
+                shown_level.0 = *level;
+                if appearance.0 != *look {
+                    appearance.0 = *look;
+                    rebuild_body(&mut commands, entity, &assets, &assets.player_look(id.0, look, &mut materials));
+                }
             }
             ServerMessage::EntityLeft { id } => {
                 if let Some(entity) = remotes.0.remove(id) {
@@ -132,7 +152,9 @@ fn npc_look(
     if let Some(look) = looks.0.get(appearance) {
         return look.clone();
     }
-    let Some(definition) = content.appearances.get(appearance) else { return assets.player_look(0) };
+    let Some(definition) = content.appearances.get(appearance) else {
+        return assets.player_look(0, &PlayerLook::default(), materials);
+    };
     let look = appearance_look(materials, definition);
     looks.0.insert(appearance.to_string(), look.clone());
     look

@@ -39,6 +39,7 @@ events. Much of it should be writable by **people who aren't programmers**
 
 ```
 content/
+  classes/*.ron        the classes players choose from
   appearances/*.ron    how characters look (sent to clients)
   items/*.ron          things players can carry (sent to clients)
   icons/*.png          item pictures (sent to clients)
@@ -66,16 +67,42 @@ save a file. The server reloads within about a second:
 If the new content has a problem, the server logs it and keeps the old
 content, so a typo never takes the game down.
 
+### Classes
+
+```ron
+[
+    (
+        id: "fighter",                  // saved in profiles, so don't rename lightly
+        name: "Fighter",
+        description: "Tough and strong...",   // shown when choosing a class
+        rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
+        stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
+        outfit: (style: Armour, main: (0.42, 0.30, 0.20), trim: (0.62, 0.46, 0.28)),
+    ),
+]
+```
+
+Players choose a class when they make a character; the first one listed is
+the default. `rules` is the class's part in the RPG rules (see
+`crates/rpg`): `hit_die` sets health per level (SRD 5.1: d10 for a fighter,
+d6 for a wizard), and `mana_per_level` plus the `casting_ability`'s modifier
+sets mana. `stats` are a new character's ability scores. `outfit` is what the
+class wears (`Tunic`, `Armour` or `Robe`, in a main and a trim colour) until
+characters wear real equipment.
+
 ### Appearances
 
 ```ron
 [
     (id: "guard", skin: (0.84, 0.64, 0.51), hair: (0.22, 0.15, 0.09),
-     tunic: (0.20, 0.25, 0.45), trousers: (0.18, 0.18, 0.20)),
+     tunic: (0.20, 0.25, 0.45), trousers: (0.18, 0.18, 0.20),
+     body: Masculine, outfit: Armour),
 ]
 ```
 
-Colours are sRGB red, green and blue, each from 0 to 1.
+Colours are sRGB red, green and blue, each from 0 to 1. `body` (`Masculine`,
+`Feminine` or `Androgynous`) sets the build and hair, and `outfit` (`Tunic`,
+`Armour` or `Robe`) the cut of the clothes; both are optional.
 
 ### Items
 
@@ -86,13 +113,13 @@ Colours are sRGB red, green and blue, each from 0 to 1.
         name: "Bread",
         description: "A crusty loaf from Elsie's ovens, still a little warm.",
         icon: "bread.png",              // a PNG in icons/
-        stackable: false,               // optional: true for things like coins, which share one slot
-        value: 4,                       // optional: worth in coins; shops buy for half. 0 = unsellable
+        stackable: false,               // optional: true for things like arrows, which share one slot
+        value: 4,                       // optional: worth in Miasma; shops buy for half. 0 = unsellable
     ),
 ]
 ```
 
-There must be an item called `coins`: it's the money. Icons are small PNGs
+Money is **Miasma**, kept on the character rather than in the bag. Icons are small PNGs
 (32 × 32 works well, at most 64 KB). The current ones are placeholders drawn
 by `tools/placeholder_icons.py`; replace them with painted icons of the same
 name whenever they're ready.
@@ -100,7 +127,7 @@ name whenever they're ready.
 `new_characters.ron` says what a new character carries:
 
 ```ron
-(items: [(item: "coins", count: 25), (item: "bread", count: 1)])
+(miasma: 25, items: [(item: "bread", count: 1)])
 ```
 
 ### Shops
@@ -111,7 +138,7 @@ name whenever they're ready.
         id: "elsies_bakery",
         name: "Elsie's Bakery",            // shown at the top of the shop window
         stock: [
-            (item: "bread", price: 5),     // price in coins
+            (item: "bread", price: 5),     // price in Miasma
             (item: "meat_pie", price: 15),
         ],
     ),
@@ -147,7 +174,7 @@ text, and chat tells them when a quest starts, moves on or is complete.
 Quests only move **forward**: setting a stage the player has already reached
 or passed does nothing. So a reward given next to `<<set_quest ... done>>`
 can't be claimed twice, as long as the dialogue checks `quest_stage` first.
-Rewards are ordinary commands (`<<give_item coins 30>>`). The pipe quest in
+Rewards are ordinary commands (`<<give_miasma 30>>`, `<<give_item bread>>`). The pipe quest in
 `dialogue/starting_town.yarn` is a complete example: Tomas starts it, Hilda
 hands over the pipe (checking `has_room_for` first), and Tomas takes it back
 and pays up. His script (`scripts/wanderer.rhai`) celebrates out loud through
@@ -214,6 +241,7 @@ Guard Aldren: Halt! Oh, a new face. Welcome to town, {player_name()}.
   window offers "Goodbye".
 - **Functions** tell dialogue about the player:
   - `{player_name()}`: their name.
+  - `miasma()`: how much Miasma they have.
   - `item_count("bread")`: how many of an item they carry
     (`-> Here's your pie. <<if item_count("meat_pie") > 0>>`).
   - `has_room_for("old_pipe")`: whether their bag has room for one more.
@@ -223,6 +251,8 @@ Guard Aldren: Halt! Oh, a new face. Welcome to town, {player_name()}.
     optional). If the bag is full, the player is told and gets nothing.
   - `<<take_item old_pipe>>` takes items. Check they have them first with
     `item_count`.
+  - `<<give_miasma 30>>` pays the player, and `<<take_miasma 10>>` takes their
+    money (check `miasma()` first).
   - `<<set_quest tomas_pipe found>>` moves a quest on (see Quests above).
   - `<<open_shop elsies_bakery>>` ends the conversation and opens a shop. It
     ends at once, so lines before it on the same page aren't shown.
