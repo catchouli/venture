@@ -1,0 +1,17 @@
+[package]
+name = "venture_worldgen"
+description = "Deterministic procedural world generation: terrain, rivers and lakes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+venture_world.workspace = true
+noise.workspace = true
+
+[dev-dependencies]
+image.workspace = true
+
+[lints]
+workspace = true

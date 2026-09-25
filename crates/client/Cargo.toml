@@ -1,0 +1,16 @@
+[package]
+name = "venture_client"
+description = "The Venture game client (Bevy): renders the world and handles input."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+venture_world.workspace = true
+venture_worldgen.workspace = true
+venture_navigation.workspace = true
+bevy.workspace = true
+
+[lints]
+workspace = true

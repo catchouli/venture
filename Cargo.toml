@@ -1,0 +1,45 @@
+[workspace]
+resolver = "3"
+members = ["crates/world", "crates/worldgen", "crates/navigation", "crates/client"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+
+[workspace.dependencies]
+venture_world = { path = "crates/world" }
+venture_worldgen = { path = "crates/worldgen" }
+venture_navigation = { path = "crates/navigation" }
+noise = "0.9"
+image = { version = "0.25", default-features = false, features = ["png"] }
+bevy = "0.19"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+# Bevy is slow in unoptimised builds; optimise dependencies even in dev,
+# while keeping our own code fast to compile.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# World generation is heavy number crunching: always optimise it, or chunk
+# streaming stalls (especially on the web, where it runs on the main thread).
+[profile.dev.package.venture_worldgen]
+opt-level = 3
+
+# Small, fast WebAssembly builds: `trunk build --release --cargo-profile wasm-release`.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = "debuginfo"

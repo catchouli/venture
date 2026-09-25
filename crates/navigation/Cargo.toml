@@ -1,0 +1,13 @@
+[package]
+name = "venture_navigation"
+description = "Where characters can walk, and finding paths across the terrain."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+venture_world.workspace = true
+
+[lints]
+workspace = true
