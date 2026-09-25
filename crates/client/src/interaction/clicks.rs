@@ -1,7 +1,7 @@
 //! What a left click on the world does:
 //!
-//! - on a character: select it, or, if it's the selected player already,
-//!   follow them;
+//! - on a character: select it; or, if it's selected already, follow them
+//!   (a player) or walk over and talk to them (an NPC);
 //! - on the ground: run there (at most the server's move distance away),
 //!   with a move marker at the destination.
 //!
@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 use venture_navigation::Point;
-use venture_protocol::ClientMessage;
+use venture_protocol::{ClientMessage, EntityId};
 use venture_simulation::{Follow, Movement, clamp_move_goal, plan_route};
 
 use crate::characters::player::{Following, GameRules, LocalPlayer};
@@ -56,7 +56,8 @@ fn handle_click(
 
     if let Some(clicked) = hovered.0 {
         match targetables.get(clicked) {
-            Ok(Targetable(TargetKind::Player(id))) if target.0 == Some(clicked) => orders.follow(clicked, *id),
+            Ok(&Targetable { id, kind: TargetKind::Player }) if target.0 == Some(clicked) => orders.follow(clicked, id),
+            Ok(&Targetable { id, kind: TargetKind::Npc }) if target.0 == Some(clicked) => orders.talk_to(clicked, id),
             _ => target.0 = Some(clicked),
         }
         return;
@@ -119,9 +120,16 @@ impl Orders<'_, '_> {
     }
 
     /// Asks the server to follow another player, and starts predicting it.
-    fn follow(&mut self, target: Entity, id: venture_protocol::PlayerId) {
+    fn follow(&mut self, target: Entity, id: EntityId) {
         let Some(player) = self.player.as_mut() else { return };
         self.to_server.write(ToServer(ClientMessage::Follow { target: id }));
-        player.1.following = Some(Following { target, follow: Follow::default() });
+        player.1.following = Some(Following { target, follow: Follow::default(), talk_on_arrival: false });
+    }
+
+    /// Asks the server to talk to an NPC (walking over first), and predicts the walk.
+    fn talk_to(&mut self, target: Entity, id: EntityId) {
+        let Some(player) = self.player.as_mut() else { return };
+        self.to_server.write(ToServer(ClientMessage::Interact { target: id }));
+        player.1.following = Some(Following { target, follow: Follow::default(), talk_on_arrival: true });
     }
 }

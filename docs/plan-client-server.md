@@ -96,7 +96,21 @@ around the same world. Characters come back where they left off.
   walking there.
 - Automated tests: protocol round trips, simulation rules, profile save and load.
 
-## Milestone 2: content pack v0
+## Milestone 2: content pack v0 (done)
+
+Implemented as planned, with two adjustments:
+- **Item definitions move to milestone 3**, where inventory gives them a use.
+- **Players and NPCs became one kind of network entity** (protocol version
+  3), so chat, speech bubbles, selecting and following work for NPCs too.
+
+Also added: NPC placement relative to generated settlements (the baked world
+now records its settlements); talking to NPCs (walking over first) with a talk
+cursor; four townsfolk with scripts in the starting town. The server tests
+cover NPCs appearing, talking from a distance, content changes replacing NPCs,
+and NPC speech range. Script sandbox tests cover queued commands, runaway
+loops and disabled `eval`.
+
+Original plan:
 
 - `venture_content` crate: RON definitions for items and NPCs, a
   `content/` folder, and validation (`cargo run -p venture_content -- check`).
@@ -110,6 +124,8 @@ around the same world. Characters come back where they left off.
 ## Milestone 3: talk, trade, carry
 
 - **Yarn dialogue** on the server; a dialogue window on the client.
+- **Item definitions** in the content pack, streamed to clients (names,
+  descriptions, icons).
 - **Inventory** (server-authoritative) and a first **shop** NPC in the
   first town.
 - First steps of a quest, written with RON + Yarn + Rhai, end to end.

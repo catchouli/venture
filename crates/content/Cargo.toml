@@ -1,0 +1,26 @@
+[package]
+name = "venture_content"
+description = "The content pack: NPCs, appearances and scripts, loaded, checked and described for clients."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+# Checking scripts compile. The server and the `check` tool need it; the
+# client doesn't (it only reads presentation data), so it's optional.
+scripts = ["dep:rhai"]
+
+[dependencies]
+serde.workspace = true
+ron.workspace = true
+sha2.workspace = true
+rhai = { workspace = true, optional = true }
+
+[[bin]]
+name = "check"
+path = "src/bin/check.rs"
+required-features = ["scripts"]
+
+[lints]
+workspace = true

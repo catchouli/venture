@@ -6,6 +6,7 @@ members = [
     "crates/navigation",
     "crates/simulation",
     "crates/protocol",
+    "crates/content",
     "crates/server",
     "crates/client",
 ]
@@ -22,11 +23,14 @@ venture_worldgen = { path = "crates/worldgen" }
 venture_navigation = { path = "crates/navigation" }
 venture_simulation = { path = "crates/simulation" }
 venture_protocol = { path = "crates/protocol" }
+venture_content = { path = "crates/content" }
 venture_server = { path = "crates/server", default-features = false }
 serde = { version = "1", features = ["derive"] }
 postcard = { version = "1", default-features = false, features = ["use-std"] }
 ron = "0.12"
 async-channel = "2"
+sha2 = "0.11"
+rhai = { version = "1.26", features = ["sync"] }
 noise = "0.9"
 image = { version = "0.25", default-features = false, features = ["png"] }
 bevy = { version = "0.19", default-features = false }

@@ -3,9 +3,22 @@
 use serde::{Deserialize, Serialize};
 use venture_simulation::Rules;
 
-/// Identifies a connected player for the length of their session.
+/// Identifies something in the game world (a player or an NPC) for as long
+/// as it's there. Ids aren't reused while the server runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct PlayerId(pub u32);
+pub struct EntityId(pub u32);
+
+/// What kind of thing an entity is.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum EntityKind {
+    /// Another player.
+    Player,
+    /// A non-player character.
+    Npc {
+        /// Its appearance (an id from the content pack's appearances).
+        appearance: String,
+    },
+}
 
 /// Commands from a client. Each is a *request*; the server decides what happens.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -38,10 +51,15 @@ pub enum ClientMessage {
     },
     /// Stop moving (and stop following anyone).
     Stop,
-    /// Follow another player, staying close behind them.
+    /// Follow another player or an NPC, staying close behind them.
     Follow {
         /// Who to follow.
-        target: PlayerId,
+        target: EntityId,
+    },
+    /// Talk to an NPC, walking over to them first if needed.
+    Interact {
+        /// Who to talk to.
+        target: EntityId,
     },
     /// Say something in chat.
     Chat {
@@ -66,8 +84,8 @@ pub enum ServerMessage {
     },
     /// The player is in the game.
     Welcome {
-        /// The player's id for this session.
-        you: PlayerId,
+        /// The player's own entity id.
+        you: EntityId,
         /// The character's name.
         name: String,
         /// Where the character is, in metres.
@@ -81,32 +99,34 @@ pub enum ServerMessage {
         /// Why, in words to show the player.
         reason: String,
     },
-    /// Another player is in the game (sent for everyone already there when you
-    /// join, then for each newcomer).
-    PlayerJoined {
-        /// Their id.
-        id: PlayerId,
-        /// Their character's name.
+    /// Something is in the game: sent for everything already there when you
+    /// join, then for each newcomer.
+    EntityAppeared {
+        /// Its id.
+        id: EntityId,
+        /// Its name.
         name: String,
-        /// Where they are, in metres.
+        /// What it is.
+        kind: EntityKind,
+        /// Where it is, in metres.
         position: (f32, f32),
     },
-    /// A player has left the game.
-    PlayerLeft {
-        /// Their id.
-        id: PlayerId,
+    /// Something has left the game.
+    EntityLeft {
+        /// Its id.
+        id: EntityId,
     },
-    /// Where every player is, sent every server tick. Includes the receiving player.
+    /// Where everything is, sent every server tick. Includes the receiving player.
     Snapshot {
         /// The server tick this describes.
         tick: u64,
-        /// Every player's state.
-        players: Vec<PlayerState>,
+        /// Every entity's state.
+        entities: Vec<EntityState>,
     },
-    /// A chat message from a player.
+    /// Something a player or NPC said.
     Chat {
         /// Who said it.
-        from: PlayerId,
+        from: EntityId,
         /// Their name, as it was when they said it.
         name: String,
         /// What they said (already cleaned by the server).
@@ -117,17 +137,22 @@ pub enum ServerMessage {
         /// The message.
         text: String,
     },
+    /// The content pack has changed: clients should fetch the new content manifest.
+    ContentChanged {
+        /// The new content version.
+        version: String,
+    },
 }
 
-/// One player's state in a [`ServerMessage::Snapshot`].
+/// One entity's state in a [`ServerMessage::Snapshot`].
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PlayerState {
-    /// Who.
-    pub id: PlayerId,
+pub struct EntityState {
+    /// Which entity.
+    pub id: EntityId,
     /// Position in metres.
     pub x: f32,
     /// Position in metres.
     pub y: f32,
-    /// Whether they are running.
+    /// Whether it is moving.
     pub moving: bool,
 }

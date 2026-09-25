@@ -10,7 +10,8 @@ authored content layered on top.
 
 > **Status:** early prototype. A deterministic world generation engine, and
 > an authoritative server you can play on with friends over your local
-> network: run around, see each other and chat. There's no other gameplay yet.
+> network: run around, see each other, chat, and meet scripted NPCs in the
+> starting town. Content (NPCs, looks, scripts) reloads live as you edit it.
 
 ## Quick start
 
@@ -30,7 +31,9 @@ cargo run --release -p venture_server
 ```
 
 Others on your network can join by opening the "On your network" address.
-Server settings, such as the port and game rules, are in `server.ron`.
+Server settings, such as the port and game rules, are in `server.ron`. NPCs
+and their scripts are in `content/`; check them with
+`cargo run -p venture_content --features scripts --bin check`.
 
 Desktop client: `cargo run -p venture_client` connects to a server on this
 computer (`--connect http://host:port` for another), and
@@ -42,8 +45,8 @@ and `cargo fmt --check`.
 
 Controls: **left-click** the ground to run there, or run with **WASD**
 (relative to the camera). **Right-drag** or the **arrow keys** rotate and tilt
-the camera, and the **mouse wheel** zooms. Click a player to **select** them,
-and click them again to **follow**. **Escape** deselects. **Enter** chats. **F1** switches to a
+the camera, and the **mouse wheel** zooms. Click a player or NPC to **select**
+them; click again to **follow** a player or **talk** to an NPC. **Escape** deselects. **Enter** chats. **F1** switches to a
 free camera for flying around (**WASD** to move, **Shift** to go faster).
 
 ## Documentation
@@ -56,7 +59,7 @@ free camera for flying around (**WASD** to move, **Shift** to go faster).
 | [World generation engine](docs/world-generation-engine.md) | How worlds are generated, and how authored content is layered on top |
 | [Client and server](docs/client-server.md) | Server authority, movement prediction, streaming, profiles, LAN hosting |
 | [Plan: client/server](docs/plan-client-server.md) | The next milestones, step by step |
-| [Content authoring](docs/content-authoring.md) | How NPCs, dialogue, shops and quests will be written (data, Yarn Spinner, Rhai) |
+| [Content authoring](docs/content-authoring.md) | Writing NPCs, looks and scripts (and later dialogue, shops and quests) |
 | [Building and running](docs/building-and-running.md) | Desktop, web and dev tools in detail |
 | [Code style](docs/code-style.md) | Conventions that keep the code clean and maintainable |
 | [Roadmap](docs/roadmap.md) | What comes next |
@@ -70,7 +73,9 @@ crates/
   navigation/ venture_navigation Where characters can walk, and pathfinding
   simulation/ venture_simulation Game rules shared by server and client (movement)
   protocol/  venture_protocol  Messages between client and server
+  content/   venture_content   The content pack: definitions, checking, client manifest
   server/    venture_server    The authoritative game server (also hosts the web client)
   client/    venture_client    The Bevy game client (browser and desktop)
+content/                       The content pack: NPCs, appearances and scripts
 docs/                          Design and technical documentation
 ```

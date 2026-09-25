@@ -1,0 +1,31 @@
+// How the townsfolk look. Colours are sRGB red, green, blue, each from 0 to 1.
+[
+    (
+        id: "guard",
+        skin: (0.84, 0.64, 0.51),
+        hair: (0.22, 0.15, 0.09),
+        tunic: (0.20, 0.25, 0.45),
+        trousers: (0.18, 0.18, 0.20),
+    ),
+    (
+        id: "smith",
+        skin: (0.74, 0.54, 0.40),
+        hair: (0.10, 0.08, 0.07),
+        tunic: (0.35, 0.22, 0.12),
+        trousers: (0.25, 0.20, 0.16),
+    ),
+    (
+        id: "old_villager",
+        skin: (0.86, 0.68, 0.56),
+        hair: (0.78, 0.78, 0.75),
+        tunic: (0.34, 0.40, 0.28),
+        trousers: (0.32, 0.27, 0.22),
+    ),
+    (
+        id: "baker",
+        skin: (0.90, 0.72, 0.60),
+        hair: (0.55, 0.25, 0.12),
+        tunic: (0.86, 0.80, 0.66),
+        trousers: (0.40, 0.33, 0.26),
+    ),
+]

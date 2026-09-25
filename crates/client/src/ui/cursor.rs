@@ -1,5 +1,6 @@
-//! The mouse cursor: an ornate gold pointer normally, a pointer with a
-//! trailing arrow when a click would follow the player under it, and a sword
+//! The mouse cursor: an ornate gold pointer normally; with a trailing arrow
+//! when a click would follow the (selected) player under it; with a speech
+//! bubble when a click would talk to the (selected) NPC under it; and a sword
 //! when a click would attack (for when creatures exist).
 //!
 //! Both are original placeholder art drawn in code. On the web they become
@@ -37,6 +38,8 @@ pub enum CursorStyle {
     Pointer,
     /// Clicking will follow the (selected) player under the cursor.
     Follow,
+    /// Clicking will talk to the (selected) NPC under the cursor.
+    Talk,
     /// A sword: clicking again will attack the selected target.
     Attack,
 }
@@ -45,6 +48,7 @@ pub enum CursorStyle {
 struct CursorImages {
     pointer: Handle<Image>,
     follow: Handle<Image>,
+    talk: Handle<Image>,
     attack: Handle<Image>,
 }
 
@@ -52,12 +56,13 @@ fn create_cursors(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     commands.insert_resource(CursorImages {
         pointer: images.add(draw(pointer_pixel)),
         follow: images.add(draw(follow_pixel)),
+        talk: images.add(draw(talk_pixel)),
         attack: images.add(draw(sword_pixel)),
     });
 }
 
-/// Picks the cursor for what's under it: the follow cursor over the
-/// selected player (clicking will follow them), otherwise the pointer.
+/// Picks the cursor for what's under it: over the selected player, the
+/// follow cursor; over the selected NPC, the talk cursor; otherwise the pointer.
 fn choose_cursor_style(
     hovered: Res<Hovered>,
     target: Res<Target>,
@@ -66,7 +71,8 @@ fn choose_cursor_style(
 ) {
     let over_selected = hovered.0.filter(|&entity| target.0 == Some(entity));
     let wanted = match over_selected.and_then(|entity| targetables.get(entity).ok()) {
-        Some(Targetable(TargetKind::Player(_))) => CursorStyle::Follow,
+        Some(Targetable { kind: TargetKind::Player, .. }) => CursorStyle::Follow,
+        Some(Targetable { kind: TargetKind::Npc, .. }) => CursorStyle::Talk,
         _ => CursorStyle::Pointer,
     };
     if *style != wanted {
@@ -88,6 +94,7 @@ fn apply_cursor_style(
     let handle = match *style {
         CursorStyle::Pointer => images.pointer.clone(),
         CursorStyle::Follow => images.follow.clone(),
+        CursorStyle::Talk => images.talk.clone(),
         CursorStyle::Attack => images.attack.clone(),
     };
     // Both cursors point from their top-left corner.
@@ -141,6 +148,27 @@ fn follow_pixel(p: Vec2) -> [f32; 4] {
         return [trailing[0] * 0.85 + 0.15, trailing[1] * 0.85 + 0.15, trailing[2] * 0.85 + 0.1, trailing[3]];
     }
     trailing
+}
+
+/// The talk cursor: the pointer, with a small speech bubble at the lower right.
+fn talk_pixel(p: Vec2) -> [f32; 4] {
+    let main = pointer_pixel(p / 0.8);
+    if main[3] > 0.0 {
+        return main;
+    }
+    // An oval bubble with a little tail pointing back towards the arrow.
+    let centre = Vec2::new(23.5, 22.0);
+    let radii = Vec2::new(7.5, 5.5);
+    let oval = ((p - centre) / radii).length();
+    let tail = [Vec2::new(18.0, 25.0), Vec2::new(15.0, 30.0), Vec2::new(22.0, 26.5)];
+    let in_tail = inside_polygon(p, &tail);
+    if oval < 0.8 || (in_tail && oval > 0.6) {
+        return [0.97, 0.95, 0.88, 1.0];
+    }
+    if oval < 1.0 || distance_to_polygon_edge(p, &tail) < 1.0 && in_tail {
+        return OUTLINE;
+    }
+    CLEAR
 }
 
 /// The pointer: an arrow with a gold body and a dark outline.

@@ -21,6 +21,19 @@ cargo run --release -p venture_worldgen --bin bake [folder] [seed]
 Bake again whenever world generation changes. The manifest records the
 generator version.
 
+## The content pack
+
+NPCs, their looks and their behaviour live in `content/` (see
+[content-authoring.md](content-authoring.md)). Check it for mistakes with:
+
+```sh
+cargo run -p venture_content --features scripts --bin check
+```
+
+The server won't start with broken content, and while it runs, it reloads
+content whenever a file changes (keeping the old content if the new has
+problems).
+
 ## The server
 
 ```sh
@@ -46,6 +59,7 @@ file, and it takes its default. Misspelt settings are reported as errors.
         world: "world",
         profiles: "server_data/profiles",
         client: "crates/client/dist",
+        content: "content",
     ),
     player: (
         max_move_distance: 150.0,   // metres one click can send a character
@@ -129,6 +143,7 @@ VENTURE_CAMERA="480,2640,0.6,0.3,30" VENTURE_SCREENSHOT=shot.png cargo run -p ve
 | Variable | Meaning |
 | --- | --- |
 | `VENTURE_SCREENSHOT=path` | Wait until the world around the player has loaded, save a screenshot there, and exit. Renders offscreen, so it works even when the window isn't visible. |
+| `VENTURE_SCREENSHOT_DELAY=seconds` | Wait this much longer after loading before taking the screenshot. |
 | `VENTURE_CAMERA=x,y,yaw,pitch,distance` | In `--local` mode, new characters start at `(x, y)` metres. The camera starts at that rotation and tilt (radians) and distance (metres). |
 | `VENTURE_MOVE_TO=x,y` | Once loaded, run to `(x, y)` as if it were clicked. |
 | `VENTURE_SAY=text` | Say this in chat once in the game (separate several messages with `\|`). |

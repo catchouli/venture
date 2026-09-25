@@ -7,6 +7,7 @@
 use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
+use venture_content::{AppearanceDef, Colour};
 
 /// Distance covered by one full running cycle (two steps), in metres.
 const STRIDE_LENGTH: f32 = 2.6;
@@ -151,16 +152,66 @@ impl FromWorld for CharacterAssets {
     }
 }
 
+/// The colours a character is drawn in.
+#[derive(Clone)]
+pub struct Look {
+    /// Skin.
+    pub skin: Handle<StandardMaterial>,
+    /// Hair.
+    pub hair: Handle<StandardMaterial>,
+    /// Tunic.
+    pub tunic: Handle<StandardMaterial>,
+    /// Trousers.
+    pub trousers: Handle<StandardMaterial>,
+}
+
+impl CharacterAssets {
+    /// A player's look: the usual colours, with a tunic picked by `variant`
+    /// (any number; it wraps around) so players are easier to tell apart.
+    pub fn player_look(&self, variant: u32) -> Look {
+        Look {
+            skin: self.skin.clone(),
+            hair: self.hair.clone(),
+            tunic: self.tunics[variant as usize % self.tunics.len()].clone(),
+            trousers: self.trousers.clone(),
+        }
+    }
+}
+
+/// The look described by a content appearance, with new materials.
+pub fn appearance_look(materials: &mut Assets<StandardMaterial>, appearance: &AppearanceDef) -> Look {
+    let mut material = |(r, g, b): Colour, roughness: f32| {
+        materials.add(StandardMaterial {
+            base_color: Color::srgb(r, g, b),
+            perceptual_roughness: roughness,
+            ..default()
+        })
+    };
+    Look {
+        skin: material(appearance.skin, 0.7),
+        hair: material(appearance.hair, 0.6),
+        tunic: material(appearance.tunic, 0.8),
+        trousers: material(appearance.trousers, 0.9),
+    }
+}
+
 /// Spawns a character standing at `transform` and returns its entity.
-/// `variant` picks its tunic colour (any number; it wraps around).
-pub fn spawn_character(
-    commands: &mut Commands,
-    assets: &CharacterAssets,
-    transform: Transform,
-    variant: u32,
-) -> Entity {
-    let tunic = &assets.tunics[variant as usize % assets.tunics.len()];
+pub fn spawn_character(commands: &mut Commands, assets: &CharacterAssets, transform: Transform, look: &Look) -> Entity {
     let owner = commands.spawn((Name::new("Character"), transform, Visibility::default(), Gait::default())).id();
+    build_body(commands, owner, assets, look);
+    owner
+}
+
+/// Rebuilds a character's body with a new look (such as when its appearance
+/// changes in the content). The character entity itself stays.
+pub fn rebuild_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, look: &Look) {
+    commands.entity(owner).despawn_children();
+    build_body(commands, owner, assets, look);
+}
+
+/// Builds the body parts and joints under a character entity.
+fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, look: &Look) {
+    let tunic = &look.tunic;
     let m = &assets.meshes;
     let joint = |kind| Joint { owner, kind };
 
@@ -176,14 +227,14 @@ pub fn spawn_character(
         .spawn((joint(JointKind::Body), Transform::from_xyz(0.0, 0.95, 0.0), Visibility::default()))
         .with_children(|body| {
             // Hips, tunic and belt.
-            body.spawn(sphere(&assets.trousers, Vec3::new(0.0, 0.02, 0.0), Vec3::new(0.17, 0.11, 0.12)));
+            body.spawn(sphere(&look.trousers, Vec3::new(0.0, 0.02, 0.0), Vec3::new(0.17, 0.11, 0.12)));
             body.spawn(part(&m.skirt, tunic, scaled(0.0, -0.06, 0.0, Vec3::new(1.1, 1.0, 0.85))));
             body.spawn(part(&m.torso, tunic, scaled(0.0, 0.30, 0.0, Vec3::new(1.3, 1.0, 0.85))));
             body.spawn(part(&m.belt, &assets.belt, scaled(0.0, 0.06, 0.0, Vec3::new(1.25, 1.0, 0.85))));
             // Neck, head and hair. The top of the hair is 1.8 m above the ground.
-            body.spawn(part(&m.neck, &assets.skin, Transform::from_xyz(0.0, 0.60, 0.0)));
-            body.spawn(sphere(&assets.skin, Vec3::new(0.0, 0.72, 0.0), Vec3::new(0.106, 0.127, 0.115)));
-            body.spawn(sphere(&assets.hair, Vec3::new(0.0, 0.745, -0.015), Vec3::new(0.117, 0.12, 0.128)));
+            body.spawn(part(&m.neck, &look.skin, Transform::from_xyz(0.0, 0.60, 0.0)));
+            body.spawn(sphere(&look.skin, Vec3::new(0.0, 0.72, 0.0), Vec3::new(0.106, 0.127, 0.115)));
+            body.spawn(sphere(&look.hair, Vec3::new(0.0, 0.745, -0.015), Vec3::new(0.117, 0.12, 0.128)));
         })
         .id();
     commands.entity(owner).add_child(body);
@@ -199,7 +250,7 @@ pub fn spawn_character(
                     .spawn((joint(JointKind::Elbow), Transform::from_xyz(0.0, -0.28, 0.0), Visibility::default()))
                     .with_children(|elbow| {
                         elbow.spawn(part(&m.forearm, &assets.linen, Transform::from_xyz(0.0, -0.13, 0.0)));
-                        elbow.spawn(sphere(&assets.skin, Vec3::new(0.0, -0.28, 0.0), Vec3::new(0.04, 0.055, 0.03)));
+                        elbow.spawn(sphere(&look.skin, Vec3::new(0.0, -0.28, 0.0), Vec3::new(0.04, 0.055, 0.03)));
                     });
             })
             .id();
@@ -208,10 +259,10 @@ pub fn spawn_character(
         let hip = commands
             .spawn((joint(JointKind::Hip(side)), Transform::from_xyz(0.095 * x, 0.92, 0.0), Visibility::default()))
             .with_children(|hip| {
-                hip.spawn(part(&m.thigh, &assets.trousers, Transform::from_xyz(0.0, -0.21, 0.0)));
+                hip.spawn(part(&m.thigh, &look.trousers, Transform::from_xyz(0.0, -0.21, 0.0)));
                 hip.spawn((joint(JointKind::Knee(side)), Transform::from_xyz(0.0, -0.44, 0.0), Visibility::default()))
                     .with_children(|knee| {
-                        knee.spawn(part(&m.shin, &assets.trousers, Transform::from_xyz(0.0, -0.2, 0.0)));
+                        knee.spawn(part(&m.shin, &look.trousers, Transform::from_xyz(0.0, -0.2, 0.0)));
                         knee.spawn(part(&m.boot_shaft, &assets.boots, Transform::from_xyz(0.0, -0.32, 0.0)));
                         knee.spawn(part(&m.foot, &assets.boots, Transform::from_xyz(0.0, -0.44, 0.05)));
                     });
@@ -219,7 +270,6 @@ pub fn spawn_character(
             .id();
         commands.entity(owner).add_child(hip);
     }
-    owner
 }
 
 /// A transform at `(x, y, z)` with a non-uniform `scale`.

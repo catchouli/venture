@@ -12,7 +12,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
 use venture_world::{
-    CHUNK_FORMAT_VERSION, CHUNK_SIZE, ChunkPos, MANIFEST_FILE, WorldManifest, chunk_file_path, encode_chunk,
+    CHUNK_FORMAT_VERSION, CHUNK_SIZE, ChunkPos, MANIFEST_FILE, SettlementInfo, WorldManifest, chunk_file_path,
+    encode_chunk,
 };
 use venture_worldgen::{GENERATOR_VERSION, WorldGenConfig, WorldGenerator};
 
@@ -35,6 +36,12 @@ fn main() -> std::io::Result<()> {
         generator_version: GENERATOR_VERSION,
         seed: world.config().seed,
         spawn_point: world.spawn_point(),
+        settlements: world
+            .map()
+            .settlements()
+            .iter()
+            .map(|settlement| SettlementInfo { position: settlement.position, biome: settlement.biome })
+            .collect(),
     };
     std::fs::create_dir_all(output.join("chunks"))?;
 

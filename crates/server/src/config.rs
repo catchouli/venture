@@ -48,11 +48,18 @@ pub struct PathsConfig {
     pub profiles: PathBuf,
     /// The built web client.
     pub client: PathBuf,
+    /// The content pack (NPCs, appearances, scripts).
+    pub content: PathBuf,
 }
 
 impl Default for PathsConfig {
     fn default() -> Self {
-        Self { world: "world".into(), profiles: "server_data/profiles".into(), client: "crates/client/dist".into() }
+        Self {
+            world: "world".into(),
+            profiles: "server_data/profiles".into(),
+            client: "crates/client/dist".into(),
+            content: "content".into(),
+        }
     }
 }
 

@@ -1,0 +1,34 @@
+// The people of the town new characters start in. Offsets are in metres from
+// the town square's centre: (east, south).
+[
+    (
+        id: "town_guard",
+        name: "Guard Aldren",
+        appearance: "guard",
+        at: StartingSettlement(offset: (11.0, 1.0)),
+        script: Some("guard.rhai"),
+    ),
+    (
+        id: "town_smith",
+        name: "Hilda",
+        appearance: "smith",
+        at: StartingSettlement(offset: (-7.0, 4.0)),
+        script: Some("smith.rhai"),
+    ),
+    (
+        id: "old_tomas",
+        name: "Old Tomas",
+        appearance: "old_villager",
+        at: StartingSettlement(offset: (3.0, -6.0)),
+        script: Some("wanderer.rhai"),
+        wander_radius: 12.0,
+    ),
+    (
+        id: "town_baker",
+        name: "Elsie",
+        appearance: "baker",
+        at: StartingSettlement(offset: (-4.0, -8.0)),
+        script: Some("baker.rhai"),
+        wander_radius: 4.0,
+    ),
+]

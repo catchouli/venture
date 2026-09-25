@@ -1,8 +1,12 @@
 # Content authoring
 
-> Design only: nothing here is implemented yet. Decided: **RON** for data,
-> **Yarn Spinner** for dialogue, **Rhai** for scripts. How they fit the client
-> and server is in [client-server.md](client-server.md).
+> Decided: **RON** for data, **Yarn Spinner** for dialogue, **Rhai** for
+> scripts. How they fit the client and server is in [client-server.md](client-server.md).
+>
+> **Working now (milestone 2):** appearances and NPCs in RON, NPC behaviour in
+> Rhai, hot reload, a checking tool, and streaming the client's part to
+> browsers. See "The content pack today" below. Items, dialogue (Yarn) and
+> quests come in milestone 3.
 
 The world's land (terrain, rivers, biomes, settlement sites, roads) is
 generated. Everything that makes it a *game* is added by people on top:
@@ -30,6 +34,107 @@ events. Much of it should be writable by **people who aren't programmers**
 6. **Mistakes are caught early.** Content is checked on load (does this NPC's
    shop exist? does this quest give an item that exists?) and errors point to
    the file and line.
+
+## The content pack today
+
+```
+content/
+  appearances/*.ron    how characters look (the only part sent to clients)
+  npcs/*.ron           who lives where
+  scripts/*.rhai       how NPCs behave
+```
+
+Check it for mistakes (every problem is reported with its file, and line
+where there is one):
+
+```sh
+cargo run -p venture_content --features scripts --bin check
+```
+
+**Hot reload:** while the server (or the desktop `--local` client) runs, just
+save a file. The server reloads within about a second:
+- NPCs whose definition changed are replaced;
+- NPCs whose only change is their script keep going with the new script;
+- connected clients download any changed appearances and redraw at once.
+
+If the new content has a problem, the server logs it and keeps the old
+content, so a typo never takes the game down.
+
+### Appearances
+
+```ron
+[
+    (id: "guard", skin: (0.84, 0.64, 0.51), hair: (0.22, 0.15, 0.09),
+     tunic: (0.20, 0.25, 0.45), trousers: (0.18, 0.18, 0.20)),
+]
+```
+
+Colours are sRGB red, green and blue, each from 0 to 1.
+
+### NPCs
+
+```ron
+[
+    (
+        id: "town_guard",               // unique; used to recognise the NPC across reloads
+        name: "Guard Aldren",           // shown to players
+        appearance: "guard",
+        at: StartingSettlement(offset: (11.0, 1.0)),
+        script: Some("guard.rhai"),     // optional
+        wander_radius: 0.0,             // optional: how far from home it may wander (metres)
+    ),
+]
+```
+
+Placement (`at`) is relative to the generated world's settlements, so content
+stays put even when the terrain generator is tuned. Offsets are in metres,
+`(east, south)`:
+- `StartingSettlement(offset: (x, y))`: the town new characters start in.
+- `Settlement(index: n, offset: (x, y))`: settlement number `n` in the baked
+  world (0 is the best site).
+- `Position((x, y))`: an exact spot in the world.
+
+### Scripts
+
+A script defines **hooks**, functions the game calls when things happen:
+
+| Hook | When |
+| --- | --- |
+| `on_spawn(npc)` | The NPC appears (at startup, or after a reload replaces it). |
+| `on_interact(npc, player)` | A player talks to the NPC (clicks it again once selected; they walk over first). |
+| `on_idle(npc)` | Every few seconds while the NPC is standing still. |
+
+What scripts can use:
+
+| | |
+| --- | --- |
+| `npc.name`, `npc.x`, `npc.y`, `npc.home_x`, `npc.home_y` | Read-only facts about the NPC. |
+| `npc.say(text)` | Say something: shown above the NPC and in the chat of players within 40 m. |
+| `npc.wander()` | Walk to a random spot within the NPC's `wander_radius` of home. |
+| `npc.move_to(x, y)` | Walk towards a point, kept within the wander radius. |
+| `player.name`, `player.x`, `player.y` | Read-only facts about the player. |
+| `random(n)` | A random whole number from 0 to n - 1. |
+| `chance(p)` | True with probability `p` (0.0 to 1.0). |
+| `print(text)` | Write to the server log (handy while writing a script). |
+
+```rhai
+fn on_interact(npc, player) {
+    let advice = [
+        "Stay on the roads after dark, " + player.name + ".",
+        "The river's safe to wade where it's shallow.",
+    ];
+    npc.say(advice[random(advice.len())]);
+}
+```
+
+**How scripts are kept safe:** a script never changes the game itself.
+Calls like `npc.say` only *queue a request*, which the engine checks (for
+example, speech is cleaned and length-limited, and walking stays within the
+wander radius) and then carries out. Scripts can't read files, reach the
+network, `eval` code or import other files, and each hook call has limits on
+how much work it may do and how big its data may grow. A runaway loop is
+stopped and logged, and the game carries on. A misspelt hook name, or a hook
+with the wrong number of arguments, is caught when the content is checked.
 
 ## Three layers
 

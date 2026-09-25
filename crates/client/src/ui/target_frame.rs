@@ -134,7 +134,8 @@ fn update_frame(
     bar: Single<(&mut Node, &mut Visibility), (With<HealthBar>, Without<HealthFill>, Without<TargetFrame>)>,
     mut fill: Single<&mut Node, (With<HealthFill>, Without<HealthBar>)>,
 ) {
-    let Some((Targetable(kind), nameplate, health)) = target.0.and_then(|entity| targets.get(entity).ok()) else {
+    let Some((&Targetable { kind, .. }, nameplate, health)) = target.0.and_then(|entity| targets.get(entity).ok())
+    else {
         **frame = Visibility::Hidden;
         return;
     };
@@ -143,7 +144,7 @@ fn update_frame(
         name.0.clone_from(&nameplate.0);
     }
     // Only creatures show health: NPCs can't be attacked, and other players' health is private.
-    let shown_health = health.filter(|_| *kind == TargetKind::Enemy);
+    let shown_health = health.filter(|_| kind == TargetKind::Enemy);
     let (mut bar_node, mut bar_visibility) = bar.into_inner();
     match shown_health {
         Some(health) => {

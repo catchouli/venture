@@ -7,8 +7,8 @@
 
 use bevy::prelude::*;
 use venture_navigation::Point;
-use venture_protocol::{ClientMessage, PlayerId, ServerMessage};
-use venture_simulation::{Follow, FollowOutcome, Movement, Rules, step};
+use venture_protocol::{ClientMessage, EntityId, ServerMessage};
+use venture_simulation::{Follow, FollowOutcome, INTERACT_DISTANCE, Movement, Rules, step};
 
 use crate::camera::{CameraHeading, CameraMode, wasd_direction};
 use crate::characters::model::{CharacterAssets, Gait, spawn_character};
@@ -62,7 +62,7 @@ pub struct PlayerSystems;
 #[derive(Component)]
 pub struct LocalPlayer {
     /// The player's id this session.
-    pub id: PlayerId,
+    pub id: EntityId,
     /// How the character is moving, as predicted locally.
     pub movement: Movement,
     /// Who the character is following, if anyone.
@@ -75,6 +75,9 @@ pub struct Following {
     pub target: Entity,
     /// The state of the chase.
     pub follow: Follow,
+    /// Whether this is walking over to talk to an NPC, which ends on arrival
+    /// (the server then starts the conversation).
+    pub talk_on_arrival: bool,
 }
 
 /// The server's game rules, received when joining.
@@ -110,7 +113,8 @@ fn place_on_welcome(
             nameplate.0.clone_from(name);
             continue;
         }
-        let character = spawn_character(&mut commands, &assets, Transform::from_translation(translation), you.0);
+        let look = assets.player_look(you.0);
+        let character = spawn_character(&mut commands, &assets, Transform::from_translation(translation), &look);
         commands.entity(character).insert((
             Name::new("Player"),
             LocalPlayer { id: *you, movement: Movement::Idle, following: None },
@@ -197,6 +201,11 @@ fn predict_following(
         return;
     };
     let (position, target) = (from_bevy(transform.translation), from_bevy(target.translation));
+    if chase.talk_on_arrival && (target.0 - position.0).hypot(target.1 - position.1) <= INTERACT_DISTANCE {
+        *following = None;
+        *movement = Movement::Idle;
+        return;
+    }
     let outcome =
         chase.follow.update(position, target, movement, rules.0.max_move_distance, |x, y| is_blocked(&obstacles, x, y));
     if outcome == FollowOutcome::Stop {
@@ -242,8 +251,8 @@ fn correct_towards_server(
     let Some(player) = player else { return };
     let (mut transform, player) = player.into_inner();
     for FromServer(message) in events.read() {
-        if let ServerMessage::Snapshot { players, .. } = message
-            && let Some(me) = players.iter().find(|state| state.id == player.id)
+        if let ServerMessage::Snapshot { entities, .. } = message
+            && let Some(me) = entities.iter().find(|state| state.id == player.id)
         {
             *server_position = Some(((me.x, me.y), me.moving));
         }

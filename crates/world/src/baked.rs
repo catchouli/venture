@@ -34,6 +34,19 @@ pub struct WorldManifest {
     pub seed: u32,
     /// Where new characters start, in metres.
     pub spawn_point: (f32, f32),
+    /// The settlement sites, best first. Content places things relative to
+    /// them (see `docs/content-authoring.md`).
+    #[serde(default)]
+    pub settlements: Vec<SettlementInfo>,
+}
+
+/// A settlement site in a baked world.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SettlementInfo {
+    /// Centre of the settlement, in metres.
+    pub position: (f32, f32),
+    /// The biome it's in.
+    pub biome: Biome,
 }
 
 impl WorldManifest {
@@ -46,6 +59,15 @@ impl WorldManifest {
     pub fn contains_chunk(&self, pos: ChunkPos) -> bool {
         let chunks = self.chunks_per_side();
         (0..chunks).contains(&pos.x) && (0..chunks).contains(&pos.y)
+    }
+
+    /// The settlement new characters start in: the one at the spawn point.
+    pub fn starting_settlement(&self) -> Option<&SettlementInfo> {
+        let (x, y) = self.spawn_point;
+        self.settlements.iter().min_by(|a, b| {
+            let distance = |s: &SettlementInfo| (s.position.0 - x).hypot(s.position.1 - y);
+            distance(a).total_cmp(&distance(b))
+        })
     }
 
     /// Reads a manifest from RON text.
@@ -192,6 +214,7 @@ mod tests {
             generator_version: 1,
             seed: 7,
             spawn_point: (10.0, 20.0),
+            settlements: vec![SettlementInfo { position: (10.0, 20.0), biome: Biome::Meadow }],
         };
         assert_eq!(WorldManifest::from_ron(&manifest.to_ron()).unwrap(), manifest);
     }

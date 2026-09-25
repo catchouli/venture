@@ -9,7 +9,7 @@
 //! following, or later attacking) sends a command to the server.
 
 use bevy::prelude::*;
-use venture_protocol::PlayerId;
+use venture_protocol::EntityId;
 
 use crate::dev::settings::DevSettings;
 use crate::ui::text_input::KeyboardFocus;
@@ -33,18 +33,24 @@ impl Plugin for TargetingPlugin {
     }
 }
 
-/// Something that can be selected.
+/// Something that can be selected: an entity in the game world.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Targetable(pub TargetKind);
+pub struct Targetable {
+    /// Its id on the server.
+    pub id: EntityId,
+    /// What kind of thing it is.
+    pub kind: TargetKind,
+}
 
 /// What kind of thing a target is, which decides what the target frame shows
 /// and what clicking it again does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // NPCs and creatures are coming with the content pack.
+#[allow(dead_code)] // Creatures are coming later.
 pub enum TargetKind {
-    /// Another player. Their health isn't shown.
-    Player(PlayerId),
-    /// A non-player character. Can't be attacked, so no health is shown.
+    /// Another player: clicking again follows them. Their health isn't shown.
+    Player,
+    /// A non-player character: clicking again talks to them. Can't be
+    /// attacked, so no health is shown.
     Npc,
     /// A creature that can be fought: the target frame shows its health.
     Enemy,
@@ -52,7 +58,7 @@ pub enum TargetKind {
 
 /// How healthy a creature is, shown in the target frame.
 #[derive(Component, Clone, Copy, Debug)]
-#[allow(dead_code)] // Creatures are coming with the content pack.
+#[allow(dead_code)] // Creatures are coming later.
 pub struct Health {
     /// Current health.
     pub current: f32,

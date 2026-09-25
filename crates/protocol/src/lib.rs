@@ -1,8 +1,9 @@
 //! The messages exchanged between the client and the server.
 //!
 //! The protocol is a small set of **commands** from the client ("I'd like to
-//! move there", "say this") and **events** from the server ("this player
-//! joined", "here is where everyone is"). The server never trusts a command:
+//! move there", "say this") and **events** from the server ("this entity
+//! appeared", "here is where everyone is"). Players and NPCs are both
+//! *entities*, identified by an [`EntityId`]. The server never trusts a command:
 //! it validates each one and decides what actually happens. The client's
 //! world is only a view of the events it receives. See `docs/client-server.md`.
 //!
@@ -12,12 +13,12 @@
 mod messages;
 mod rules;
 
-pub use messages::{ClientMessage, PlayerId, PlayerState, ServerMessage};
+pub use messages::{ClientMessage, EntityId, EntityKind, EntityState, ServerMessage};
 pub use rules::{MAX_CHAT_CHARS, MAX_NAME_CHARS, MIN_NAME_CHARS, clean_chat_text, clean_name, is_valid_token};
 
 /// The protocol version. Increase it whenever messages change; the server
 /// turns away clients speaking a different version.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// The largest message a client may send, in bytes. Anything bigger is
 /// refused before decoding.
@@ -81,7 +82,7 @@ mod tests {
 
         let event = ServerMessage::Snapshot {
             tick: 42,
-            players: vec![PlayerState { id: PlayerId(7), x: 1.0, y: 2.0, moving: true }],
+            entities: vec![EntityState { id: EntityId(7), x: 1.0, y: 2.0, moving: true }],
         };
         assert_eq!(ServerMessage::decode(&event.encode()).unwrap(), event);
     }

@@ -1,4 +1,4 @@
-//! What characters have said recently, shown in speech bubbles above their
+//! What players and NPCs have said recently, shown in speech bubbles above their
 //! heads (see [`crate::characters::nameplates`]). Each line disappears after
 //! a while; the chat box keeps the full history.
 
@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use venture_protocol::ServerMessage;
 
 use crate::characters::player::LocalPlayer;
-use crate::interaction::targeting::{TargetKind, Targetable};
+use crate::interaction::targeting::Targetable;
 use crate::network::FromServer;
 
 /// How long each line stays above a character's head, in seconds.
@@ -54,7 +54,7 @@ fn record_speech(
         let ServerMessage::Chat { from, text, .. } = message else { continue };
         let speaker = match &me {
             Some(me) if me.1.id == *from => Some(me.0),
-            _ => others.iter().find(|(_, t)| t.0 == TargetKind::Player(*from)).map(|(entity, _)| entity),
+            _ => others.iter().find(|(_, targetable)| targetable.id == *from).map(|(entity, _)| entity),
         };
         let Some(mut lines) = speaker.and_then(|entity| speech.get_mut(entity).ok()) else { continue };
         lines.lines.push_back(SpeechLine { text: shorten(text), expires_at: time.elapsed_secs() + SHOW_SECONDS });
