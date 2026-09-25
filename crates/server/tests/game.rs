@@ -425,3 +425,32 @@ fn npc_speech_only_reaches_players_nearby() {
     let heard = near.receive().iter().any(|m| matches!(m, ServerMessage::Chat { text, .. } if text == "Hear ye!"));
     assert!(heard, "a nearby player hears the NPC");
 }
+
+#[test]
+fn the_town_command_sends_players_home_without_being_said_aloud() {
+    let mut server = TestServer::new("town");
+    let (walker, me) = server.join(TOKEN_A, "Wanderer");
+    let (listener, _) = server.join(TOKEN_B, "Listener");
+    walker.send(&ClientMessage::MoveTo { x: 125.0, y: 100.0 });
+    server.run(120);
+    assert!(walker.latest_position(me).unwrap().0 > 120.0);
+    listener.receive();
+
+    walker.send(&ClientMessage::Chat { text: "/town".to_string() });
+    server.run(2);
+    let messages = walker.receive();
+    let home = messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Snapshot { entities, .. } => entities.iter().find(|e| e.id == me).map(|e| (e.x, e.y)),
+        _ => None,
+    });
+    assert_eq!(home, Some((100.0, 100.0)), "back at the spawn point");
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::Notice { text } if text == "You return to town.")));
+    assert!(
+        !listener.receive().iter().any(|m| matches!(m, ServerMessage::Chat { .. })),
+        "commands aren't broadcast as chat"
+    );
+
+    walker.send(&ClientMessage::Chat { text: "/fly".to_string() });
+    server.run(1);
+    assert!(walker.receive().iter().any(|m| matches!(m, ServerMessage::Notice { text } if text.contains("/help"))));
+}

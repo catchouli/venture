@@ -46,7 +46,8 @@ and `cargo fmt --check`.
 Controls: **left-click** the ground to run there, or run with **WASD**
 (relative to the camera). **Right-drag** or the **arrow keys** rotate and tilt
 the camera, and the **mouse wheel** zooms. Click a player or NPC to **select**
-them; click again to **follow** a player or **talk** to an NPC. **Escape** deselects. **Enter** chats. **F1** switches to a
+them; click again to **follow** a player or **talk** to an NPC. **Escape** deselects. **Enter** chats.
+Type **/town** in chat to go back to the starting town, and **/help** for other commands. **F1** switches to a
 free camera for flying around (**WASD** to move, **Shift** to go faster).
 
 ## Documentation

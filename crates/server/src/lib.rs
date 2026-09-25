@@ -30,6 +30,7 @@
 // lists and query types are normal here.
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
+pub mod chat_commands;
 pub mod config;
 pub mod content;
 pub mod entities;

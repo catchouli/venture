@@ -265,6 +265,14 @@ in the game. The sender's own message appears when the server's broadcast
 comes back, so every player sees exactly the same chat. Server messages
 (joins, leaves, warnings) arrive as `Notice { text }`.
 
+**Chat commands:** a message starting with `/` is a command, not chat. The
+gate parses it (`chat_commands.rs`), gameplay carries it out, and it's never
+broadcast. Commands share chat's rate limit. So far:
+- `/town`: go back to the starting town's square;
+- `/help`: list the commands.
+
+Unknown commands get a notice pointing to `/help`.
+
 ## Connection problems
 
 The live game always needs the server. If the client can't connect, or loses

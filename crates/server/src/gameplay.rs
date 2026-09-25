@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use venture_protocol::{EntityId, EntityState, ServerMessage};
 use venture_simulation::{Follow, FollowOutcome, INTERACT_DISTANCE, Movement, clamp_move_goal, plan_route, step};
 
+use crate::chat_commands::ChatCommand;
 use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position};
 use crate::link::Link;
 use crate::npcs::{Npc, NpcInteraction};
@@ -45,7 +46,7 @@ fn act_on_requests(
     for request in requests.read() {
         let player = request.player;
         // Any movement command replaces following and walking over to talk.
-        if !matches!(request.action, PlayerAction::Chat(_)) {
+        if !matches!(request.action, PlayerAction::Chat(_) | PlayerAction::Command(ChatCommand::Help)) {
             commands.entity(player).remove::<(Following, PendingInteraction)>();
         }
         let Ok((&Position(position), mut mover)) = movers.get_mut(player) else { continue };
@@ -81,6 +82,17 @@ fn act_on_requests(
                         .entity(player)
                         .insert((Following { target, follow: Follow::default() }, PendingInteraction { target }));
                 }
+            }
+            PlayerAction::Command(ChatCommand::Town) => {
+                // The town square, whatever development overrides say about where new characters start.
+                commands.entity(player).insert(Position(world.manifest.spawn_point));
+                mover.0 = Movement::Idle;
+                let Ok((speaker, ..)) = players.get(player) else { continue };
+                link.send(speaker.connection, &ServerMessage::Notice { text: "You return to town.".to_string() });
+            }
+            PlayerAction::Command(ChatCommand::Help) => {
+                let Ok((speaker, ..)) = players.get(player) else { continue };
+                link.send(speaker.connection, &ServerMessage::Notice { text: ChatCommand::help() });
             }
             PlayerAction::Chat(text) => {
                 let Ok((_, &NetworkId(from), name)) = players.get(player) else { continue };
