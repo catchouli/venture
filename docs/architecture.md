@@ -3,11 +3,11 @@
 ## Crates
 
 ```
-venture_client ──► venture_protocol, venture_simulation, venture_navigation, venture_world
+venture_client ──► venture_protocol, venture_simulation, venture_navigation, venture_content, venture_world
    (Bevy)     └──► venture_server (desktop only, for --local mode)
 
-venture_server ──► venture_protocol, venture_simulation, venture_navigation, venture_world
-   (headless Bevy, tokio/axum)
+venture_server ──► venture_protocol, venture_simulation, venture_navigation, venture_content (+scripts), venture_world
+   (headless Bevy, tokio/axum, Rhai)
 
 venture_worldgen ──► venture_world     (the bake tool; nothing at runtime depends on it)
 ```
@@ -19,17 +19,12 @@ venture_worldgen ──► venture_world     (the bake tool; nothing at runtime 
 | `venture_navigation` | Where characters can walk (blocked cells per chunk) and pathfinding (A* plus line-of-sight smoothing). |
 | `venture_simulation` | Game rules both sides run: movement, speed and input validation. The client uses them to predict, and the server to decide. |
 | `venture_protocol` | The messages between client and server, their encoding (postcard), size limits, and shared validation rules for names, chat and tokens. |
-| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles, gameplay, and the HTTP/WebSocket host. |
+| `venture_content` | The content pack: appearance and NPC definitions, loading with every problem reported by file, script checks (with the `scripts` feature), the client manifest, and the `check` tool. |
+| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles, gameplay, NPCs, the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
 | `venture_client` | The game client: a view of the server's game, with rendering, input, prediction, chat and debug tools. |
 
 **Rule:** only the client and the server depend on Bevy. The shared crates
 are engine-free, so both sides can use them and they're easy to test.
-
-## Planned crates
-
-| Crate | Purpose |
-| --- | --- |
-| `venture_content` | Loading, checking and hot-reloading the content pack: data (RON), dialogue (Yarn Spinner) and scripts (Rhai). See [content-authoring.md](content-authoring.md). |
 
 ## Client and server
 
@@ -50,6 +45,12 @@ Every change to the live game goes through one path (see the `venture_server` cr
    players, and that loads and saves profiles (through `profiles`).
 4. `gameplay`: the only code that changes players while they play, and the
    per-tick simulation and snapshots.
+5. `npcs`: the only code that creates, removes and moves NPCs. Scripts
+   (`scripting`) can only queue commands, which `npcs` checks and applies.
+   `content` loads the content pack and reloads it when files change.
+
+`entities` holds what players and NPCs share (network id, name, position,
+movement).
 
 ## Client structure
 
@@ -62,9 +63,11 @@ flow out as `ToServer` messages. No other module touches the connection.
 src/
   main.rs            the app: adds one plugin per concern
   camera.rs          follow and free cameras, and their controls
+  content/           the content pack's client files, downloaded and kept up to date
   network/           the connection to the server
     mod.rs             protocol flow and connection state (FromServer / ToServer)
     connection.rs      the transport: WebSocket, or in-memory for --local
+    http.rs            downloading files from the server
     launch.rs          which server to use
     token.rs           the login token
     local_server.rs    --local mode: the game server inside the client
@@ -79,12 +82,12 @@ src/
   characters/        characters in the world
     model.rs           the placeholder character and its animation
     player.rs          your character: prediction, steering, following, correction
-    remote.rs          other players, interpolated between snapshots
+    remote.rs          other players and NPCs, interpolated between snapshots
     nameplates.rs      names above characters, with orbs on the target and speech bubbles
     speech.rs          what characters said recently (shown in the bubbles)
   interaction/       the mouse and the world
     targeting.rs       what's hovered and selected
-    clicks.rs          left clicks: select, follow, or run there
+    clicks.rs          left clicks: select, follow, talk, or run there
     move_marker.rs     the glowing move marker
   ui/                the interface
     chat.rs, name_prompt.rs, target_frame.rs, connection_overlay.rs,

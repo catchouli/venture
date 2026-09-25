@@ -12,6 +12,7 @@
 //!   [`send_to_server`] sends them. Nothing else touches the connection.
 
 pub mod connection;
+pub mod http;
 pub mod launch;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local_server;

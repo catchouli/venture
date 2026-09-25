@@ -15,8 +15,9 @@ use bevy::app::{ScheduleRunnerPlugin, TerminalCtrlCHandlerPlugin};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use clap::Parser;
+use venture_content::ContentPack;
 use venture_server::http::{self, HttpConfig};
-use venture_server::{GameServer, Link, ProfileStore, ServerConfig, ServerWorld};
+use venture_server::{ContentSetup, GameServer, Link, ProfileStore, ServerConfig, ServerWorld, SharedClientContent};
 
 /// How often the server's main loop runs. The game itself ticks at a fixed
 /// rate within it.
@@ -50,9 +51,23 @@ fn main() {
         );
     }
 
+    let pack = ContentPack::load(&paths.content).unwrap_or_else(|errors| {
+        for error in &errors {
+            eprintln!("{error}");
+        }
+        fail(&format!("The content in {} has {} problem(s).", paths.content.display(), errors.len()))
+    });
+    println!("Content loaded: {} NPCs.", pack.npcs.len());
+    let client_content = SharedClientContent::default();
+
     let (link_sender, link) = Link::new();
     let address = SocketAddr::new(config.network.bind, config.network.port);
-    let http_config = HttpConfig { address, world_folder: paths.world.clone(), client_folder: paths.client.clone() };
+    let http_config = HttpConfig {
+        address,
+        world_folder: paths.world.clone(),
+        client_folder: paths.client.clone(),
+        content: client_content.clone(),
+    };
     http::start(http_config, link_sender);
     print_addresses(config.network.port);
 
@@ -62,7 +77,8 @@ fn main() {
         LogPlugin::default(),
         TerminalCtrlCHandlerPlugin,
     ));
-    GameServer { world, profiles, link, rules: config.rules(), spawn_override: None }.install(&mut app);
+    let content = ContentSetup { folder: paths.content.clone(), pack, client: client_content, watch: true };
+    GameServer { world, profiles, link, rules: config.rules(), content, spawn_override: None }.install(&mut app);
     app.run();
 }
 

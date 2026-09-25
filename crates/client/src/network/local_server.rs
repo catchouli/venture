@@ -5,7 +5,10 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use venture_server::{GameServer, Link, ProfileStore, ServerConfig, ServerWorld};
+use venture_content::ContentPack;
+use venture_server::{ContentSetup, GameServer, Link, ProfileStore, ServerConfig, ServerWorld, SharedClientContent};
+
+use crate::content::LocalContent;
 
 use crate::dev::settings::DevSettings;
 use crate::network::LocalServerLink;
@@ -47,15 +50,29 @@ impl Plugin for LocalServerPlugin {
                 return;
             }
         };
-        let rules = match ServerConfig::load(CONFIG_FILE.as_ref()) {
-            Ok(config) => config.rules(),
+        let config = match ServerConfig::load(CONFIG_FILE.as_ref()) {
+            Ok(config) => config,
             Err(error) => {
                 error!("The local server can't read its settings: {error}");
                 return;
             }
         };
+        let pack = match ContentPack::load(&config.paths.content) {
+            Ok(pack) => pack,
+            Err(errors) => {
+                for problem in &errors {
+                    error!("{problem}");
+                }
+                error!("The local server can't start: the content has {} problem(s).", errors.len());
+                return;
+            }
+        };
+        let client_content = SharedClientContent::default();
+        app.insert_resource(LocalContent(client_content.clone()));
+        let content = ContentSetup { folder: config.paths.content.clone(), pack, client: client_content, watch: true };
+
         let (link_sender, link) = Link::new();
         app.insert_resource(LocalServerLink(link_sender));
-        GameServer { world, profiles, link, rules, spawn_override }.install(app);
+        GameServer { world, profiles, link, rules: config.rules(), content, spawn_override }.install(app);
     }
 }

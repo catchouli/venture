@@ -12,7 +12,7 @@ use crate::common::coords::from_bevy;
 use crate::network::ClientState;
 use crate::world::streaming::{ChunkStore, ShownChunks};
 
-const CONTROLS_HELP: &str = "Left-click or WASD: run\nClick a player: select; again: follow\n\
+const CONTROLS_HELP: &str = "Left-click or WASD: run\nClick someone: select; again: follow/talk\n\
                              Right-drag or arrow keys: rotate and tilt\nWheel: zoom\nEnter: chat   Esc: deselect\n\
                              F1: free camera (WASD to fly, Shift: fast)";
 

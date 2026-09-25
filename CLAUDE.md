@@ -7,6 +7,9 @@
 - On the server, client messages are only read and validated in `requests.rs` (the gate); players are only
   created/removed in `sessions.rs` and changed in `gameplay.rs`; profiles only touched in `profiles.rs`.
   Keep it that way.
+- Content scripts never change the game directly: they queue `ScriptCommand`s (`scripting.rs`), which
+  `npcs.rs` validates and applies. New script abilities go through that same path.
+- Check content with `cargo run -p venture_content --features scripts --bin check`.
 - On the client, only `network/` touches the connection: views read `FromServer`, input writes `ToServer`.
 - Client code is grouped by concern (one folder and one plugin per concern); see "Client structure" in
   `docs/architecture.md`. Server settings and game rules go in `server.ron` (`ServerConfig`), not code.

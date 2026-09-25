@@ -15,6 +15,7 @@ use bevy::prelude::*;
 use venture_protocol::{ClientMessage, MAX_CHAT_CHARS, ServerMessage, clean_chat_text};
 
 use crate::dev::settings::DevSettings;
+use crate::interaction::targeting::{TargetKind, Targetable};
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
 use crate::world::streaming::StreamingProgress;
@@ -28,6 +29,8 @@ const WIDTH: f32 = 440.0;
 
 /// Colour of players' names.
 const NAME_COLOUR: Color = Color::srgb(0.95, 0.8, 0.45);
+/// Colour of NPCs' names.
+const NPC_NAME_COLOUR: Color = Color::srgb(0.6, 0.9, 0.55);
 /// Colour of what players say.
 const MESSAGE_COLOUR: Color = Color::srgb(0.95, 0.95, 0.92);
 /// Colour of messages from the server itself.
@@ -62,8 +65,8 @@ struct ChatLog(VecDeque<ChatLine>);
 
 /// One message.
 enum ChatLine {
-    /// A player said something.
-    Player { name: String, text: String },
+    /// A player or NPC said something.
+    Said { name: String, text: String, npc: bool },
     /// A message from the server.
     Notice(String),
 }
@@ -117,10 +120,13 @@ fn spawn_chat_box(mut commands: Commands) {
 }
 
 /// Adds chat and notices from the server to the log.
-fn record_messages(mut events: MessageReader<FromServer>, mut log: ResMut<ChatLog>) {
+fn record_messages(mut events: MessageReader<FromServer>, mut log: ResMut<ChatLog>, speakers: Query<&Targetable>) {
     for FromServer(message) in events.read() {
         let line = match message {
-            ServerMessage::Chat { name, text, .. } => ChatLine::Player { name: name.clone(), text: text.clone() },
+            ServerMessage::Chat { from, name, text } => {
+                let npc = speakers.iter().any(|speaker| speaker.id == *from && speaker.kind == TargetKind::Npc);
+                ChatLine::Said { name: name.clone(), text: text.clone(), npc }
+            }
             ServerMessage::Notice { text } => ChatLine::Notice(text.clone()),
             _ => continue,
         };
@@ -138,9 +144,10 @@ fn show_messages(mut commands: Commands, log: Res<ChatLog>, lines: Single<Entity
     commands.entity(*lines).despawn_children().with_children(|lines| {
         for line in log.0.iter().skip(log.0.len().saturating_sub(VISIBLE_LINES)) {
             match line {
-                ChatLine::Player { name, text } => {
+                ChatLine::Said { name, text, npc } => {
+                    let name_colour = if *npc { NPC_NAME_COLOUR } else { NAME_COLOUR };
                     lines
-                        .spawn((Text::new(format!("{name}: ")), font.clone(), TextColor(NAME_COLOUR), shadow))
+                        .spawn((Text::new(format!("{name}: ")), font.clone(), TextColor(name_colour), shadow))
                         .with_child((TextSpan::new(text.clone()), font.clone(), TextColor(MESSAGE_COLOUR), shadow));
                 }
                 ChatLine::Notice(text) => {

@@ -9,7 +9,7 @@
 //! the client for development.
 //!
 //! The code is grouped by concern, one folder (and one plugin) per concern:
-//! [`network`], [`world`], [`characters`], [`camera`], [`interaction`],
+//! [`network`], [`content`], [`world`], [`characters`], [`camera`], [`interaction`],
 //! [`ui`], [`dev`], plus [`common`] helpers.
 
 // Bevy systems receive everything they use as parameters, so long parameter
@@ -19,6 +19,7 @@
 mod camera;
 mod characters;
 mod common;
+mod content;
 mod dev;
 mod interaction;
 mod network;
@@ -42,6 +43,7 @@ fn main() {
         .insert_resource(network::launch::ServerChoice::from_environment())
         .add_plugins((
             network::NetworkPlugin,
+            content::ContentPlugin,
             world::WorldPlugin,
             characters::CharactersPlugin,
             camera::CameraPlugin,

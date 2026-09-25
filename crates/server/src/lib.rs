@@ -20,17 +20,28 @@
 //! 4. [`gameplay`]: handles in-game requests and runs the simulation (the only
 //!    code that changes players in the game).
 //!
+//! Content scripts follow the same rule from the other side: a script can
+//! only queue commands ([`scripting`]), which [`npcs`] checks and applies.
+//! [`content`] loads the content pack and reloads it when it changes.
+//!
 //! The game runs at a fixed tick rate in Bevy's `FixedUpdate` schedule.
 
+// Bevy systems receive everything they use as parameters, so long parameter
+// lists and query types are normal here.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
 pub mod config;
+pub mod content;
+pub mod entities;
 pub mod gameplay;
 #[cfg(feature = "http")]
 pub mod http;
 pub mod link;
 mod names;
-pub mod players;
+pub mod npcs;
 pub mod profiles;
 pub mod requests;
+pub mod scripting;
 pub mod sessions;
 pub mod world;
 
@@ -40,6 +51,7 @@ use bevy::prelude::*;
 use venture_simulation::{Rules, TICK_RATE};
 
 pub use config::ServerConfig;
+pub use content::{ContentSetup, SharedClientContent};
 pub use link::{ConnectionId, Link, LinkEvent, LinkSender};
 pub use profiles::ProfileStore;
 pub use world::ServerWorld;
@@ -54,6 +66,8 @@ pub struct GameServer {
     pub link: Link,
     /// The game rules (from the config file).
     pub rules: Rules,
+    /// The content pack.
+    pub content: ContentSetup,
     /// Where new characters start, if not the world's spawn point (for development).
     pub spawn_override: Option<(f32, f32)>,
 }
@@ -71,13 +85,19 @@ pub enum ServerSystems {
     Sessions,
     /// In-game requests, simulation and updates to clients.
     Gameplay,
+    /// NPCs: matching the content, running their scripts, applying script commands.
+    Npcs,
 }
 
 impl GameServer {
     /// Adds the game server to a Bevy app. The app can be headless (the
     /// server binary) or the desktop client (`--local` mode).
     pub fn install(self, app: &mut App) {
+        let mut scripts = scripting::Scripts::new();
+        content::install(app, self.content, &mut scripts);
         app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs_f32(1.0 / TICK_RATE)))
+            .insert_resource(scripts)
+            .init_resource::<entities::EntityIds>()
             .insert_resource(self.world)
             .insert_resource(self.profiles)
             .insert_resource(self.link)
@@ -85,8 +105,15 @@ impl GameServer {
             .insert_resource(sessions::SpawnPoint(self.spawn_override))
             .configure_sets(
                 FixedUpdate,
-                (ServerSystems::Requests, ServerSystems::Sessions, ServerSystems::Gameplay).chain(),
+                (ServerSystems::Requests, ServerSystems::Sessions, ServerSystems::Gameplay, ServerSystems::Npcs)
+                    .chain(),
             )
-            .add_plugins((requests::RequestsPlugin, sessions::SessionsPlugin, gameplay::GameplayPlugin));
+            .add_plugins((
+                requests::RequestsPlugin,
+                sessions::SessionsPlugin,
+                gameplay::GameplayPlugin,
+                npcs::NpcsPlugin,
+                content::ContentPlugin,
+            ));
     }
 }

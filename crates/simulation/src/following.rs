@@ -8,6 +8,9 @@ use crate::movement::{Movement, plan_route};
 /// Followers stop this close to whoever they follow, in metres.
 pub const FOLLOW_DISTANCE: f32 = 2.0;
 
+/// How close (in metres) a player must be to an NPC to talk to them.
+pub const INTERACT_DISTANCE: f32 = 3.0;
+
 /// The route is re-planned once the target has moved this far (in metres)
 /// from where the current route was planned to.
 const REPLAN_DISTANCE: f32 = 1.0;

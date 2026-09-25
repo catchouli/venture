@@ -3,11 +3,12 @@
 
 use bevy::prelude::*;
 use venture_navigation::Point;
-use venture_protocol::{PlayerId, ServerMessage};
+use venture_protocol::{EntityKind, ServerMessage};
 
+use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
 use crate::link::{ConnectionId, Link};
 use crate::names::random_name;
-use crate::players::{Mover, Player, Position};
+use crate::npcs::Npc;
 use crate::profiles::{Profile, ProfileKey, ProfileStore};
 use crate::requests::{Connections, SessionRequest, Stage};
 use crate::world::ServerWorld;
@@ -21,8 +22,7 @@ pub struct SessionsPlugin;
 
 impl Plugin for SessionsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<NextPlayerId>()
-            .init_resource::<OnlineProfiles>()
+        app.init_resource::<OnlineProfiles>()
             .init_resource::<AutosaveTimer>()
             .add_systems(FixedUpdate, (handle_session_requests, autosave).chain().in_set(ServerSystems::Sessions))
             .add_systems(Last, save_everyone_on_exit);
@@ -32,9 +32,6 @@ impl Plugin for SessionsPlugin {
 /// Where new characters start, if not the world's spawn point.
 #[derive(Resource)]
 pub struct SpawnPoint(pub Option<Point>);
-
-#[derive(Resource, Default)]
-struct NextPlayerId(u32);
 
 /// The profiles currently in the game, so a character can't be logged in twice.
 #[derive(Resource, Default)]
@@ -58,10 +55,11 @@ struct Sessions<'w, 's> {
     store: Res<'w, ProfileStore>,
     world: Res<'w, ServerWorld>,
     spawn_point: Res<'w, SpawnPoint>,
-    next_id: ResMut<'w, NextPlayerId>,
+    ids: ResMut<'w, EntityIds>,
     online: ResMut<'w, OnlineProfiles>,
     rules: Res<'w, GameRules>,
-    players: Query<'w, 's, (Entity, &'static Player, &'static Position)>,
+    players: Query<'w, 's, (Entity, &'static Player, &'static NetworkId, &'static DisplayName, &'static Position)>,
+    npcs: Query<'w, 's, (&'static Npc, &'static NetworkId, &'static DisplayName, &'static Position)>,
 }
 
 fn handle_session_requests(mut requests: MessageReader<SessionRequest>, mut sessions: Sessions) {
@@ -84,10 +82,8 @@ impl Sessions<'_, '_> {
     /// they're new.
     fn log_in(&mut self, connection: ConnectionId, profile: &ProfileKey) {
         if self.online.0.contains(profile) {
-            self.link.send(
-                connection,
-                &ServerMessage::Rejected { reason: "This character is already in the game.".to_string() },
-            );
+            let rejected = ServerMessage::Rejected { reason: "This character is already in the game.".to_string() };
+            self.link.send(connection, &rejected);
             self.link.close(connection);
             return;
         }
@@ -102,30 +98,34 @@ impl Sessions<'_, '_> {
 
     /// Puts a character into the game and tells everyone.
     fn enter_game(&mut self, connection: ConnectionId, profile: ProfileKey, saved: Profile) {
-        self.next_id.0 += 1;
-        let id = PlayerId(self.next_id.0);
-        let position =
-            if self.world.contains(saved.position) { saved.position } else { self.world.manifest.spawn_point };
-        let name = saved.name;
+        let id = self.ids.allocate();
+        let position = Position(if self.world.contains(saved.position) {
+            saved.position
+        } else {
+            self.world.manifest.spawn_point
+        });
+        let name = DisplayName(saved.name);
 
-        // Tell the newcomer about themselves and everyone already here.
-        let welcome = ServerMessage::Welcome { you: id, name: name.clone(), position, rules: self.rules.0 };
+        // Tell the newcomer about themselves, and everyone and everything already here.
+        let welcome =
+            ServerMessage::Welcome { you: id, name: name.0.clone(), position: position.0, rules: self.rules.0 };
         self.link.send(connection, &welcome);
-        let others: Vec<ConnectionId> = self.players.iter().map(|(_, player, _)| player.connection).collect();
-        for (_, player, Position(their_position)) in &self.players {
-            let joined =
-                ServerMessage::PlayerJoined { id: player.id, name: player.name.clone(), position: *their_position };
-            self.link.send(connection, &joined);
+        for (_, _, &NetworkId(other), other_name, &other_position) in &self.players {
+            self.link.send(connection, &appeared(other, other_name, EntityKind::Player, other_position));
+        }
+        for (npc, &NetworkId(npc_id), npc_name, &npc_position) in &self.npcs {
+            self.link.send(connection, &appeared(npc_id, npc_name, npc.kind(), npc_position));
         }
         // Tell everyone else about the newcomer.
-        self.link.broadcast(others.iter().copied(), &ServerMessage::PlayerJoined { id, name: name.clone(), position });
-        let notice = ServerMessage::Notice { text: format!("{name} has joined.") };
+        let others: Vec<ConnectionId> = self.players.iter().map(|(_, player, ..)| player.connection).collect();
+        self.link.broadcast(others.iter().copied(), &appeared(id, &name, EntityKind::Player, position));
+        let notice = ServerMessage::Notice { text: format!("{} has joined.", name.0) };
         self.link.broadcast(others.into_iter().chain([connection]), &notice);
 
-        info!("{name} joined as {id:?}.");
+        info!("{} joined as {id:?}.", name.0);
         self.online.0.insert(profile.clone());
         let player =
-            self.commands.spawn((Player { id, connection, name, profile }, Position(position), Mover::default())).id();
+            self.commands.spawn((Player { connection, profile }, NetworkId(id), name, position, Mover::default())).id();
         self.set_stage(connection, Stage::Playing { player });
     }
 
@@ -133,15 +133,15 @@ impl Sessions<'_, '_> {
     fn leave(&mut self, connection: ConnectionId) {
         let Some(state) = self.connections.0.remove(&connection) else { return };
         let Stage::Playing { player } = state.stage else { return };
-        let Ok((entity, leaver, &Position(position))) = self.players.get(player) else { return };
+        let Ok((entity, leaver, &NetworkId(id), name, &Position(position))) = self.players.get(player) else { return };
 
-        self.store.save(&leaver.profile, &Profile { name: leaver.name.clone(), position });
+        self.store.save(&leaver.profile, &Profile { name: name.0.clone(), position });
         self.online.0.remove(&leaver.profile);
         let others: Vec<ConnectionId> =
-            self.players.iter().filter(|(e, ..)| *e != entity).map(|(_, player, _)| player.connection).collect();
-        self.link.broadcast(others.iter().copied(), &ServerMessage::PlayerLeft { id: leaver.id });
-        self.link.broadcast(others, &ServerMessage::Notice { text: format!("{} has left.", leaver.name) });
-        info!("{} left.", leaver.name);
+            self.players.iter().filter(|(e, ..)| *e != entity).map(|(_, player, ..)| player.connection).collect();
+        self.link.broadcast(others.iter().copied(), &ServerMessage::EntityLeft { id });
+        self.link.broadcast(others, &ServerMessage::Notice { text: format!("{} has left.", name.0) });
+        info!("{} left.", name.0);
         self.commands.entity(entity).despawn();
     }
 
@@ -156,7 +156,7 @@ fn autosave(
     time: Res<Time>,
     mut timer: ResMut<AutosaveTimer>,
     store: Res<ProfileStore>,
-    players: Query<(&Player, &Position)>,
+    players: Query<(&Player, &DisplayName, &Position)>,
 ) {
     if timer.0.tick(time.delta()).just_finished() {
         save_all(&store, &players);
@@ -167,7 +167,7 @@ fn autosave(
 fn save_everyone_on_exit(
     mut exits: MessageReader<AppExit>,
     store: Option<Res<ProfileStore>>,
-    players: Query<(&Player, &Position)>,
+    players: Query<(&Player, &DisplayName, &Position)>,
 ) {
     if exits.read().next().is_some()
         && let Some(store) = store
@@ -177,8 +177,8 @@ fn save_everyone_on_exit(
     }
 }
 
-fn save_all(store: &ProfileStore, players: &Query<(&Player, &Position)>) {
-    for (player, &Position(position)) in players {
-        store.save(&player.profile, &Profile { name: player.name.clone(), position });
+fn save_all(store: &ProfileStore, players: &Query<(&Player, &DisplayName, &Position)>) {
+    for (player, name, &Position(position)) in players {
+        store.save(&player.profile, &Profile { name: name.0.clone(), position });
     }
 }

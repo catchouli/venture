@@ -10,7 +10,9 @@
 //! VENTURE_SCREENSHOT=shot.png cargo run -p venture_client -- --local
 //! ```
 //!
-//! Combine with `VENTURE_CAMERA` (see [`crate::dev::settings`]) to choose the view.
+//! Combine with `VENTURE_CAMERA` (see [`crate::dev::settings`]) to choose the
+//! view, and `VENTURE_SCREENSHOT_DELAY=seconds` to wait longer after loading
+//! (for example, to capture something that happens a few seconds in).
 
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
@@ -36,9 +38,16 @@ pub struct ScreenshotPlugin;
 impl Plugin for ScreenshotPlugin {
     fn build(&self, app: &mut App) {
         let Ok(path) = std::env::var("VENTURE_SCREENSHOT") else { return };
-        app.insert_resource(PendingScreenshot { path, target: Handle::default(), frames: 0, taken: false })
-            .add_systems(Startup, create_target)
-            .add_systems(Update, (render_offscreen, take_screenshot_when_loaded));
+        let delay = std::env::var("VENTURE_SCREENSHOT_DELAY").ok().and_then(|value| value.parse().ok()).unwrap_or(0.0);
+        app.insert_resource(PendingScreenshot {
+            path,
+            target: Handle::default(),
+            frames: 0,
+            taken: false,
+            delay: Timer::from_seconds(delay, TimerMode::Once),
+        })
+        .add_systems(Startup, create_target)
+        .add_systems(Update, (render_offscreen, take_screenshot_when_loaded));
     }
 }
 
@@ -49,6 +58,8 @@ struct PendingScreenshot {
     target: Handle<Image>,
     /// Frames counted since loading finished (or since the screenshot was taken).
     frames: u32,
+    /// Extra time to wait once loaded, before settling and capturing.
+    delay: Timer,
     taken: bool,
 }
 
@@ -68,6 +79,7 @@ fn render_offscreen(mut commands: Commands, pending: Res<PendingScreenshot>, cam
 
 fn take_screenshot_when_loaded(
     mut commands: Commands,
+    time: Res<Time>,
     mut pending: ResMut<PendingScreenshot>,
     progress: Res<StreamingProgress>,
     state: Res<State<ClientState>>,
@@ -76,6 +88,9 @@ fn take_screenshot_when_loaded(
     let loaded = *state.get() == ClientState::Playing && progress.measured && progress.waiting == 0;
     if !loaded && !pending.taken {
         pending.frames = 0;
+        return;
+    }
+    if !pending.delay.tick(time.delta()).is_finished() {
         return;
     }
     pending.frames += 1;

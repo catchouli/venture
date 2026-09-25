@@ -16,7 +16,8 @@ mod ground;
 mod prop;
 
 pub use baked::{
-    BakedWorldError, CHUNK_FORMAT_VERSION, MANIFEST_FILE, WorldManifest, chunk_file_path, decode_chunk, encode_chunk,
+    BakedWorldError, CHUNK_FORMAT_VERSION, MANIFEST_FILE, SettlementInfo, WorldManifest, chunk_file_path, decode_chunk,
+    encode_chunk,
 };
 pub use biome::Biome;
 pub use chunk::Chunk;

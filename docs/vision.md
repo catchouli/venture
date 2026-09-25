@@ -57,6 +57,8 @@ by a deterministic generator, then shaped and filled by hand.
   killed, and other players' health stays private even once PvP exists, so
   neither shows one. An ✕ in the frame's corner deselects the target and
   hides the frame. Escape does the same.
+- **Talking:** clicking the selected NPC again walks over and talks to them
+  (the cursor shows a speech bubble while hovering over them).
 - **Following:** clicking the selected player again follows them (the
   cursor shows the follow arrow while hovering over them). The character
   keeps close behind until you move, steer, stop, deselect, or they get out

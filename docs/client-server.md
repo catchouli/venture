@@ -1,9 +1,10 @@
 # Client and server
 
-> Milestone 1 of this design is implemented: the baked world, the
-> authoritative server with LAN hosting, automatic profiles, movement
-> prediction and chat. Content streaming, client scripts and dialogue are
-> still to come (see [plan-client-server.md](plan-client-server.md)).
+> Implemented: the baked world, the authoritative server with LAN hosting,
+> automatic profiles, movement prediction, chat (milestone 1), and the content
+> pack with NPCs, server-side scripts, hot reload and content streaming
+> (milestone 2). Client scripts and dialogue are still to come (see
+> [plan-client-server.md](plan-client-server.md)).
 
 ## The rule: the server decides
 
@@ -134,14 +135,36 @@ its player.
 chunks are re-baked (a fraction of a second each) and clients are told to
 fetch the new versions.
 
+## Entities
+
+Players and NPCs are both **entities** on the wire, identified by an
+`EntityId`. The server announces each one with `EntityAppeared { id, name,
+kind, position }` (where `kind` is `Player` or `Npc { appearance }`), moves
+them all in the same `Snapshot`, and removes them with `EntityLeft`. So chat
+(`Chat { from, .. }`), speech bubbles, selecting and following work the same
+for NPCs as for players.
+
+Talking to an NPC is `Interact { target }`. If the player is within 3 m, the
+server runs the NPC's `on_interact` script straight away. If not, it walks
+them over (as with following) and runs it on arrival. The client predicts the
+walk.
+
 ## Content: streamed from the server
 
-The client needs content for display: NPC names and appearances, item
-icons and descriptions, dialogue text, UI strings, and client-side scripts
-for presentation. On joining, the client gets a manifest of content files
-with hashes, downloads what it's missing or what changed, and (later)
-caches it. When the server hot-reloads content, it sends the changed files
-to connected clients.
+The client needs content for display: NPC appearances now, and later item
+icons and descriptions, dialogue text, UI strings and client-side scripts.
+
+- The server publishes the client's part of the content pack at
+  `/content/manifest.ron`: each file with its SHA-256 hash, plus a version
+  that changes whenever any file does. The files are served at
+  `/content/<path>`. Only files in the manifest can be fetched: NPC
+  definitions and scripts are never served.
+- On joining, the client downloads the manifest and the files it lists.
+- When the server hot-reloads content, it sends `ContentChanged { version }`.
+  Clients download the new manifest and only the files whose hash changed,
+  then redraw what changed (NPCs are restyled in place).
+- In `--local` mode the client reads the files straight from the server
+  running inside it.
 
 ## Scripts on both sides, and whether client scripts are safe
 

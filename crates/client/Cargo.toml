@@ -11,6 +11,7 @@ venture_world.workspace = true
 venture_navigation.workspace = true
 venture_simulation.workspace = true
 venture_protocol.workspace = true
+venture_content.workspace = true
 bevy = { workspace = true, features = ["default"] }
 ewebsock = "0.8"
 ehttp = "0.7"

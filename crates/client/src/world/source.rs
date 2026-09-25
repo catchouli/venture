@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 use venture_world::{ChunkPos, MANIFEST_FILE, WorldManifest, chunk_file_path};
 
+use crate::network::http::fetch;
 use crate::network::launch::ServerChoice;
 
 /// Loads the world manifest, then makes it available as [`WorldInfo`].
@@ -65,19 +66,6 @@ impl WorldSource {
     /// Reads a chunk's file.
     pub fn read_chunk(&self, pos: ChunkPos) -> impl Future<Output = Result<Vec<u8>, String>> + use<> {
         self.read(chunk_file_path(pos))
-    }
-}
-
-/// Downloads a file over HTTP.
-async fn fetch(url: String) -> Result<Vec<u8>, String> {
-    let (done, result) = async_channel::bounded(1);
-    ehttp::fetch(ehttp::Request::get(&url), move |response| {
-        let _ = done.try_send(response);
-    });
-    match result.recv().await.map_err(|_| "the download was cancelled".to_string())? {
-        Ok(response) if response.ok => Ok(response.bytes),
-        Ok(response) => Err(format!("{url}: {} {}", response.status, response.status_text)),
-        Err(error) => Err(format!("{url}: {error}")),
     }
 }
 

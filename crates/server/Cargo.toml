@@ -17,11 +17,14 @@ venture_world.workspace = true
 venture_navigation.workspace = true
 venture_simulation.workspace = true
 venture_protocol.workspace = true
+venture_content = { workspace = true, features = ["scripts"] }
+rhai.workspace = true
+notify = "8"
 bevy = { workspace = true, features = ["std", "async_executor", "multi_threaded", "bevy_log"] }
 serde.workspace = true
 ron.workspace = true
 async-channel.workspace = true
-sha2 = "0.11"
+sha2.workspace = true
 fastrand = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"], optional = true }
 axum = { version = "0.8", features = ["ws"], optional = true }
