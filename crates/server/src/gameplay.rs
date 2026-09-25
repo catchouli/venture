@@ -13,6 +13,9 @@ use crate::requests::{PlayerAction, PlayerRequest};
 use crate::world::ServerWorld;
 use crate::{GameRules, ServerSystems};
 
+/// Players within this distance (in metres) see an emote.
+const EMOTE_RANGE: f32 = 40.0;
+
 /// Runs the game.
 pub struct GameplayPlugin;
 
@@ -109,6 +112,17 @@ fn act_on_requests(
                 commands.entity(player).insert(Position(world.manifest.spawn_point));
                 mover.0 = Movement::Idle;
                 tell("You return to town.".to_string());
+            }
+            PlayerAction::Emote(emote) => {
+                let Ok((_, &NetworkId(id), _)) = players.get(player) else { continue };
+                let nearby: Vec<_> = players
+                    .iter()
+                    .filter(|(_, other, _)| {
+                        find(other.0).is_some_and(|(_, _, &Position(at), _)| distance(at, position) <= EMOTE_RANGE)
+                    })
+                    .map(|(viewer, ..)| viewer.connection)
+                    .collect();
+                link.broadcast(nearby, &ServerMessage::Emoted { id, emote: *emote });
             }
             PlayerAction::Chat(text) => {
                 let Ok((_, &NetworkId(from), name)) = players.get(player) else { continue };

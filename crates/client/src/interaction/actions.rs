@@ -11,7 +11,7 @@
 //! in chat. They're only predicted locally when they will work.
 
 use bevy::prelude::*;
-use venture_protocol::ClientMessage;
+use venture_protocol::{ClientMessage, Emote};
 
 use crate::interaction::admin_commands::ADMIN_COMMANDS;
 use crate::interaction::orders::Orders;
@@ -37,13 +37,15 @@ pub enum Action {
     Talk,
     /// Go back to the starting town.
     Town,
+    /// Wave hello.
+    Wave,
     /// List the chat commands.
     Help,
 }
 
 impl Action {
     /// Every action, in the order `/help` lists them.
-    pub const ALL: [Action; 4] = [Action::Follow, Action::Talk, Action::Town, Action::Help];
+    pub const ALL: [Action; 5] = [Action::Follow, Action::Talk, Action::Wave, Action::Town, Action::Help];
 
     /// Its name, as typed in a chat command (`/follow`).
     pub fn name(self) -> &'static str {
@@ -51,6 +53,7 @@ impl Action {
             Action::Follow => "follow",
             Action::Talk => "talk",
             Action::Town => "town",
+            Action::Wave => "wave",
             Action::Help => "help",
         }
     }
@@ -61,6 +64,7 @@ impl Action {
             Action::Follow => "follow the selected player",
             Action::Talk => "talk to the selected NPC",
             Action::Town => "go back to the starting town",
+            Action::Wave => "wave hello to everyone nearby",
             Action::Help => "list the commands",
         }
     }
@@ -96,6 +100,7 @@ fn perform_actions(
             (Action::Talk, Some((entity, Targetable { id, kind: TargetKind::Npc }))) => orders.talk_to(entity, id),
             (Action::Talk, Some((_, Targetable { id, .. }))) => orders.ask(ClientMessage::Interact { target: id }),
             (Action::Town, _) => orders.ask(ClientMessage::ReturnToTown),
+            (Action::Wave, _) => orders.ask(ClientMessage::Emote(Emote::Wave)),
             (Action::Help, _) => {
                 // Admins also get the admin commands, marked as such.
                 let mut commands: Vec<(String, &str)> =

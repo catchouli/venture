@@ -17,6 +17,6 @@
         // and the furthest a character keeps following someone.
         max_move_distance: 150.0,
     ),
-    // Characters with admin powers (/setlevel, /reset, /setclass), by name.
+    // Characters with admin powers (/setlevel, /reset, /setclass, /setgender), by name.
     admins: ["cat"],
 )

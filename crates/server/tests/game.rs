@@ -888,3 +888,35 @@ fn only_admins_can_use_admin_commands() {
         visitor.receive().iter().any(|m| matches!(m, ServerMessage::PlayerChanged { level: 1, celebrate: false, .. }))
     );
 }
+
+#[test]
+fn waves_are_seen_by_everyone_nearby() {
+    let mut server = TestServer::with_content("wave", content_with("[]", ""));
+    let (waver, me) = server.join(TOKEN_A, "Waver");
+    let (friend, _) = server.join(TOKEN_B, "Friend");
+    waver.receive();
+    waver.send(&ClientMessage::Emote(venture_protocol::Emote::Wave));
+    server.run(2);
+    let waved = |messages: Vec<ServerMessage>| {
+        messages.contains(&ServerMessage::Emoted { id: me, emote: venture_protocol::Emote::Wave })
+    };
+    assert!(waved(friend.receive()), "a friend nearby sees the wave");
+    assert!(waved(waver.receive()), "and so does the one waving");
+}
+
+#[test]
+fn admins_can_change_their_body_type() {
+    let mut server = TestServer::with_content("body", content_with("[]", ""));
+    let (boss, messages) = create(&mut server, TOKEN_A, "Boss", "fighter");
+    let welcome_body = messages.iter().find_map(|m| match m {
+        ServerMessage::Welcome { look, .. } => Some(look.body),
+        _ => None,
+    });
+    assert_eq!(welcome_body, Some(BodyType::Feminine));
+    boss.send(&ClientMessage::Admin(AdminCommand::SetBody { body: BodyType::Masculine }));
+    server.run(2);
+    let messages = boss.receive();
+    assert_eq!(notices(&messages), ["Your character is now masculine."]);
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::PlayerChanged { look, celebrate: false, .. }
+        if look.body == BodyType::Masculine)));
+}

@@ -344,7 +344,8 @@ and their class's outfit (equipment will take over from the class; see
 `docs/plan-combat.md`).
 
 **Admins** are listed by character name in `server.ron`. Their commands
-(`Admin(SetLevel | Reset | SetClass)`) go through the gate like any other,
+(`Admin(SetLevel | Reset | SetClass | SetBody)`: `/setlevel`, `/reset`,
+`/setclass` and `/setgender`) go through the gate like any other,
 then to `admin.rs`, which checks the player really is an admin before doing
 anything; anyone else is told only admins can use them.
 
@@ -359,6 +360,8 @@ same, and a new action is added once.
 A chat message starting with `/` names an action and is never sent as chat:
 - `/follow`: follow the selected player;
 - `/talk`: talk to the selected NPC;
+- `/wave`: wave hello (the server shows it to everyone within 40 m, as an
+  `Emoted` message; emotes share chat's rate limit);
 - `/town`: go back to the starting town's square;
 - `/help`: list the commands (shown by the client itself).
 

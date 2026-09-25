@@ -103,6 +103,15 @@ pub enum ClientMessage {
     CloseShop,
     /// An admin command (refused unless the player is an admin).
     Admin(AdminCommand),
+    /// Do an emote (such as waving), for everyone nearby to see.
+    Emote(Emote),
+}
+
+/// A gesture a character can make.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Emote {
+    /// Wave hello.
+    Wave,
 }
 
 /// A command only admins may use.
@@ -119,6 +128,11 @@ pub enum AdminCommand {
     SetClass {
         /// The class's id or name.
         class: String,
+    },
+    /// Change your body type (`/setgender feminine`).
+    SetBody {
+        /// The new body type.
+        body: BodyType,
     },
 }
 
@@ -153,6 +167,13 @@ pub enum ServerMessage {
         admin: bool,
         /// How the player's character looks.
         look: PlayerLook,
+    },
+    /// Someone nearby did an emote (sent to them too).
+    Emoted {
+        /// Who.
+        id: EntityId,
+        /// Which emote.
+        emote: Emote,
     },
     /// The player's own character sheet, sent whenever it changes.
     Character(CharacterSheet),

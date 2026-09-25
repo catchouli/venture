@@ -77,6 +77,7 @@ One window with tabs, each with its own key:
 | Inventory | I | The bag (from step 1). |
 | Equipment | E | Weapon and body slots to begin with. Equip from the bag, unequip back into it. |
 | Quests | J | The journal (as now). |
+| Emotes | O | Gestures to click (Wave first; `/wave` in chat does the same). Last, as the least important. |
 
 - **Equipment** is items with a slot and bonuses (weapon: damage dice, speed,
   the stat it scales with; armour: armour class).
