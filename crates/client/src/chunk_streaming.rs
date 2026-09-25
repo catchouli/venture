@@ -1,9 +1,9 @@
 //! Loading chunks around a point of interest and unloading distant ones.
 //!
-//! Streaming happens in two steps, both on Bevy's async task pool (on the
+//! Streaming happens in two steps, both on Bevy's async task pools (on the
 //! web, tasks run on the main thread between frames):
-//! 1. **Data**: chunk contents are generated (later they will arrive from the
-//!    server) and kept in the [`ChunkStore`].
+//! 1. **Data**: baked chunk files are downloaded from the server (or read from
+//!    disk in `--local` mode), decoded, and kept in the [`ChunkStore`].
 //! 2. **Meshes**: once a chunk *and its eight neighbours* have data, its
 //!    meshes are built, so shading and colours blend across chunk borders.
 //!
@@ -13,16 +13,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
+use bevy::tasks::{AsyncComputeTaskPool, IoTaskPool, Task, futures::check_ready};
 use venture_navigation::{ChunkObstacles, WalkingLimits};
-use venture_world::{Chunk, ChunkPos, FluidKind};
+use venture_world::{Chunk, ChunkPos, FluidKind, decode_chunk};
 
 use crate::coords::to_bevy;
 use crate::palette;
 use crate::prop_mesh::{PropTemplates, props_mesh};
 use crate::terrain_material::{TerrainExtension, TerrainMaterial};
 use crate::terrain_mesh::{Neighbourhood, fluid_mesh, terrain_mesh};
-use crate::world::GameWorld;
+use crate::world_source::{WorldInfo, WorldSource};
 
 /// Chunks within this many chunks of the anchor are shown.
 const VIEW_RADIUS: i32 = 4;
@@ -60,7 +60,8 @@ impl Plugin for ChunkStreamingPlugin {
                     finish_mesh_tasks,
                     measure_progress,
                 )
-                    .chain(),
+                    .chain()
+                    .run_if(resource_exists::<WorldInfo>),
             );
     }
 }
@@ -89,9 +90,16 @@ pub struct StreamingProgress {
     pub waiting: usize,
 }
 
-/// Chunks whose data is being generated.
+/// Seconds to wait before trying a chunk again after it failed to load.
+const RETRY_SECONDS: f32 = 2.0;
+
+/// Chunks whose data is being loaded.
 #[derive(Resource, Default)]
-struct DataTasks(HashMap<ChunkPos, Task<(Chunk, ChunkObstacles)>>);
+struct DataTasks {
+    running: HashMap<ChunkPos, Task<Result<(Chunk, ChunkObstacles), String>>>,
+    /// Chunks that failed to load, and when they may be tried again (in seconds since startup).
+    retry_at: HashMap<ChunkPos, f32>,
+}
 
 /// A chunk entity whose meshes are still being built.
 #[derive(Component)]
@@ -176,7 +184,8 @@ fn unload_distant_chunks(
     store.0.retain(|pos, _| keep_data(pos));
     obstacles.0.retain(|pos, _| keep_data(pos));
     // Dropping a task cancels it.
-    data_tasks.0.retain(|pos, _| keep_data(pos));
+    data_tasks.running.retain(|pos, _| keep_data(pos));
+    data_tasks.retry_at.retain(|pos, _| keep_data(pos));
     shown.0.retain(|&pos, &mut entity| {
         let keep = chunk_distance(pos, centre) <= VIEW_RADIUS + UNLOAD_SLACK;
         if !keep {
@@ -187,39 +196,52 @@ fn unload_distant_chunks(
 }
 
 fn start_data_tasks(
+    time: Res<Time>,
     mut data_tasks: ResMut<DataTasks>,
     store: Res<ChunkStore>,
-    world: Res<GameWorld>,
+    world: Res<WorldInfo>,
+    source: Res<WorldSource>,
     focus: Res<StreamingFocus>,
 ) {
-    let pool = AsyncComputeTaskPool::get();
+    let pool = IoTaskPool::get();
     let missing: Vec<ChunkPos> = chunks_around(focus_chunk(&focus), DATA_RADIUS)
         .into_iter()
-        .filter(|pos| world.0.contains_chunk(*pos) && !store.0.contains_key(pos) && !data_tasks.0.contains_key(pos))
+        .filter(|pos| {
+            world.0.contains_chunk(*pos) && !store.0.contains_key(pos) && !data_tasks.running.contains_key(pos)
+        })
+        .filter(|pos| data_tasks.retry_at.get(pos).is_none_or(|&at| time.elapsed_secs() >= at))
         .take(MAX_TASKS_STARTED_PER_FRAME)
         .collect();
     for pos in missing {
-        let world = world.0.clone();
-        data_tasks.0.insert(
+        let read = source.read_chunk(pos);
+        data_tasks.running.insert(
             pos,
             pool.spawn(async move {
-                let chunk = world.generate_chunk(pos);
+                let chunk = decode_chunk(&read.await?).map_err(|error| error.to_string())?;
                 let obstacles = ChunkObstacles::from_chunk(&chunk, &WalkingLimits::default());
-                (chunk, obstacles)
+                Ok((chunk, obstacles))
             }),
         );
     }
 }
 
 fn finish_data_tasks(
+    time: Res<Time>,
     mut data_tasks: ResMut<DataTasks>,
     mut store: ResMut<ChunkStore>,
     mut obstacle_store: ResMut<ObstacleStore>,
 ) {
-    data_tasks.0.retain(|&pos, task| match check_ready(task) {
-        Some((chunk, obstacles)) => {
+    let DataTasks { running, retry_at } = &mut *data_tasks;
+    running.retain(|&pos, task| match check_ready(task) {
+        Some(Ok((chunk, obstacles))) => {
             store.0.insert(pos, Arc::new(chunk));
             obstacle_store.0.insert(pos, Arc::new(obstacles));
+            retry_at.remove(&pos);
+            false
+        }
+        Some(Err(error)) => {
+            warn!("Couldn't load chunk ({}, {}): {error}", pos.x, pos.y);
+            retry_at.insert(pos, time.elapsed_secs() + RETRY_SECONDS);
             false
         }
         None => true,
@@ -230,7 +252,7 @@ fn start_mesh_tasks(
     mut commands: Commands,
     mut shown: ResMut<ShownChunks>,
     store: Res<ChunkStore>,
-    world: Res<GameWorld>,
+    world: Res<WorldInfo>,
     assets: Res<ChunkAssets>,
     focus: Res<StreamingFocus>,
 ) {
@@ -288,7 +310,7 @@ fn finish_mesh_tasks(
 fn measure_progress(
     mut progress: ResMut<StreamingProgress>,
     shown: Res<ShownChunks>,
-    world: Res<GameWorld>,
+    world: Res<WorldInfo>,
     building: Query<(), With<MeshTask>>,
     focus: Res<StreamingFocus>,
 ) {

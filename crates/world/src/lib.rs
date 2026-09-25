@@ -8,12 +8,16 @@
 //! [`CELL_SIZE`]-metre cells, but nothing in the game is locked to that grid:
 //! characters and objects have continuous positions.
 
+mod baked;
 mod biome;
 mod chunk;
 mod coords;
 mod ground;
 mod prop;
 
+pub use baked::{
+    BakedWorldError, CHUNK_FORMAT_VERSION, MANIFEST_FILE, WorldManifest, chunk_file_path, decode_chunk, encode_chunk,
+};
 pub use biome::Biome;
 pub use chunk::Chunk;
 pub use coords::{CellPos, ChunkPos};

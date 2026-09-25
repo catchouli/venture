@@ -1,26 +1,27 @@
-//! Clicking the ground to run there: finds the clicked point, plans a route
-//! around obstacles, and drops a move marker at the destination.
+//! Clicking the ground to run there: asks the server to move there, and
+//! starts running along a locally planned route at once (prediction), with a
+//! move marker at the destination.
 
 use bevy::prelude::*;
-use venture_navigation::{Point, find_path};
+use venture_navigation::Point;
+use venture_protocol::ClientMessage;
+use venture_simulation::{Movement, plan_route};
 
 use crate::chunk_streaming::{ChunkStore, ObstacleStore, StreamingProgress};
 use crate::coords::{from_bevy, to_bevy};
 use crate::dev_settings::DevSettings;
 use crate::move_marker::{MarkerAssets, MoveMarker, place_marker};
-use crate::player::Player;
+use crate::network::{ClientState, ToServer};
+use crate::player::LocalPlayer;
 use crate::terrain_query::{ground_height, is_blocked, raycast_ground};
-use crate::world::GameWorld;
-
-/// The most terrain cells the pathfinder may explore for one click.
-const MAX_SEARCH_CELLS: usize = 40_000;
+use crate::text_input::KeyboardFocus;
 
 /// Moves the player where the ground is clicked.
 pub struct ClickToMovePlugin;
 
 impl Plugin for ClickToMovePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (move_on_click, move_on_startup_if_requested));
+        app.add_systems(Update, (move_on_click, move_on_startup_if_requested).run_if(in_state(ClientState::Playing)));
     }
 }
 
@@ -29,16 +30,23 @@ fn move_on_click(
     buttons: Res<ButtonInput<MouseButton>>,
     window: Single<&Window>,
     camera: Single<(&Camera, &GlobalTransform)>,
-    store: Res<ChunkStore>,
+    ui: Query<&Interaction>,
+    mut focus: ResMut<KeyboardFocus>,
     orders: MoveOrders,
 ) {
     if !buttons.just_pressed(MouseButton::Left) {
         return;
     }
+    // Clicks on the interface (such as the chat box) aren't clicks on the world.
+    if ui.iter().any(|interaction| *interaction != Interaction::None) {
+        return;
+    }
+    // Clicking the world stops typing.
+    focus.0 = None;
     let Some(cursor) = window.cursor_position() else { return };
     let (camera, camera_transform) = *camera;
     let Ok(ray) = camera.viewport_to_world(camera_transform, cursor) else { return };
-    let Some(point) = raycast_ground(&store, ray) else { return };
+    let Some(point) = raycast_ground(&orders.store, ray) else { return };
     orders.send(&mut commands, from_bevy(point));
 }
 
@@ -61,23 +69,29 @@ fn move_on_startup_if_requested(
 /// Everything needed to send the player somewhere.
 #[derive(bevy::ecs::system::SystemParam)]
 struct MoveOrders<'w, 's> {
-    world: Res<'w, GameWorld>,
     store: Res<'w, ChunkStore>,
     obstacles: Res<'w, ObstacleStore>,
     marker_assets: Res<'w, MarkerAssets>,
     markers: Query<'w, 's, Entity, With<MoveMarker>>,
-    player: Single<'w, 's, (&'static Transform, &'static mut Player)>,
+    to_server: MessageWriter<'w, ToServer>,
+    player: Option<Single<'w, 's, (&'static Transform, &'static mut LocalPlayer)>>,
 }
 
 impl MoveOrders<'_, '_> {
-    /// Plans a route to `goal` and marks where the player will stop.
-    fn send(self, commands: &mut Commands, goal: Point) {
-        let (transform, mut player) = self.player.into_inner();
+    /// Asks the server to move to `goal`, and predicts the route locally.
+    fn send(mut self, commands: &mut Commands, goal: Point) {
+        let Some(player) = self.player else { return };
+        let (transform, mut player) = player.into_inner();
+        self.to_server.write(ToServer(ClientMessage::MoveTo { x: goal.0, y: goal.1 }));
+
         let start = from_bevy(transform.translation);
-        let route = find_path(start, goal, |x, y| is_blocked(&self.obstacles, x, y), MAX_SEARCH_CELLS);
-        let Some(&(end_x, end_y)) = route.last() else { return };
-        let end = to_bevy(end_x, end_y, ground_height(&self.store, &self.world.0, end_x, end_y));
-        place_marker(commands, &self.marker_assets, self.markers, end);
-        player.route = route.into();
+        player.movement = plan_route(start, goal, |x, y| is_blocked(&self.obstacles, x, y));
+        if let Movement::Route(route) = &player.movement
+            && let Some(&(end_x, end_y)) = route.back()
+        {
+            let end =
+                to_bevy(end_x, end_y, ground_height(&self.store, end_x, end_y).unwrap_or(transform.translation.y));
+            place_marker(commands, &self.marker_assets, self.markers, end);
+        }
     }
 }

@@ -23,9 +23,10 @@ use crate::chunk_streaming::{ChunkStore, StreamingFocus};
 use crate::coords::{from_bevy, to_bevy};
 use crate::dev_settings::DevSettings;
 use crate::palette;
-use crate::player::Player;
+use crate::player::{LocalPlayer, PlayerSystems};
 use crate::terrain_query::ground_height;
-use crate::world::GameWorld;
+use crate::text_input::KeyboardFocus;
+use crate::world_source::WorldInfo;
 
 /// Radius of the free camera's sphere, in metres.
 const SPHERE_RADIUS: f32 = 0.5;
@@ -62,12 +63,12 @@ impl Plugin for CameraPlugin {
         app.init_resource::<CameraMode>()
             .init_resource::<CameraHeading>()
             .init_resource::<CameraControls>()
-            .add_systems(PostStartup, spawn_camera)
+            .add_systems(Startup, spawn_camera)
             .add_systems(
                 Update,
                 (toggle_mode, move_sphere, orbit_controls, zoom_controls, update_heading, place_camera)
                     .chain()
-                    .after(crate::player::run_along_route),
+                    .after(PlayerSystems),
             );
     }
 }
@@ -149,20 +150,20 @@ fn spawn_camera(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     dev: Res<DevSettings>,
-    player: Single<&Transform, With<Player>>,
 ) {
     commands.spawn((
         Name::new("Free camera sphere"),
         FreeCameraSphere,
         Mesh3d(meshes.add(Sphere::new(SPHERE_RADIUS))),
         MeshMaterial3d(materials.add(palette::TARGET_MARKER)),
-        Transform::from_translation(player.translation + Vec3::Y * SPHERE_RADIUS),
+        Transform::default(),
         Visibility::Hidden,
     ));
 
+    // Placed properly by `place_camera` once there's something to look at.
     let (yaw, pitch, distance) = dev.camera_view.unwrap_or(DEFAULT_VIEW);
     let orbit = Orbit { yaw, pitch, distance };
-    let focus = player.translation + Vec3::Y * FOLLOW_HEIGHT;
+    let focus = Vec3::ZERO;
     commands.spawn((
         Name::new("Camera"),
         Camera3d::default(),
@@ -183,18 +184,21 @@ fn spawn_camera(
 /// F1 switches between following the character and the free camera.
 fn toggle_mode(
     keys: Res<ButtonInput<KeyCode>>,
+    focus: Res<KeyboardFocus>,
     mut mode: ResMut<CameraMode>,
-    player: Single<&Transform, (With<Player>, Without<FreeCameraSphere>)>,
+    camera: Single<&Transform, (With<Orbit>, Without<FreeCameraSphere>)>,
     sphere: Single<(&mut Transform, &mut Visibility), With<FreeCameraSphere>>,
+    orbit: Single<&Orbit>,
 ) {
-    if !keys.just_pressed(KeyCode::F1) {
+    if !keys.just_pressed(KeyCode::F1) || focus.is_typing() {
         return;
     }
     let (mut sphere_transform, mut visibility) = sphere.into_inner();
     *mode = match *mode {
         CameraMode::Follow => {
-            // Start flying from where the character is.
-            sphere_transform.translation = player.translation + Vec3::Y * SPHERE_RADIUS;
+            // Start flying from whatever the camera was looking at.
+            let target = camera.translation - orbit.offset();
+            sphere_transform.translation = target - Vec3::Y * (FOLLOW_HEIGHT - SPHERE_RADIUS);
             *visibility = Visibility::Visible;
             CameraMode::Free
         }
@@ -210,12 +214,14 @@ fn move_sphere(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     mode: Res<CameraMode>,
-    world: Res<GameWorld>,
+    focus: Res<KeyboardFocus>,
+    world: Option<Res<WorldInfo>>,
     store: Res<ChunkStore>,
     orbit: Single<&Orbit>,
     mut sphere: Single<&mut Transform, With<FreeCameraSphere>>,
 ) {
-    if *mode != CameraMode::Free {
+    let Some(world) = world else { return };
+    if *mode != CameraMode::Free || focus.is_typing() {
         return;
     }
     let input = wasd_direction(&keys);
@@ -228,10 +234,11 @@ fn move_sphere(
     let moved = sphere.translation + direction.normalize_or_zero() * speed * time.delta_secs();
 
     // Stay inside the world, resting on the ground.
-    let size = world.0.config().world_size as f32;
+    let size = world.0.world_size as f32;
     let (x, y) = from_bevy(moved);
     let (x, y) = (x.clamp(0.0, size), y.clamp(0.0, size));
-    sphere.translation = to_bevy(x, y, ground_height(&store, &world.0, x, y) + SPHERE_RADIUS);
+    let height = ground_height(&store, x, y).map_or(sphere.translation.y, |ground| ground + SPHERE_RADIUS);
+    sphere.translation = to_bevy(x, y, height);
 }
 
 /// Rotates and tilts the camera.
@@ -241,10 +248,11 @@ fn orbit_controls(
     mouse_motion: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
     controls: Res<CameraControls>,
+    focus: Res<KeyboardFocus>,
     mut orbit: Single<&mut Orbit>,
 ) {
     // Left/right keys orbit the camera around the target, up/down tilt it.
-    let key_turn = KEY_ROTATE_SPEED * time.delta_secs();
+    let key_turn = if focus.is_typing() { 0.0 } else { KEY_ROTATE_SPEED * time.delta_secs() };
     let axis = |positive: [KeyCode; 2], negative: [KeyCode; 2]| {
         f32::from(keys.any_pressed(positive)) - f32::from(keys.any_pressed(negative))
     };
@@ -277,26 +285,33 @@ fn zoom_controls(mouse_scroll: Res<AccumulatedMouseScroll>, mode: Res<CameraMode
     orbit.distance = (orbit.distance * zoom).clamp(MIN_DISTANCE, max_distance);
 }
 
-/// Places the camera at its orbit around what it follows, never below the
-/// ground, and loads chunks around that point.
-#[allow(clippy::type_complexity)]
+/// Places the camera at its orbit around what it follows (the character,
+/// the free sphere, or the world's spawn point before the character
+/// arrives), never below the ground, and loads chunks around that point.
 fn place_camera(
     mode: Res<CameraMode>,
-    world: Res<GameWorld>,
+    world: Option<Res<WorldInfo>>,
     store: Res<ChunkStore>,
     mut focus: ResMut<StreamingFocus>,
-    player: Single<&Transform, (With<Player>, Without<Orbit>, Without<FreeCameraSphere>)>,
+    player: Option<Single<&Transform, (With<LocalPlayer>, Without<Orbit>, Without<FreeCameraSphere>)>>,
     sphere: Single<&Transform, (With<FreeCameraSphere>, Without<Orbit>)>,
     camera: Single<(&mut Transform, &Orbit)>,
 ) {
-    let target = match *mode {
-        CameraMode::Follow => player.translation + Vec3::Y * FOLLOW_HEIGHT,
-        CameraMode::Free => sphere.translation,
+    let target = match (*mode, player) {
+        (CameraMode::Free, _) => sphere.translation,
+        (CameraMode::Follow, Some(player)) => player.translation + Vec3::Y * FOLLOW_HEIGHT,
+        (CameraMode::Follow, None) => {
+            let Some(world) = world else { return };
+            let (x, y) = world.0.spawn_point;
+            to_bevy(x, y, ground_height(&store, x, y).unwrap_or(0.0) + FOLLOW_HEIGHT)
+        }
     };
     let (mut transform, orbit) = camera.into_inner();
     let mut position = target + orbit.offset();
     let (x, y) = from_bevy(position);
-    position.y = position.y.max(ground_height(&store, &world.0, x, y) + CAMERA_CLEARANCE);
+    if let Some(ground) = ground_height(&store, x, y) {
+        position.y = position.y.max(ground + CAMERA_CLEARANCE);
+    }
     *transform = Transform::from_translation(position).looking_at(target, Vec3::Y);
     focus.0 = target;
 }

@@ -7,7 +7,7 @@
 //! works even when the window can't be seen (such as on a locked screen).
 //!
 //! ```text
-//! VENTURE_SCREENSHOT=shot.png cargo run -p venture_client
+//! VENTURE_SCREENSHOT=shot.png cargo run -p venture_client -- --local
 //! ```
 //!
 //! Combine with `VENTURE_CAMERA` (see [`crate::dev_settings`]) to choose the view.
@@ -18,6 +18,7 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 
 use crate::chunk_streaming::StreamingProgress;
+use crate::network::ClientState;
 
 /// Size of the screenshot, in pixels.
 const SIZE: (u32, u32) = (1600, 900);
@@ -58,10 +59,10 @@ fn create_target(mut pending: ResMut<PendingScreenshot>, mut images: ResMut<Asse
     pending.target = images.add(image);
 }
 
-/// Points each new camera at the offscreen image.
+/// Points each new camera at the offscreen image, drawing the interface there too.
 fn render_offscreen(mut commands: Commands, pending: Res<PendingScreenshot>, cameras: Query<Entity, Added<Camera3d>>) {
     for camera in &cameras {
-        commands.entity(camera).insert(RenderTarget::Image(pending.target.clone().into()));
+        commands.entity(camera).insert((RenderTarget::Image(pending.target.clone().into()), IsDefaultUiCamera));
     }
 }
 
@@ -69,9 +70,10 @@ fn take_screenshot_when_loaded(
     mut commands: Commands,
     mut pending: ResMut<PendingScreenshot>,
     progress: Res<StreamingProgress>,
+    state: Res<State<ClientState>>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    let loaded = progress.measured && progress.waiting == 0;
+    let loaded = *state.get() == ClientState::Playing && progress.measured && progress.waiting == 0;
     if !loaded && !pending.taken {
         pending.frames = 0;
         return;

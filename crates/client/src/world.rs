@@ -1,29 +1,21 @@
-//! The world generator resource, plus sky and lighting.
-
-use std::sync::Arc;
+//! The sky and lighting.
 
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
-use venture_worldgen::{WorldGenConfig, WorldGenerator};
 
 use crate::palette;
 
-/// Creates the world and lights the scene.
+/// Lights the scene.
 pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(GameWorld(Arc::new(WorldGenerator::new(WorldGenConfig::default()))))
-            .insert_resource(ClearColor(palette::HAZE))
+        app.insert_resource(ClearColor(palette::HAZE))
             // Soft, warm fill light, so shadowed slopes aren't black.
             .insert_resource(GlobalAmbientLight { color: Color::srgb(0.9, 0.9, 0.8), brightness: 450.0, ..default() })
             .add_systems(Startup, spawn_sun);
     }
 }
-
-/// The world generator, shared with background chunk-generation tasks.
-#[derive(Resource, Clone)]
-pub struct GameWorld(pub Arc<WorldGenerator>);
 
 fn spawn_sun(mut commands: Commands) {
     commands.spawn((

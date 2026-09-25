@@ -3,7 +3,13 @@
 The design is in [client-server.md](client-server.md). This is the order
 we'll build it in. Each milestone ends with something playable.
 
-## Milestone 1: play together on a LAN
+## Milestone 1: play together on a LAN (done)
+
+Everything below is implemented, plus a chat box. The server has end-to-end
+tests (`crates/server/tests/game.rs`) covering joining, name rules, movement
+speed limits against forged commands, chat, refusal of out-of-order and
+malformed messages, double logins, and characters returning where they left
+off. It has been played on a LAN, in the browser and on desktop.
 
 **Goal:** run `cargo run --release -p venture_server`, open the printed
 address in several browsers on the network, and see each other running

@@ -3,3 +3,6 @@
 /crates/client/dist
 /preview
 .DS_Store
+/world
+/server_data
+/local_data

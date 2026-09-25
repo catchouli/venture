@@ -1,10 +1,12 @@
 //! What the terrain is made of and covered by.
 
+use serde::{Deserialize, Serialize};
+
 use crate::Biome;
 
 /// The material on the surface of a terrain cell. Decides how it looks and,
 /// later, gameplay properties such as footstep sounds and what can be gathered.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Ground {
     /// Ordinary grass.
     Grass,
@@ -27,7 +29,7 @@ pub enum Ground {
 }
 
 /// The kind of liquid covering a cell.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FluidKind {
     /// Rivers, lakes and the sea.
     Water,

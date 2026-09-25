@@ -9,8 +9,8 @@ The default world is 4 × 4 km, surrounded by sea.
 
 The generator runs **ahead of time**: a bake step writes the finished world
 to disk, and the server and clients use the baked chunks (see
-[client-server.md](client-server.md)). For now the prototype client still
-generates chunks on the fly.
+[client-server.md](client-server.md)). Bake with
+`cargo run --release -p venture_worldgen --bin bake`.
 
 ## Overview
 

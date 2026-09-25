@@ -1,95 +1,162 @@
-//! The player's character: where it is, and how it moves. It either runs
-//! along a route (from clicking the ground), or is steered with WASD
-//! relative to the camera. Steering cancels any route.
-
-use std::collections::VecDeque;
+//! The player's own character: shown where the server says it is, and moved
+//! instantly by the player's input using the shared movement rules
+//! (prediction), then quietly corrected towards the server's position.
+//!
+//! Input here only *asks* the server to move (with [`ToServer`] commands).
+//! See "Movement" in `docs/client-server.md`.
 
 use bevy::prelude::*;
 use venture_navigation::Point;
+use venture_protocol::{ClientMessage, PlayerId, ServerMessage};
+use venture_simulation::{Movement, step};
 
 use crate::camera::{CameraHeading, CameraMode, wasd_direction};
-use crate::character::{CharacterAssets, Gait, RUN_SPEED, spawn_character};
+use crate::character::{CharacterAssets, Gait, spawn_character};
 use crate::chunk_streaming::{ChunkStore, ObstacleStore};
 use crate::coords::{from_bevy, to_bevy};
-use crate::dev_settings::DevSettings;
+use crate::nameplates::Nameplate;
+use crate::network::{ClientState, FromServer, ToServer};
 use crate::terrain_query::{ground_height, is_blocked};
-use crate::world::GameWorld;
+use crate::text_input::KeyboardFocus;
 
 /// How quickly the character turns to face where it's going (per second).
 const TURN_RATE: f32 = 12.0;
+/// While moving, the prediction may run this far ahead of the server (in
+/// metres) before it's snapped back. Running ahead is normal: the server
+/// hears about each move a little later.
+const MAX_PREDICTION_ERROR: f32 = 3.0;
+/// When standing still, the character glides to the server's position at this rate (per second).
+const SETTLE_RATE: f32 = 8.0;
+/// Differences smaller than this (in metres) are ignored.
+const SETTLE_TOLERANCE: f32 = 0.02;
+/// The fewest seconds between steering updates sent to the server.
+const STEERING_SEND_INTERVAL: f32 = 0.1;
 
-/// Spawns the player's character and moves it along its route.
+/// Shows and moves the player's character.
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_player).add_systems(Update, (steer_with_keyboard, run_along_route).chain());
+        app.init_resource::<SteeringSent>().add_systems(
+            Update,
+            (
+                place_on_welcome,
+                steer_with_keyboard.run_if(in_state(ClientState::Playing)),
+                predict_movement,
+                correct_towards_server,
+            )
+                .chain()
+                .in_set(PlayerSystems),
+        );
     }
 }
 
-/// The player's character.
-#[derive(Component, Default)]
-pub struct Player {
-    /// Waypoints still to run to, in order, in metres.
-    pub route: VecDeque<Point>,
-    /// The direction the player is steering with the keyboard, in world
-    /// `(x, y)`, or zero when not steering.
-    pub steering: Vec2,
+/// The systems that move the player's character. The camera follows after them.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PlayerSystems;
+
+/// The player's own character.
+#[derive(Component)]
+pub struct LocalPlayer {
+    /// The player's id this session.
+    pub id: PlayerId,
+    /// How the character is moving, as predicted locally.
+    pub movement: Movement,
 }
 
-impl Player {
-    /// Whether the character has somewhere to go.
-    pub fn is_moving(&self) -> bool {
-        !self.route.is_empty() || self.steering != Vec2::ZERO
+/// The steering direction last sent to the server, and how long ago.
+#[derive(Resource, Default)]
+struct SteeringSent {
+    direction: Option<Point>,
+    seconds_since: f32,
+}
+
+/// Creates the character on the first welcome, and puts it where the server
+/// says on every welcome (such as after reconnecting).
+fn place_on_welcome(
+    mut commands: Commands,
+    mut events: MessageReader<FromServer>,
+    assets: Res<CharacterAssets>,
+    store: Res<ChunkStore>,
+    mut players: Query<(&mut LocalPlayer, &mut Transform, &mut Nameplate)>,
+) {
+    for FromServer(message) in events.read() {
+        let ServerMessage::Welcome { you, name, position: (x, y) } = message else { continue };
+        let translation = to_bevy(*x, *y, ground_height(&store, *x, *y).unwrap_or(0.0));
+        if let Ok((mut player, mut transform, mut nameplate)) = players.single_mut() {
+            player.id = *you;
+            player.movement = Movement::Idle;
+            transform.translation = translation;
+            nameplate.0.clone_from(name);
+            continue;
+        }
+        let character = spawn_character(&mut commands, &assets, Transform::from_translation(translation), you.0);
+        commands.entity(character).insert((
+            Name::new("Player"),
+            LocalPlayer { id: *you, movement: Movement::Idle },
+            Nameplate(name.clone()),
+        ));
     }
 }
 
-fn spawn_player(mut commands: Commands, world: Res<GameWorld>, assets: Res<CharacterAssets>, dev: Res<DevSettings>) {
-    let (x, y) = dev.start_position.unwrap_or_else(|| world.0.spawn_point());
-    let position = to_bevy(x, y, world.0.ground_height(x, y));
-    let character = spawn_character(&mut commands, &assets, Transform::from_translation(position));
-    commands.entity(character).insert((Name::new("Player"), Player::default()));
-}
-
-/// Reads WASD into the player's steering direction, relative to the camera.
-/// Steering cancels any route from a click. Only while following the
-/// character: in free-camera mode WASD moves the camera instead.
+/// Turns WASD (relative to the camera) into steering, and tells the server
+/// when it changes. Paused while typing and in free-camera mode.
 fn steer_with_keyboard(
+    time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mode: Res<CameraMode>,
     heading: Res<CameraHeading>,
-    mut player: Single<&mut Player>,
+    focus: Res<KeyboardFocus>,
+    mut sent: ResMut<SteeringSent>,
+    mut to_server: MessageWriter<ToServer>,
+    mut player: Single<&mut LocalPlayer>,
 ) {
-    let input = if *mode == CameraMode::Follow { wasd_direction(&keys) } else { Vec2::ZERO };
-    player.steering = (heading.forward * input.y + heading.right * input.x).normalize_or_zero();
-    if player.steering != Vec2::ZERO {
-        player.route.clear();
+    sent.seconds_since += time.delta_secs();
+    let input = if *mode == CameraMode::Follow && !focus.is_typing() { wasd_direction(&keys) } else { Vec2::ZERO };
+    let steering = (heading.forward * input.y + heading.right * input.x).try_normalize().map(|d| (d.x, d.y));
+
+    match steering {
+        Some(direction) => player.movement = Movement::Steer(direction),
+        // Releasing the keys stops steering, but not a route from a click.
+        None if matches!(player.movement, Movement::Steer(_)) => player.movement = Movement::Idle,
+        None => {}
+    }
+
+    let changed = match (steering, sent.direction) {
+        (Some(new), Some(old)) => (new.0 - old.0).abs() + (new.1 - old.1).abs() > 0.05,
+        (a, b) => a.is_some() != b.is_some(),
+    };
+    // Stopping is always sent at once; direction changes at most every interval.
+    let due = steering.is_none() || sent.seconds_since >= STEERING_SEND_INTERVAL;
+    if changed && due {
+        let command = match steering {
+            Some((x, y)) => ClientMessage::Steer { x, y },
+            None => ClientMessage::Stop,
+        };
+        to_server.write(ToServer(command));
+        sent.direction = steering;
+        sent.seconds_since = 0.0;
     }
 }
 
-/// Moves the character (steered, or along its route), following the ground
-/// and turning to face the way it's going.
-pub fn run_along_route(
+/// Moves the character locally with the shared movement rules, following
+/// the ground and turning to face the way it's going.
+fn predict_movement(
     time: Res<Time>,
     store: Res<ChunkStore>,
     obstacles: Res<ObstacleStore>,
-    world: Res<GameWorld>,
-    player: Single<(&mut Transform, &mut Player, &mut Gait)>,
+    player: Option<Single<(&mut Transform, &mut LocalPlayer, &mut Gait)>>,
 ) {
+    let Some(player) = player else { return };
     let (mut transform, mut player, mut gait) = player.into_inner();
     let dt = time.delta_secs();
     let start = from_bevy(transform.translation);
-    let step = RUN_SPEED * dt;
-
-    let (x, y) = if player.steering != Vec2::ZERO {
-        steer(start, player.steering * step, |x, y| is_blocked(&obstacles, x, y))
-    } else {
-        follow_route(start, step, &mut player.route)
-    };
+    let (x, y) = step(start, &mut player.movement, dt, |x, y| is_blocked(&obstacles, x, y));
 
     let (moved_x, moved_y) = (x - start.0, y - start.1);
     let moved = moved_x.hypot(moved_y);
-    transform.translation = to_bevy(x, y, ground_height(&store, &world.0, x, y));
+    let height = ground_height(&store, x, y).unwrap_or(transform.translation.y);
+    transform.translation = to_bevy(x, y, height);
     if moved > 0.0 {
         // The character faces +Z in its own space, which is world +y.
         let facing = Quat::from_rotation_y(moved_x.atan2(moved_y));
@@ -98,33 +165,34 @@ pub fn run_along_route(
     gait.speed = if dt > 0.0 { moved / dt } else { 0.0 };
 }
 
-/// Moves up to `distance` metres along `route` from `(x, y)`, dropping
-/// waypoints as they are reached.
-fn follow_route((mut x, mut y): Point, distance: f32, route: &mut VecDeque<Point>) -> Point {
-    let mut remaining = distance;
-    while remaining > 0.0 {
-        let Some(&(target_x, target_y)) = route.front() else { break };
-        let to_target = (target_x - x).hypot(target_y - y);
-        if to_target <= remaining {
-            (x, y) = (target_x, target_y);
-            remaining -= to_target;
-            route.pop_front();
-        } else {
-            x += (target_x - x) / to_target * remaining;
-            y += (target_y - y) / to_target * remaining;
-            remaining = 0.0;
+/// Compares the prediction with the server's position in each snapshot. A
+/// large difference snaps the character to the server; when both have
+/// stopped, it glides the last bit.
+fn correct_towards_server(
+    time: Res<Time>,
+    mut events: MessageReader<FromServer>,
+    mut server_position: Local<Option<(Point, bool)>>,
+    player: Option<Single<(&mut Transform, &LocalPlayer)>>,
+) {
+    let Some(player) = player else { return };
+    let (mut transform, player) = player.into_inner();
+    for FromServer(message) in events.read() {
+        if let ServerMessage::Snapshot { players, .. } = message
+            && let Some(me) = players.iter().find(|state| state.id == player.id)
+        {
+            *server_position = Some(((me.x, me.y), me.moving));
         }
     }
-    (x, y)
-}
+    let Some(((server_x, server_y), server_moving)) = *server_position else { return };
 
-/// Moves from `(x, y)` by `offset`, without entering blocked cells. If the
-/// full move is blocked, slides along whichever axis is free, so the
-/// character glides along walls and shores instead of sticking to them.
-fn steer((x, y): Point, offset: Vec2, is_blocked: impl Fn(i32, i32) -> bool) -> Point {
-    let open = |(px, py): Point| !is_blocked(px.floor() as i32, py.floor() as i32);
-    [(x + offset.x, y + offset.y), (x + offset.x, y), (x, y + offset.y)]
-        .into_iter()
-        .find(|&candidate| open(candidate))
-        .unwrap_or((x, y))
+    let (x, y) = from_bevy(transform.translation);
+    let error = (server_x - x).hypot(server_y - y);
+    if error > MAX_PREDICTION_ERROR {
+        transform.translation.x = server_x;
+        transform.translation.z = server_y;
+    } else if !server_moving && !player.movement.is_moving() && error > SETTLE_TOLERANCE {
+        let blend = (SETTLE_RATE * time.delta_secs()).min(1.0);
+        transform.translation.x += (server_x - x) * blend;
+        transform.translation.z += (server_y - y) * blend;
+    }
 }

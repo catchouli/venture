@@ -1,4 +1,5 @@
-//! On-screen debug text: where the camera target is and how the game is running.
+//! On-screen debug text (where the player is and how the game is running),
+//! and a reminder of the controls.
 
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
@@ -8,10 +9,11 @@ use venture_world::CellPos;
 use crate::camera::CameraMode;
 use crate::chunk_streaming::{ChunkStore, ShownChunks};
 use crate::coords::from_bevy;
-use crate::player::Player;
+use crate::network::ClientState;
+use crate::player::LocalPlayer;
 
-const CONTROLS_HELP: &str = "Left-click or WASD: run   Right-drag or arrow keys: rotate and tilt   Wheel: zoom   \
-                             F1: free camera (WASD to fly, Shift: fast)";
+const CONTROLS_HELP: &str = "Left-click or WASD: run\nRight-drag or arrow keys: rotate and tilt\nWheel: zoom\n\
+                             Enter: chat\nF1: free camera (WASD to fly, Shift: fast)";
 
 /// Shows the debug overlay.
 pub struct DebugHudPlugin;
@@ -31,25 +33,26 @@ struct HudText;
 fn spawn_hud(mut commands: Commands) {
     let font = TextFont { font_size: FontSize::Px(15.0), ..default() };
     let shadow = TextShadow { offset: Vec2::splat(1.5), ..default() };
-    let panel = |top: bool| Node {
-        position_type: PositionType::Absolute,
-        left: px(10),
-        top: if top { px(10) } else { Val::Auto },
-        bottom: if top { Val::Auto } else { px(10) },
-        ..default()
-    };
-    commands.spawn((HudText, Text::default(), font.clone(), shadow, panel(true)));
-    commands.spawn((Text::new(CONTROLS_HELP), font, shadow, panel(false)));
+    let debug = Node { position_type: PositionType::Absolute, left: px(10), top: px(10), ..default() };
+    // Bottom right, clear of the chat box in the bottom left.
+    let help = Node { position_type: PositionType::Absolute, right: px(10), bottom: px(10), ..default() };
+    commands.spawn((HudText, Text::default(), font.clone(), shadow, debug));
+    commands.spawn((Text::new(CONTROLS_HELP), font, shadow, help, TextLayout::justify(Justify::Right)));
 }
 
 fn update_hud(
     mut text: Single<&mut Text, With<HudText>>,
-    player: Single<&Transform, With<Player>>,
+    player: Option<Single<&Transform, With<LocalPlayer>>>,
+    state: Res<State<ClientState>>,
     mode: Res<CameraMode>,
     store: Res<ChunkStore>,
     shown: Res<ShownChunks>,
     diagnostics: Res<DiagnosticsStore>,
 ) {
+    let Some(player) = player else {
+        text.0 = format!("{:?}", state.get());
+        return;
+    };
     let (x, y) = from_bevy(player.translation);
     let cell_pos = CellPos::containing(x, y);
     let cell_info = store
@@ -69,7 +72,8 @@ fn update_hud(
     let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|fps| fps.smoothed()).unwrap_or(0.0);
 
     text.0 = format!(
-        "Player at ({x:.1}, {y:.1}) m, height {:.1} m\n{cell_info}\nCamera: {:?}\nChunks: {} shown, {} loaded\nFPS: {fps:.0}",
+        "{:?}\nPlayer at ({x:.1}, {y:.1}) m, height {:.1} m\n{cell_info}\nCamera: {:?}\nChunks: {} shown, {} loaded\nFPS: {fps:.0}",
+        state.get(),
         player.translation.y,
         *mode,
         shown.0.len(),

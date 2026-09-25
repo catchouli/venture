@@ -34,12 +34,19 @@ like the finished game, with a character walking around it.
 - Structures: buildings and bridges placed by overlays.
 - Multi-layer navigation grid, once there are structures to walk on and under.
 
-## Next: playing together
+- Playing together (milestone 1 of [plan-client-server.md](plan-client-server.md)):
+  a baked world; an authoritative server hosting the game on a LAN; token
+  profiles with a name prompt; movement prediction; other players with
+  names; chat; a disconnected overlay; a desktop `--local` mode.
 
-Milestone 1 of [plan-client-server.md](plan-client-server.md): an
-authoritative server that hosts the game on a LAN, automatic profiles, and
-seeing other players. Then the content pack (milestone 2), and dialogue,
-inventory and shops (milestone 3).
+## Housekeeping
+
+- Trim Bevy features the client doesn't use (audio, glTF and so on) to shrink
+  the web download (about 31 MB, or roughly a third of that compressed).
+
+## Next: content
+
+The content pack (milestone 2), then dialogue, inventory and shops (milestone 3).
 
 ## Next: the game
 
