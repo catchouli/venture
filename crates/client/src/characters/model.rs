@@ -18,6 +18,10 @@ const STRIDE_LENGTH: f32 = 2.6;
 pub const RUN_SPEED: f32 = 5.0;
 /// How quickly the animation blends between standing and running (per second).
 const BLEND_RATE: f32 = 8.0;
+/// How long a wave lasts, in seconds.
+const WAVE_SECONDS: f32 = 1.8;
+/// How long a wave takes to blend in and out, in seconds.
+const WAVE_BLEND_SECONDS: f32 = 0.3;
 
 /// Builds characters and animates them.
 pub struct CharacterPlugin;
@@ -37,6 +41,25 @@ pub struct Gait {
     phase: f32,
     /// How much of the run animation is showing, from `0.0` (standing) to `1.0` (running).
     running: f32,
+    /// Seconds into a wave, if the character is waving.
+    waving: Option<f32>,
+}
+
+impl Gait {
+    /// Starts a friendly wave of the right hand (or starts it over).
+    pub fn wave(&mut self) {
+        self.waving = Some(0.0);
+    }
+
+    /// How much of the wave is showing, from `0.0` to `1.0`, and how far into it.
+    fn wave_amount(&self) -> (f32, f32) {
+        let Some(time) = self.waving else { return (0.0, 0.0) };
+        let blend_in = (time / WAVE_BLEND_SECONDS).min(1.0);
+        let blend_out = ((WAVE_SECONDS - time) / WAVE_BLEND_SECONDS).clamp(0.0, 1.0);
+        let amount = blend_in.min(blend_out);
+        // Smoothstep, so the arm eases up and down.
+        (amount * amount * (3.0 - 2.0 * amount), time)
+    }
 }
 
 /// Which side of the body a limb is on.
@@ -76,7 +99,7 @@ enum JointKind {
     /// Everything above the hips: bobs, leans and twists.
     Body,
     Shoulder(Side),
-    Elbow,
+    Elbow(Side),
     Hip(Side),
     Knee(Side),
 }
@@ -398,7 +421,7 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
                 shoulder.spawn(sphere(guard, Vec3::ZERO, Vec3::splat(guard_size)));
                 shoulder.spawn(part(&m.upper_arm, sleeves, Transform::from_xyz(0.0, -0.14, 0.0)));
                 shoulder
-                    .spawn((joint(JointKind::Elbow), Transform::from_xyz(0.0, -0.28, 0.0), Visibility::default()))
+                    .spawn((joint(JointKind::Elbow(side)), Transform::from_xyz(0.0, -0.28, 0.0), Visibility::default()))
                     .with_children(|elbow| {
                         elbow.spawn(part(&m.forearm, sleeves, Transform::from_xyz(0.0, -0.13, 0.0)));
                         elbow.spawn(sphere(&look.skin, Vec3::new(0.0, -0.28, 0.0), Vec3::new(0.04, 0.055, 0.03)));
@@ -442,12 +465,16 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
         let target = (gait.speed / RUN_SPEED).clamp(0.0, 1.0);
         gait.running += (target - gait.running) * (BLEND_RATE * dt).min(1.0);
         gait.phase = (gait.phase + gait.speed * dt / STRIDE_LENGTH * TAU) % TAU;
+        if let Some(time) = gait.waving {
+            gait.waving = Some(time + dt).filter(|&time| time < WAVE_SECONDS);
+        }
     }
 
     let breathing = (time.elapsed_secs() * 2.0).sin();
     for (joint, mut transform) in &mut joints {
         let Ok(gait) = gaits.get(joint.owner) else { continue };
         let (run, phase) = (gait.running, gait.phase);
+        let (wave, wave_time) = gait.wave_amount();
         transform.rotation = match joint.kind {
             JointKind::Body => {
                 // Bob up at each footfall, lean into the run and twist with the stride.
@@ -465,11 +492,16 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
             }
             JointKind::Shoulder(side) => {
                 // Arms swing against the leg on the same side, and hang slightly
-                // away from the body.
+                // away from the body. Waving raises the right arm out and up.
                 let leg = phase + side.phase_offset();
-                Quat::from_rotation_z(side.sign() * 0.08) * Quat::from_rotation_x(0.6 * leg.sin() * run)
+                let raise = if side == Side::Right { 1.9 * wave } else { 0.0 };
+                Quat::from_rotation_z(side.sign() * (0.08 + raise)) * Quat::from_rotation_x(0.6 * leg.sin() * run)
             }
-            JointKind::Elbow => Quat::from_rotation_x(-(0.15 + 1.1 * run)),
+            JointKind::Elbow(side) => {
+                // Waving bends the raised forearm and swings it from side to side.
+                let swing = if side == Side::Right { wave * (0.9 + 0.45 * (wave_time * 11.0).sin()) } else { 0.0 };
+                Quat::from_rotation_z(side.sign() * swing) * Quat::from_rotation_x(-(0.15 + 1.1 * run) * (1.0 - wave))
+            }
         };
     }
 }

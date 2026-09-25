@@ -179,6 +179,10 @@ fn spawn_camera(
     commands.spawn((
         Name::new("Camera"),
         Camera3d::default(),
+        // The interface is drawn by this camera. (Said outright, because other
+        // cameras, such as the character creation preview, draw into images;
+        // left to choose, Bevy might pick one of those.)
+        IsDefaultUiCamera,
         // A soft bloom, so glowing things (the move marker, lava) glow.
         Bloom { intensity: 0.12, ..Bloom::NATURAL },
         // Warm haze that thickens with distance and hides where chunks stop.

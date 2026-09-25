@@ -7,14 +7,13 @@
 //! a second camera into an image that the window shows. The stage is on its
 //! own render layer, so the world's camera never sees it.
 
-use bevy::asset::RenderAssetUsages;
 use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 use venture_protocol::{BodyType, ClassChoice, ClientMessage, MAX_NAME_CHARS, PlayerLook, ServerMessage, clean_name};
 
-use crate::characters::model::{CharacterAssets, rebuild_body, spawn_character};
+use crate::characters::model::{CharacterAssets, Gait, rebuild_body, spawn_character};
 use crate::dev::settings::DevSettings;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
@@ -131,13 +130,9 @@ fn build_stage(
     offer: Res<Offer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let mut image = Image::new_target_texture(
-        PREVIEW_SIZE.0,
-        PREVIEW_SIZE.1,
-        TextureFormat::Rgba8Unorm,
-        Some(TextureFormat::Rgba8UnormSrgb),
-    );
-    image.asset_usage = RenderAssetUsages::default();
+    // One plain sRGB format, with no second "view" format: WebGL2 (the
+    // browser) doesn't support viewing a texture as another format.
+    let image = Image::new_target_texture(PREVIEW_SIZE.0, PREVIEW_SIZE.1, TextureFormat::Rgba8UnormSrgb, None);
     let image = images.add(image);
     commands.insert_resource(PreviewImage(image.clone()));
     let layer = RenderLayers::layer(PREVIEW_LAYER);
@@ -353,17 +348,20 @@ fn show_choices(
     description.0 = offer.classes.get(offer.class).map(|class| class.description.clone()).unwrap_or_default();
 }
 
-/// Dresses the preview character in the chosen class and body type.
+/// Dresses the preview character in the chosen class and body type, and has
+/// them wave hello in their new look.
 fn dress_preview(
     mut commands: Commands,
     offer: Res<Offer>,
     assets: Res<CharacterAssets>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    preview: Single<Entity, With<PreviewCharacter>>,
+    preview: Single<(Entity, &mut Gait), With<PreviewCharacter>>,
 ) {
     if offer.is_changed() {
+        let (entity, mut gait) = preview.into_inner();
         let look = assets.player_look(0, &offer.look(), &mut materials);
-        rebuild_body(&mut commands, *preview, &assets, &look);
+        rebuild_body(&mut commands, entity, &assets, &look);
+        gait.wave();
     }
 }
 
