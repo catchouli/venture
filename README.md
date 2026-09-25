@@ -48,8 +48,8 @@ Controls: **left-click** the ground to run there, or run with **WASD**
 the camera, and the **mouse wheel** zooms. Click a player or NPC to **select**
 them; click again to **follow** a player or **talk** to an NPC. **Escape** deselects. **Enter** chats. **I** opens your bag and **J** your quest journal.
 New players choose a name, a class (Fighter or Mage) and a body type, with a
-preview. Talking to an NPC opens a **dialogue window**. Type **/help** in chat for commands such as **/follow**, **/talk** and **/town**.
-Admins (listed by name in `server.ron`) also have **/setlevel**, **/reset** and **/setclass**. **F1** switches to a
+preview. Talking to an NPC opens a **dialogue window**. Type **/help** in chat for commands such as **/follow**, **/talk**, **/wave** and **/town**.
+Admins (listed by name in `server.ron`) also have **/setlevel**, **/reset**, **/setclass** and **/setgender**. **F1** switches to a
 free camera for flying around (**WASD** to move, **Shift** to go faster).
 
 ## Documentation

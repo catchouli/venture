@@ -138,6 +138,8 @@ pub enum PlayerAction {
     Chat(String),
     /// Go back to the starting town's square.
     ReturnToTown,
+    /// Do an emote.
+    Emote(venture_protocol::Emote),
 }
 
 /// A player's answer in a conversation with an NPC, for [`crate::dialogue`].
@@ -352,6 +354,13 @@ fn judge_player_message(
             PlayerAction::Chat(text)
         }
         ClientMessage::ReturnToTown => PlayerAction::ReturnToTown,
+        // Emotes share chat's rate limit, so they can't be spammed either.
+        ClientMessage::Emote(emote) => {
+            if !connection.chat.allow(now) {
+                return Verdict::Ignore;
+            }
+            PlayerAction::Emote(emote)
+        }
         ClientMessage::ChooseDialogueOption { index } => {
             return Verdict::Dialogue(DialogueRequest { player, choice: DialogueChoice::Option(index) });
         }

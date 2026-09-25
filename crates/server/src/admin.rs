@@ -6,6 +6,7 @@
 //! - `/reset`: start your character over at level 1.
 //! - `/setclass CLASS`: change class, with every point your level has earned
 //!   given back to spend again.
+//! - `/setgender BODY`: change your body type (masculine, feminine or androgynous).
 
 use bevy::prelude::*;
 use venture_protocol::{AdminCommand, ServerMessage};
@@ -70,6 +71,10 @@ fn carry_out_admin_commands(
                     "You are now a {}. Your stats are back to a {}'s, and your points are yours to spend again.",
                     new_class.name, new_class.name
                 ));
+            }
+            AdminCommand::SetBody { body } => {
+                character.body = *body;
+                tell(format!("Your character is now {}.", body.name().to_lowercase()));
             }
         }
         // Everyone sees the new level and look (and a level-up celebrates).
