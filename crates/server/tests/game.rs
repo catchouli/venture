@@ -331,28 +331,38 @@ fn content_with(npcs: &str, script: &str) -> ContentPack {
     content_with_dialogue(npcs, script, None)
 }
 
-/// Like [`content_with`], plus one dialogue file.
+/// Like [`content_with`], plus one dialogue file. Every test pack also has
+/// coins and bread, and new characters start with 25 coins and a loaf.
 fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> ContentPack {
     let folder =
         std::env::temp_dir().join(format!("venture-test-content-{}-{}", std::process::id(), fastrand_suffix()));
-    let write = |path: &str, text: &str| {
+    let write = |path: &str, contents: &[u8]| {
         let path = folder.join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, text).unwrap();
+        std::fs::write(path, contents).unwrap();
     };
     write(
         "appearances/people.ron",
-        r#"[(id: "villager", skin: (0.8, 0.6, 0.5), hair: (0.3, 0.2, 0.1), tunic: (0.3, 0.4, 0.2), trousers: (0.3, 0.3, 0.2))]"#,
+        br#"[(id: "villager", skin: (0.8, 0.6, 0.5), hair: (0.3, 0.2, 0.1), tunic: (0.3, 0.4, 0.2), trousers: (0.3, 0.3, 0.2))]"#,
     );
-    write("npcs/town.ron", npcs);
-    write("scripts/greeter.rhai", script);
+    write("npcs/town.ron", npcs.as_bytes());
+    write("scripts/greeter.rhai", script.as_bytes());
+    write("items/things.ron", ITEMS.as_bytes());
+    write("new_characters.ron", br#"(items: [(item: "coins", count: 25), (item: "bread", count: 1)])"#);
+    // Only the start of a PNG, but that's all the content check looks at.
+    write("icons/thing.png", b"\x89PNG\r\n\x1a\n");
     if let Some(dialogue) = dialogue {
-        write("dialogue/town.yarn", dialogue);
+        write("dialogue/town.yarn", dialogue.as_bytes());
     }
     let pack = ContentPack::load(&folder).unwrap();
     std::fs::remove_dir_all(&folder).unwrap();
     pack
 }
+
+const ITEMS: &str = r#"[
+    (id: "coins", name: "Coins", description: "Money.", icon: "thing.png", stackable: true),
+    (id: "bread", name: "Bread", description: "A loaf.", icon: "thing.png", value: 4),
+]"#;
 
 /// A different number each call, so test content folders don't collide.
 fn fastrand_suffix() -> u64 {
@@ -542,4 +552,34 @@ fn conversations_are_private_and_branch_on_the_players_choices() {
     assert!(!talker.receive().contains(&ServerMessage::DialogueEnded), "not while still close by");
     server.run(30);
     assert!(talker.receive().contains(&ServerMessage::DialogueEnded));
+}
+
+/// The latest inventory in a batch of messages, as (item, count) pairs.
+fn latest_inventory(messages: &[ServerMessage]) -> Option<Vec<(String, u32)>> {
+    messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Inventory { slots } => {
+            Some(slots.iter().flatten().map(|stack| (stack.item.clone(), stack.count)).collect())
+        }
+        _ => None,
+    })
+}
+
+#[test]
+fn new_characters_get_starting_items_and_keep_them() {
+    let mut server = TestServer::with_content("inventory", content_with("[]", ""));
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
+    server.run(2);
+    client.send(&ClientMessage::ChooseName { name: "Newcomer".to_string() });
+    server.run(2);
+    let expected = vec![("coins".to_string(), 25), ("bread".to_string(), 1)];
+    assert_eq!(latest_inventory(&client.receive()), Some(expected.clone()));
+    client.disconnect();
+    server.run(2);
+
+    let mut server = TestServer::with_profiles(server.shut_down());
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
+    server.run(2);
+    assert_eq!(latest_inventory(&client.receive()), Some(expected), "the bag comes back after a restart");
 }

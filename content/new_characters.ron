@@ -1,0 +1,7 @@
+// What new characters start with.
+(
+    items: [
+        (item: "coins", count: 25),
+        (item: "bread", count: 1),
+    ],
+)

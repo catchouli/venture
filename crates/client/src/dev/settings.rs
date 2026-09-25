@@ -12,6 +12,7 @@
 //!   name without asking (implied by `VENTURE_SCREENSHOT`).
 //! - `VENTURE_SAY=text`: say this in chat once in the game (several messages
 //!   can be separated with `|`).
+//! - `VENTURE_OPEN_BAG=1`: open the bag once in the game.
 //! - `VENTURE_SELECT_NEAREST=1`: select the nearest character (player or NPC) once one is in sight.
 //!
 //! Environment variables don't exist on the web, so there these are all unset.
@@ -38,6 +39,8 @@ pub struct DevSettings {
     pub say: Vec<String>,
     /// Whether to select the nearest character (player or NPC) once one is in sight.
     pub select_nearest: bool,
+    /// Whether to open the bag once in the game.
+    pub open_bag: bool,
 }
 
 impl DevSettings {
@@ -56,6 +59,7 @@ impl DevSettings {
                 .map(|say| say.split('|').map(str::to_string).collect())
                 .unwrap_or_default(),
             select_nearest: std::env::var_os("VENTURE_SELECT_NEAREST").is_some(),
+            open_bag: std::env::var_os("VENTURE_OPEN_BAG").is_some(),
         }
     }
 }

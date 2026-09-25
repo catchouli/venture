@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use venture_protocol::ItemStack;
 
 /// Everything saved about a character.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -17,6 +18,9 @@ pub struct Profile {
     pub name: String,
     /// Where the character is, in metres.
     pub position: (f32, f32),
+    /// What they carry, slot by slot.
+    #[serde(default)]
+    pub inventory: Vec<Option<ItemStack>>,
 }
 
 /// Identifies a profile without revealing the token behind it: the hex
@@ -87,10 +91,17 @@ mod tests {
         let key = ProfileKey::from_token("some-long-test-token-0123456789abcdef");
         assert_eq!(store.load(&key), None);
 
-        let profile = Profile { name: "Aldric".to_string(), position: (1.0, 2.0) };
+        let inventory = vec![None, Some(ItemStack { item: "coins".to_string(), count: 3 })];
+        let profile = Profile { name: "Aldric".to_string(), position: (1.0, 2.0), inventory };
         store.save(&key, &profile);
         assert_eq!(store.load(&key), Some(profile));
         std::fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
+    fn older_profiles_still_load() {
+        let profile: Profile = ron::from_str(r#"(name: "Aldric", position: (1.0, 2.0))"#).unwrap();
+        assert!(profile.inventory.is_empty());
     }
 
     #[test]

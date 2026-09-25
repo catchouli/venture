@@ -6,6 +6,7 @@
   rules into the client; see `docs/client-server.md`.
 - On the server, client messages are only read and validated in `requests.rs` (the gate); players are only
   created/removed in `sessions.rs` and changed in `gameplay.rs`; profiles only touched in `profiles.rs`.
+  Inventories only change through `Inventory::apply` (`inventory.rs`), which is checked and all-or-nothing.
   Keep it that way.
 - Content scripts never change the game directly: they queue `ScriptCommand`s (`scripting.rs`), which
   `npcs.rs` validates and applies. New script abilities go through that same path.

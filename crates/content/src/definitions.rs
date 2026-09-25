@@ -76,6 +76,62 @@ pub enum Placement {
     Position((f32, f32)),
 }
 
+/// Something a player can carry.
+///
+/// ```ron
+/// (id: "bread", name: "Bread", description: "A crusty loaf, still warm.",
+///  icon: "bread.png", value: 4)
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ItemDef {
+    /// Unique name, used everywhere else to refer to it (and saved in profiles).
+    pub id: String,
+    /// The name shown to players.
+    pub name: String,
+    /// A line or two about it, shown when the player points at it.
+    pub description: String,
+    /// Its picture: a PNG file in `icons/`.
+    pub icon: String,
+    /// Whether any number of them share one inventory slot (like coins).
+    #[serde(default)]
+    pub stackable: bool,
+    /// What it's worth, in coins. Shops buy it for half that; zero means
+    /// shops won't buy it at all (quest items, for example).
+    #[serde(default)]
+    pub value: u32,
+}
+
+/// What new characters start with.
+///
+/// ```ron
+/// (items: [(item: "coins", count: 25)])
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewCharacterDef {
+    /// The items in their bag.
+    pub items: Vec<ItemCount>,
+}
+
+/// A number of one kind of item.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ItemCount {
+    /// Which item (an [`ItemDef`] id).
+    pub item: String,
+    /// How many.
+    pub count: u32,
+}
+
+/// The item that is money. Shops take and pay it.
+pub const COINS: &str = "coins";
+
+/// The most characters in an item's name.
+pub(crate) const MAX_ITEM_NAME_CHARS: usize = 32;
+/// The most characters in an item's description.
+pub(crate) const MAX_ITEM_DESCRIPTION_CHARS: usize = 200;
+
 /// The most characters in an NPC's name.
 pub(crate) const MAX_NPC_NAME_CHARS: usize = 32;
 /// The furthest an NPC may be allowed to wander from home, in metres.

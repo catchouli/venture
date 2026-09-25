@@ -3,10 +3,10 @@
 > Decided: **RON** for data, **Yarn Spinner** for dialogue, **Rhai** for
 > scripts. How they fit the client and server is in [client-server.md](client-server.md).
 >
-> **Working now:** appearances and NPCs in RON, NPC behaviour in Rhai,
+> **Working now:** appearances, NPCs and items in RON, NPC behaviour in Rhai,
 > conversations in Yarn Spinner, hot reload, a checking tool, and streaming
-> the client's part to browsers. See "The content pack today" below. Items,
-> shops and quests come in milestone 3.
+> the client's part to browsers. See "The content pack today" below. Shops
+> and quests are next (milestone 3).
 
 The world's land (terrain, rivers, biomes, settlement sites, roads) is
 generated. Everything that makes it a *game* is added by people on top:
@@ -39,7 +39,10 @@ events. Much of it should be writable by **people who aren't programmers**
 
 ```
 content/
-  appearances/*.ron    how characters look (the only part sent to clients)
+  appearances/*.ron    how characters look (sent to clients)
+  items/*.ron          things players can carry (sent to clients)
+  icons/*.png          item pictures (sent to clients)
+  new_characters.ron   what new characters start with
   npcs/*.ron           who lives where
   scripts/*.rhai       how NPCs behave
   dialogue/*.yarn      conversations with NPCs
@@ -71,6 +74,32 @@ content, so a typo never takes the game down.
 ```
 
 Colours are sRGB red, green and blue, each from 0 to 1.
+
+### Items
+
+```ron
+[
+    (
+        id: "bread",                    // unique; saved in players' inventories, so don't rename lightly
+        name: "Bread",
+        description: "A crusty loaf from Elsie's ovens, still a little warm.",
+        icon: "bread.png",              // a PNG in icons/
+        stackable: false,               // optional: true for things like coins, which share one slot
+        value: 4,                       // optional: worth in coins; shops buy for half. 0 = unsellable
+    ),
+]
+```
+
+There must be an item called `coins`: it's the money. Icons are small PNGs
+(32 × 32 works well, at most 64 KB). The current ones are placeholders drawn
+by `tools/placeholder_icons.py`; replace them with painted icons of the same
+name whenever they're ready.
+
+`new_characters.ron` says what a new character carries:
+
+```ron
+(items: [(item: "coins", count: 25), (item: "bread", count: 1)])
+```
 
 ### NPCs
 
