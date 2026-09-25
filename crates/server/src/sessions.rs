@@ -12,6 +12,7 @@ use crate::link::{ConnectionId, Link};
 use crate::names::random_name;
 use crate::npcs::Npc;
 use crate::profiles::{Profile, ProfileKey, ProfileStore};
+use crate::quests::QuestLog;
 use crate::requests::{Connections, SessionRequest, Stage};
 use crate::world::ServerWorld;
 use crate::{GameRules, ServerSystems};
@@ -64,7 +65,15 @@ struct Sessions<'w, 's> {
     players: Query<
         'w,
         's,
-        (Entity, &'static Player, &'static NetworkId, &'static DisplayName, &'static Position, &'static Inventory),
+        (
+            Entity,
+            &'static Player,
+            &'static NetworkId,
+            &'static DisplayName,
+            &'static Position,
+            &'static Inventory,
+            &'static QuestLog,
+        ),
     >,
     npcs: Query<'w, 's, (&'static Npc, &'static NetworkId, &'static DisplayName, &'static Position)>,
 }
@@ -76,7 +85,7 @@ fn handle_session_requests(mut requests: MessageReader<SessionRequest>, mut sess
             SessionRequest::ChooseName { connection, profile, name } => {
                 let position = sessions.spawn_point.0.unwrap_or(sessions.world.manifest.spawn_point);
                 let inventory = sessions.starting_inventory().slots().to_vec();
-                let new_profile = Profile { name: name.clone(), position, inventory };
+                let new_profile = Profile { name: name.clone(), position, inventory, quests: Vec::new() };
                 sessions.store.save(profile, &new_profile);
                 sessions.enter_game(*connection, profile.clone(), new_profile);
             }
@@ -114,12 +123,13 @@ impl Sessions<'_, '_> {
         });
         let name = DisplayName(saved.name);
         let inventory = Inventory::from_saved(saved.inventory);
+        let quests = QuestLog::from_saved(saved.quests);
 
         // Tell the newcomer about themselves, and everyone and everything already here.
         let welcome =
             ServerMessage::Welcome { you: id, name: name.0.clone(), position: position.0, rules: self.rules.0 };
         self.link.send(connection, &welcome);
-        for (_, _, &NetworkId(other), other_name, &other_position, _) in &self.players {
+        for (_, _, &NetworkId(other), other_name, &other_position, ..) in &self.players {
             self.link.send(connection, &appeared(other, other_name, EntityKind::Player, other_position));
         }
         for (npc, &NetworkId(npc_id), npc_name, &npc_position) in &self.npcs {
@@ -135,7 +145,7 @@ impl Sessions<'_, '_> {
         self.online.0.insert(profile.clone());
         let player = self
             .commands
-            .spawn((Player { connection, profile }, NetworkId(id), name, position, Mover::default(), inventory))
+            .spawn((Player { connection, profile }, NetworkId(id), name, position, Mover::default(), inventory, quests))
             .id();
         self.set_stage(connection, Stage::Playing { player });
     }
@@ -144,9 +154,11 @@ impl Sessions<'_, '_> {
     fn leave(&mut self, connection: ConnectionId) {
         let Some(state) = self.connections.0.remove(&connection) else { return };
         let Stage::Playing { player } = state.stage else { return };
-        let Ok((entity, leaver, &NetworkId(id), name, &position, inventory)) = self.players.get(player) else { return };
+        let Ok((entity, leaver, &NetworkId(id), name, &position, inventory, quests)) = self.players.get(player) else {
+            return;
+        };
 
-        self.store.save(&leaver.profile, &profile_of(name, position, inventory));
+        self.store.save(&leaver.profile, &profile_of(name, position, inventory, quests));
         self.online.0.remove(&leaver.profile);
         let others: Vec<ConnectionId> =
             self.players.iter().filter(|(e, ..)| *e != entity).map(|(_, player, ..)| player.connection).collect();
@@ -179,7 +191,7 @@ fn autosave(
     time: Res<Time>,
     mut timer: ResMut<AutosaveTimer>,
     store: Res<ProfileStore>,
-    players: Query<(&Player, &DisplayName, &Position, &Inventory)>,
+    players: Query<(&Player, &DisplayName, &Position, &Inventory, &QuestLog)>,
 ) {
     if timer.0.tick(time.delta()).just_finished() {
         save_all(&store, &players);
@@ -190,7 +202,7 @@ fn autosave(
 fn save_everyone_on_exit(
     mut exits: MessageReader<AppExit>,
     store: Option<Res<ProfileStore>>,
-    players: Query<(&Player, &DisplayName, &Position, &Inventory)>,
+    players: Query<(&Player, &DisplayName, &Position, &Inventory, &QuestLog)>,
 ) {
     if exits.read().next().is_some()
         && let Some(store) = store
@@ -200,13 +212,13 @@ fn save_everyone_on_exit(
     }
 }
 
-fn save_all(store: &ProfileStore, players: &Query<(&Player, &DisplayName, &Position, &Inventory)>) {
-    for (player, name, &position, inventory) in players {
-        store.save(&player.profile, &profile_of(name, position, inventory));
+fn save_all(store: &ProfileStore, players: &Query<(&Player, &DisplayName, &Position, &Inventory, &QuestLog)>) {
+    for (player, name, &position, inventory, quests) in players {
+        store.save(&player.profile, &profile_of(name, position, inventory, quests));
     }
 }
 
 /// What to save about a player.
-fn profile_of(name: &DisplayName, Position(position): Position, inventory: &Inventory) -> Profile {
-    Profile { name: name.0.clone(), position, inventory: inventory.slots().to_vec() }
+fn profile_of(name: &DisplayName, Position(position): Position, inventory: &Inventory, quests: &QuestLog) -> Profile {
+    Profile { name: name.0.clone(), position, inventory: inventory.slots().to_vec(), quests: quests.saved() }
 }

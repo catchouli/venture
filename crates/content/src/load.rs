@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::client::{ClientContent, parse_appearances, parse_items};
 use crate::definitions::{
     AppearanceDef, COINS, ItemDef, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS,
-    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, ShopDef,
+    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef, ShopDef,
 };
 
 /// The file saying what new characters start with.
@@ -42,6 +42,8 @@ pub struct ContentPack {
     pub new_characters: NewCharacterDef,
     /// Shops, by id.
     pub shops: BTreeMap<String, ShopDef>,
+    /// Quests, by id.
+    pub quests: BTreeMap<String, QuestDef>,
     /// NPCs, in file order.
     pub npcs: Vec<NpcDef>,
     /// Script sources, by file name within `scripts/`.
@@ -133,6 +135,21 @@ impl ContentPack {
                             errors.push(error(&relative, format!("there's already a shop called \"{}\"", shop.id)));
                         }
                         pack.shops.insert(shop.id.clone(), shop);
+                    }
+                }
+                Err(message) => errors.push(error(&relative, message.to_string())),
+            }
+        }
+
+        for (relative, text) in read_files(folder, "quests", "ron", &mut errors) {
+            match ron::from_str::<Vec<QuestDef>>(&text) {
+                Ok(quests) => {
+                    for quest in quests {
+                        check_quest(&quest, &relative, &mut errors);
+                        if pack.quests.contains_key(&quest.id) {
+                            errors.push(error(&relative, format!("there's already a quest called \"{}\"", quest.id)));
+                        }
+                        pack.quests.insert(quest.id.clone(), quest);
                     }
                 }
                 Err(message) => errors.push(error(&relative, message.to_string())),
@@ -241,6 +258,22 @@ fn check_shop(shop: &ShopDef, pack: &ContentPack, file: &Path, errors: &mut Vec<
     }
 }
 
+fn check_quest(quest: &QuestDef, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, format!("quest \"{}\": {message}", quest.id)));
+    if quest.name.trim().is_empty() {
+        problem("it needs a name".to_string());
+    }
+    if quest.stages.is_empty() {
+        problem("it needs at least one stage".to_string());
+    }
+    let mut stages = HashSet::new();
+    for stage in &quest.stages {
+        if !stages.insert(stage.id.as_str()) {
+            problem(format!("there's more than one stage called \"{}\"", stage.id));
+        }
+    }
+}
+
 /// Checks a dialogue command exists and refers to things that do.
 #[cfg(feature = "scripts")]
 fn check_dialogue_command(text: &str, pack: &ContentPack) -> Result<(), String> {
@@ -256,6 +289,13 @@ fn check_dialogue_command(text: &str, pack: &ContentPack) -> Result<(), String> 
                 return Err(format!("<<{text}>>: there's no shop called \"{shop}\""));
             }
         }
+        DialogueCommand::SetQuest { quest, stage } => match pack.quests.get(&quest) {
+            None => return Err(format!("<<{text}>>: there's no quest called \"{quest}\"")),
+            Some(def) if def.stage_index(&stage).is_none() => {
+                return Err(format!("<<{text}>>: quest \"{quest}\" has no stage called \"{stage}\""));
+            }
+            Some(_) => {}
+        },
     }
     Ok(())
 }

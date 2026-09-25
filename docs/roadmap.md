@@ -46,8 +46,9 @@ like the finished game, with a character walking around it.
 
 ## Content
 
-Done: the content pack (milestone 2), then dialogue, items, inventories and a
-shop (milestone 3). Next: the first quest, which finishes milestone 3.
+Done: the content pack (milestone 2), then dialogue, items, inventories, a
+shop and the first quest (milestone 3). Still to come for content: saved Yarn
+variables, item use (eating), and more shops and quests as the world grows.
 
 ## Next: the game
 

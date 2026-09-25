@@ -1,7 +1,7 @@
 //! The bag: the player's inventory, as a grid of slots in a window on the
-//! right. **I** (or the "Bag" button) opens and closes it; pointing at an
-//! item shows what it is. While a shop is open, the bag opens too, and
-//! clicking an item asks to sell one (see [`crate::ui::shop`]).
+//! right, opened from the toolbar (see [`crate::ui::toolbar`]). Pointing at
+//! an item shows what it is. While a shop is open, clicking an item asks to
+//! sell one (see [`crate::ui::shop`]).
 //!
 //! The inventory itself belongs to the server, which sends it whenever it
 //! changes ([`ServerMessage::Inventory`]). This is only a view of it.
@@ -10,10 +10,9 @@ use bevy::prelude::*;
 use venture_protocol::{ClientMessage, ItemStack, ServerMessage};
 
 use crate::content::ContentStore;
-use crate::dev::settings::DevSettings;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::shop::OpenShop;
-use crate::ui::text_input::KeyboardFocus;
+use crate::ui::toolbar::OpenPanels;
 use crate::ui::tooltip::Tooltip;
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND};
 
@@ -27,6 +26,8 @@ const ICON_SIZE: f32 = 32.0;
 const GAP: f32 = 3.0;
 /// Space around the grid, in pixels.
 const PADDING: f32 = 8.0;
+/// How far below the top of the screen the bag sits (under the toolbar), in pixels.
+const TOP: f32 = 44.0;
 /// Colour of the counts on stacks.
 const COUNT_COLOUR: Color = Color::srgb(1.0, 0.9, 0.35);
 /// Colour of an empty slot.
@@ -49,7 +50,7 @@ impl Plugin for InventoryPlugin {
                     fill_slots,
                     highlight_slots,
                     sell_on_click,
-                    (toggle_bag, show_only_while_playing).chain(),
+                    show_when_open,
                 )
                     .chain(),
             )
@@ -61,11 +62,9 @@ impl Plugin for InventoryPlugin {
 #[derive(Resource, Default)]
 pub struct PlayerInventory(pub Vec<Option<ItemStack>>);
 
-/// Whether the bag window is open.
+/// The bag window.
 #[derive(Component)]
-struct BagWindow {
-    open: bool,
-}
+struct BagWindow;
 
 /// The grid the slots go in.
 #[derive(Component)]
@@ -83,58 +82,30 @@ struct SlotIcon;
 #[derive(Component)]
 struct SlotCount;
 
-/// The button that opens and closes the bag.
-#[derive(Component)]
-struct BagButton;
-
 fn spawn_bag(mut commands: Commands) {
-    let font = TextFont { font_size: FontSize::Px(14.0), ..default() };
-    commands
-        .spawn(Node {
+    commands.spawn((
+        BagWindow,
+        // Blocks clicks on the world behind it.
+        Interaction::default(),
+        SlotGrid,
+        Node {
             position_type: PositionType::Absolute,
-            top: px(12),
+            top: px(TOP),
             right: px(12),
-            flex_direction: FlexDirection::Column,
-            align_items: AlignItems::End,
-            row_gap: px(6),
+            // (Widths include the padding and the 1 pixel border.)
+            width: px(COLUMNS as f32 * SLOT_SIZE + (COLUMNS - 1) as f32 * GAP + 2.0 * (PADDING + 1.0)),
+            flex_wrap: FlexWrap::Wrap,
+            column_gap: px(GAP),
+            row_gap: px(GAP),
+            padding: UiRect::all(px(PADDING)),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(4)),
             ..default()
-        })
-        .with_children(|column| {
-            column
-                .spawn((
-                    BagButton,
-                    Button,
-                    Node {
-                        padding: UiRect::axes(px(10), px(4)),
-                        border: UiRect::all(px(1)),
-                        border_radius: BorderRadius::all(px(3)),
-                        ..default()
-                    },
-                    BackgroundColor(WINDOW_BACKGROUND),
-                    BorderColor::all(BORDER_COLOUR),
-                ))
-                .with_child((Text::new("Bag (I)"), font, TextColor(Color::srgb(0.96, 0.9, 0.75))));
-            column.spawn((
-                BagWindow { open: false },
-                // Blocks clicks on the world behind it.
-                Interaction::default(),
-                SlotGrid,
-                Node {
-                    // (Widths include the padding and the 1 pixel border.)
-                    width: px(COLUMNS as f32 * SLOT_SIZE + (COLUMNS - 1) as f32 * GAP + 2.0 * (PADDING + 1.0)),
-                    flex_wrap: FlexWrap::Wrap,
-                    column_gap: px(GAP),
-                    row_gap: px(GAP),
-                    padding: UiRect::all(px(PADDING)),
-                    border: UiRect::all(px(1)),
-                    border_radius: BorderRadius::all(px(4)),
-                    ..default()
-                },
-                BackgroundColor(WINDOW_BACKGROUND),
-                BorderColor::all(BORDER_COLOUR),
-                Visibility::Hidden,
-            ));
-        });
+        },
+        BackgroundColor(WINDOW_BACKGROUND),
+        BorderColor::all(BORDER_COLOUR),
+        Visibility::Hidden,
+    ));
 }
 
 fn record_inventory(mut events: MessageReader<FromServer>, mut inventory: ResMut<PlayerInventory>) {
@@ -283,41 +254,8 @@ fn sell_on_click(
     }
 }
 
-/// **I** or the "Bag" button opens and closes the bag (unless the player is
-/// typing). A shop opening opens it too.
-fn toggle_bag(
-    mut events: MessageReader<FromServer>,
-    keys: Res<ButtonInput<KeyCode>>,
-    focus: Res<KeyboardFocus>,
-    button: Query<&Interaction, (With<BagButton>, Changed<Interaction>)>,
-    mut bag: Single<&mut BagWindow>,
-    dev: Res<DevSettings>,
-    mut opened_for_dev: Local<bool>,
-) {
-    if dev.open_bag && !*opened_for_dev {
-        bag.open = true;
-        *opened_for_dev = true;
-    }
-    if events.read().any(|FromServer(message)| matches!(message, ServerMessage::ShopOpened { .. })) {
-        bag.open = true;
-    }
-    let pressed_key = focus.0.is_none() && keys.just_pressed(KeyCode::KeyI);
-    let clicked = button.iter().any(|interaction| *interaction == Interaction::Pressed);
-    if pressed_key || clicked {
-        bag.open = !bag.open;
-    }
-}
-
-fn show_only_while_playing(
-    state: Res<State<ClientState>>,
-    mut bag: Single<(&BagWindow, &mut Visibility), Without<BagButton>>,
-    mut button: Single<&mut Visibility, With<BagButton>>,
-) {
-    let playing = *state.get() == ClientState::Playing;
-    let (window, ref mut visibility) = *bag;
-    let shown = |show: bool| if show { Visibility::Inherited } else { Visibility::Hidden };
-    **visibility = shown(playing && window.open);
-    **button = shown(playing);
+fn show_when_open(panels: Res<OpenPanels>, mut bag: Single<&mut Visibility, With<BagWindow>>) {
+    **bag = if panels.bag { Visibility::Inherited } else { Visibility::Hidden };
 }
 
 fn forget_inventory(mut inventory: ResMut<PlayerInventory>) {

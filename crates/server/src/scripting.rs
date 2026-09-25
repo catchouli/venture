@@ -12,7 +12,8 @@
 //! # The script API
 //!
 //! Hooks a script can define (see `venture_content::script_hooks`):
-//! `on_spawn(npc)`, `on_interact(npc, player)`, `on_idle(npc)`.
+//! `on_spawn(npc)`, `on_interact(npc, player)`, `on_idle(npc)`,
+//! `on_quest_stage(npc, player, quest, stage)`.
 //!
 //! - `npc.name`, `npc.x`, `npc.y`, `npc.home_x`, `npc.home_y`: read-only.
 //! - `npc.say(text)`: say something (shown above the NPC and in nearby players' chat).

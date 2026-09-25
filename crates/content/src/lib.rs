@@ -11,6 +11,7 @@
 //!   new_characters.ron  what new characters start with (server only)
 //!   npcs/*.ron          who lives where (server only)
 //!   shops/*.ron         what shops sell (server only)
+//!   quests/*.ron        quests and their stages (server only)
 //!   scripts/*.rhai      how NPCs behave (server only)
 //!   dialogue/*.yarn     conversations with NPCs (server only)
 //! ```
@@ -32,6 +33,7 @@ pub mod script_hooks;
 
 pub use client::{CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_appearances, parse_items};
 pub use definitions::{
-    AppearanceDef, COINS, Colour, ItemCount, ItemDef, NewCharacterDef, NpcDef, Placement, ShopDef, ShopItem,
+    AppearanceDef, COINS, Colour, ItemCount, ItemDef, NewCharacterDef, NpcDef, Placement, QuestDef, QuestStage,
+    ShopDef, ShopItem,
 };
 pub use load::{ContentError, ContentPack};

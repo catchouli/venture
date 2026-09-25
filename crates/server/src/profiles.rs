@@ -21,6 +21,9 @@ pub struct Profile {
     /// What they carry, slot by slot.
     #[serde(default)]
     pub inventory: Vec<Option<ItemStack>>,
+    /// Their quests: (quest id, stage reached), in the order they started them.
+    #[serde(default)]
+    pub quests: Vec<(String, String)>,
 }
 
 /// Identifies a profile without revealing the token behind it: the hex
@@ -92,7 +95,8 @@ mod tests {
         assert_eq!(store.load(&key), None);
 
         let inventory = vec![None, Some(ItemStack { item: "coins".to_string(), count: 3 })];
-        let profile = Profile { name: "Aldric".to_string(), position: (1.0, 2.0), inventory };
+        let quests = vec![("tomas_pipe".to_string(), "found".to_string())];
+        let profile = Profile { name: "Aldric".to_string(), position: (1.0, 2.0), inventory, quests };
         store.save(&key, &profile);
         assert_eq!(store.load(&key), Some(profile));
         std::fs::remove_dir_all(folder).unwrap();

@@ -12,7 +12,7 @@
 //!   name without asking (implied by `VENTURE_SCREENSHOT`).
 //! - `VENTURE_SAY=text`: say this in chat once in the game (several messages
 //!   can be separated with `|`).
-//! - `VENTURE_OPEN_BAG=1`: open the bag once in the game.
+//! - `VENTURE_OPEN=bag,journal`: open these windows once in the game.
 //! - `VENTURE_CHOOSE=1,2`: pick these replies (numbered from 1), one per
 //!   dialogue page, as conversations offer them.
 //! - `VENTURE_SELECT_NEAREST=1`: select the character (player or NPC) nearest yours once one is in sight.
@@ -41,8 +41,8 @@ pub struct DevSettings {
     pub say: Vec<String>,
     /// Whether to select the character (player or NPC) nearest yours once one is in sight.
     pub select_nearest: bool,
-    /// Whether to open the bag once in the game.
-    pub open_bag: bool,
+    /// Windows to open once in the game (`bag`, `journal`).
+    pub open: Vec<String>,
     /// Dialogue replies to pick, in order (numbered from 1).
     pub choose: Vec<u32>,
 }
@@ -63,7 +63,9 @@ impl DevSettings {
                 .map(|say| say.split('|').map(str::to_string).collect())
                 .unwrap_or_default(),
             select_nearest: std::env::var_os("VENTURE_SELECT_NEAREST").is_some(),
-            open_bag: std::env::var_os("VENTURE_OPEN_BAG").is_some(),
+            open: std::env::var("VENTURE_OPEN")
+                .map(|open| open.split(',').map(|name| name.trim().to_string()).collect())
+                .unwrap_or_default(),
             choose: numbers("VENTURE_CHOOSE").unwrap_or_default().into_iter().map(|n| n as u32).collect(),
         }
     }

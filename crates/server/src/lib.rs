@@ -22,9 +22,10 @@
 //! 5. [`dialogue`]: runs each player's private conversations with NPCs.
 //! 6. [`shops`]: buying and selling.
 //!
-//! Inventories are the exception that proves the rule: several modules may
-//! change them (shops, dialogue), but only through [`inventory::Inventory::apply`],
-//! which checks every change and makes it whole or not at all.
+//! Inventories and quest logs are the exception that proves the rule: several
+//! modules may change them (shops, dialogue), but only through their own
+//! checked methods: [`inventory::Inventory::apply`] makes a change whole or
+//! not at all, and [`quests::QuestLog::advance`] only moves quests forward.
 //!
 //! Content scripts follow the same rule from the other side: a script can
 //! only queue commands ([`scripting`]), which [`npcs`] checks and applies.
@@ -48,6 +49,7 @@ pub mod link;
 mod names;
 pub mod npcs;
 pub mod profiles;
+pub mod quests;
 pub mod requests;
 pub mod scripting;
 pub mod sessions;
@@ -126,6 +128,8 @@ impl GameServer {
                     ServerSystems::Gameplay,
                     ServerSystems::Npcs,
                     ServerSystems::Dialogue,
+                    ServerSystems::Shops,
+                    ServerSystems::Updates,
                 )
                     .chain(),
             )
@@ -137,6 +141,7 @@ impl GameServer {
                 dialogue::DialoguePlugin,
                 inventory::InventoryPlugin,
                 shops::ShopsPlugin,
+                quests::QuestsPlugin,
                 content::ContentPlugin,
             ));
     }

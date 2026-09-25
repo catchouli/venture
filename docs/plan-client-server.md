@@ -130,7 +130,8 @@ Original plan:
   descriptions, icons).~~ Done, with placeholder icons.
 - ~~**Inventory** (server-authoritative) and a first **shop** NPC in the
   first town.~~ Done: Elsie's bakery, opened from her dialogue.
-- First steps of a quest, written with RON + Yarn + Rhai, end to end.
+- ~~First steps of a quest, written with RON + Yarn + Rhai, end to end.~~
+  Done: "Old Tomas's Pipe", with a quest journal.
 
 ## Later
 

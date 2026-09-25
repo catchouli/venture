@@ -5,8 +5,8 @@
 >
 > **Working now:** appearances, NPCs and items in RON, NPC behaviour in Rhai,
 > conversations in Yarn Spinner, hot reload, a checking tool, and streaming
-> the client's part to browsers, and shops opened from dialogue. See "The
-> content pack today" below. Quests are next (milestone 3).
+> the client's part to browsers, shops opened from dialogue, and quests. See
+> "The content pack today" below.
 
 The world's land (terrain, rivers, biomes, settlement sites, roads) is
 generated. Everything that makes it a *game* is added by people on top:
@@ -45,6 +45,7 @@ content/
   new_characters.ron   what new characters start with
   npcs/*.ron           who lives where
   shops/*.ron          what shops sell
+  quests/*.ron         quests and their stages
   scripts/*.rhai       how NPCs behave
   dialogue/*.yarn      conversations with NPCs
 ```
@@ -120,6 +121,38 @@ name whenever they're ready.
 A shop is opened from its NPC's dialogue with `<<open_shop elsies_bakery>>`
 (see below). Shops buy anything with a `value`, for half of it.
 
+### Quests
+
+```ron
+[
+    (
+        id: "tomas_pipe",                  // used by dialogue, and saved in profiles
+        name: "Old Tomas's Pipe",
+        stages: [
+            (id: "asked", journal: "Old Tomas has lost his pipe..."),
+            (id: "found", journal: "Hilda found a pipe by her anvil..."),
+            (id: "done", journal: "I gave Old Tomas his pipe back..."),
+        ],
+    ),
+]
+```
+
+A quest is a story told through dialogue: `<<set_quest tomas_pipe found>>`
+moves the player on to a stage (starting the quest if need be), and
+`quest_stage("tomas_pipe")` says where they are (`""` if they haven't
+started). Reaching the **last** stage completes the quest. The player's quest
+journal (**J**) shows each quest's name and the current stage's `journal`
+text, and chat tells them when a quest starts, moves on or is complete.
+
+Quests only move **forward**: setting a stage the player has already reached
+or passed does nothing. So a reward given next to `<<set_quest ... done>>`
+can't be claimed twice, as long as the dialogue checks `quest_stage` first.
+Rewards are ordinary commands (`<<give_item coins 30>>`). The pipe quest in
+`dialogue/starting_town.yarn` is a complete example: Tomas starts it, Hilda
+hands over the pipe (checking `has_room_for` first), and Tomas takes it back
+and pays up. His script (`scripts/wanderer.rhai`) celebrates out loud through
+the `on_quest_stage` hook.
+
 ### NPCs
 
 ```ron
@@ -179,14 +212,18 @@ Guard Aldren: Halt! Oh, a new face. Welcome to town, {player_name()}.
   option with a condition that's false (`-> Secret <<if $friendly>>`) isn't
   offered. When there are no more replies, the conversation is over and the
   window offers "Goodbye".
-- `{player_name()}` is the name of the player in the conversation, and
-  `item_count("bread")` is how many of an item they carry
-  (`-> Here's your pie. <<if item_count("meat_pie") > 0>>`).
+- **Functions** tell dialogue about the player:
+  - `{player_name()}`: their name.
+  - `item_count("bread")`: how many of an item they carry
+    (`-> Here's your pie. <<if item_count("meat_pie") > 0>>`).
+  - `has_room_for("old_pipe")`: whether their bag has room for one more.
+  - `quest_stage("tomas_pipe")`: the stage they've reached in a quest, or `""`.
 - **Commands** make things happen:
   - `<<give_item bread 2>>` puts items in the player's bag (the count is
     optional). If the bag is full, the player is told and gets nothing.
   - `<<take_item old_pipe>>` takes items. Check they have them first with
     `item_count`.
+  - `<<set_quest tomas_pipe found>>` moves a quest on (see Quests above).
   - `<<open_shop elsies_bakery>>` ends the conversation and opens a shop. It
     ends at once, so lines before it on the same page aren't shown.
 
@@ -201,7 +238,7 @@ Guard Aldren: Halt! Oh, a new face. Welcome to town, {player_name()}.
 The check catches Yarn syntax errors, NPCs naming a node that doesn't exist,
 jumps to nodes that don't exist, loops that would jump round forever without
 saying anything, misspelt functions, and commands that don't exist or name
-items or shops that don't.
+items, shops, quests or stages that don't.
 
 ### Scripts
 
@@ -212,6 +249,7 @@ A script defines **hooks**, functions the game calls when things happen:
 | `on_spawn(npc)` | The NPC appears (at startup, or after a reload replaces it). |
 | `on_interact(npc, player)` | A player starts talking to the NPC (after walking over). The conversation itself is Yarn dialogue; this hook is for anything else the NPC should do. |
 | `on_idle(npc)` | Every few seconds while the NPC is standing still. |
+| `on_quest_stage(npc, player, quest, stage)` | A player's conversation with the NPC moved a quest on (the quest and stage ids, as text). |
 
 What scripts can use:
 

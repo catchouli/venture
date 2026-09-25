@@ -1,0 +1,23 @@
+// Quests in the starting town. Dialogue moves them on with
+// <<set_quest QUEST STAGE>>; the last stage completes the quest. Each stage's
+// journal text is what the player's quest journal says while they're there.
+[
+    (
+        id: "tomas_pipe",
+        name: "Old Tomas's Pipe",
+        stages: [
+            (
+                id: "asked",
+                journal: "Old Tomas has lost his pipe. He was at the forge this morning, talking to Hilda. Maybe she's seen it.",
+            ),
+            (
+                id: "found",
+                journal: "Hilda found a pipe by her anvil, reeking of cherry tobacco. I should take it back to Old Tomas.",
+            ),
+            (
+                id: "done",
+                journal: "I gave Old Tomas his pipe back. He was delighted, and paid me for my trouble.",
+            ),
+        ],
+    ),
+]
