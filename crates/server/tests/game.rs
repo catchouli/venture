@@ -332,8 +332,8 @@ fn content_with(npcs: &str, script: &str) -> ContentPack {
 }
 
 /// Like [`content_with`], plus one dialogue file. Every test pack also has
-/// coins and bread, a bakery selling bread for 5 coins, and new characters
-/// start with 25 coins and a loaf.
+/// coins and bread, a bakery selling bread for 5 coins, a two-stage quest
+/// ("errand"), and new characters start with 25 coins and a loaf.
 fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> ContentPack {
     let folder =
         std::env::temp_dir().join(format!("venture-test-content-{}-{}", std::process::id(), fastrand_suffix()));
@@ -350,6 +350,10 @@ fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> Co
     write("scripts/greeter.rhai", script.as_bytes());
     write("items/things.ron", ITEMS.as_bytes());
     write("shops/bakery.ron", br#"[(id: "bakery", name: "The Bakery", stock: [(item: "bread", price: 5)])]"#);
+    write(
+        "quests/errand.ron",
+        br#"[(id: "errand", name: "An Errand", stages: [(id: "asked", journal: "Tom wants a loaf."), (id: "done", journal: "I gave Tom a loaf.")])]"#,
+    );
     write("new_characters.ron", br#"(items: [(item: "coins", count: 25), (item: "bread", count: 1)])"#);
     // Only the start of a PNG, but that's all the content check looks at.
     write("icons/thing.png", b"\x89PNG\r\n\x1a\n");
@@ -653,4 +657,82 @@ fn shops_open_from_dialogue_and_trade_coins_for_goods() {
     client.send(&ClientMessage::Buy { index: 0, count: 1 });
     server.run(2);
     assert!(notices(&client.receive()).is_empty());
+}
+
+const ERRAND: &str = "title: Tom
+---
+<<if quest_stage(\"errand\") == \"\">>
+Tom: Could you bring me a loaf?
+<<set_quest errand asked>>
+<<elseif quest_stage(\"errand\") == \"asked\" and item_count(\"bread\") > 0>>
+<<take_item bread>>
+<<set_quest errand done>>
+<<give_item coins 30>>
+Tom: Thank you!
+<<else>>
+Tom: Hello again.
+<<endif>>
+===
+";
+const CELEBRATION: &str = r#"fn on_quest_stage(npc, player, quest, stage) { if stage == "done" { npc.say("Hooray for " + player.name + "!"); } }"#;
+
+/// The latest journal in a batch of messages: (name, journal, complete) for each quest.
+fn latest_journal(messages: &[ServerMessage]) -> Option<Vec<(String, String, bool)>> {
+    messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Quests { quests } => {
+            Some(quests.iter().map(|q| (q.name.clone(), q.journal.clone(), q.complete)).collect())
+        }
+        _ => None,
+    })
+}
+
+#[test]
+fn quests_start_complete_and_reward_once() {
+    let npcs = r#"[(id: "tom", name: "Tom", appearance: "villager", at: Position((102.0, 100.0)), script: Some("greeter.rhai"), dialogue: Some("Tom"))]"#;
+    let mut server = TestServer::with_content("quest", content_with_dialogue(npcs, CELEBRATION, Some(ERRAND)));
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
+    server.run(2);
+    client.send(&ClientMessage::ChooseName { name: "Helper".to_string() });
+    server.run(2);
+    assert_eq!(latest_journal(&client.receive()), Some(vec![]), "an empty journal to start with");
+    let npc = server.npc();
+
+    client.send(&ClientMessage::Interact { target: npc });
+    server.run(2);
+    let messages = client.receive();
+    assert_eq!(notices(&messages), ["New quest: An Errand."]);
+    let asked = ("An Errand".to_string(), "Tom wants a loaf.".to_string(), false);
+    assert_eq!(latest_journal(&messages), Some(vec![asked]));
+
+    // Handing over the loaf completes it, pays 30 coins, and Tom's script celebrates out loud.
+    client.send(&ClientMessage::Interact { target: npc });
+    server.run(3);
+    let messages = client.receive();
+    assert_eq!(notices(&messages), ["You hand over: Bread.", "Quest complete: An Errand!", "You receive: Coins (30)."]);
+    assert_eq!(latest_inventory(&messages), Some(vec![("coins".to_string(), 55)]));
+    let done = ("An Errand".to_string(), "I gave Tom a loaf.".to_string(), true);
+    assert_eq!(latest_journal(&messages), Some(vec![done.clone()]));
+    let cheered = messages.iter().any(|m| {
+        matches!(m, ServerMessage::Chat { from, text, .. }
+        if *from == npc && text == "Hooray for Helper!")
+    });
+    assert!(cheered, "the NPC's script reacts: {messages:?}");
+
+    // No second reward.
+    client.send(&ClientMessage::Interact { target: npc });
+    server.run(2);
+    let messages = client.receive();
+    assert!(notices(&messages).is_empty());
+    assert_eq!(pages(&messages)[0].0, ["Hello again."]);
+
+    // The journal is kept.
+    client.disconnect();
+    server.run(2);
+    let pack = content_with_dialogue(npcs, CELEBRATION, Some(ERRAND));
+    let mut server = TestServer::start(server.shut_down(), pack);
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
+    server.run(2);
+    assert_eq!(latest_journal(&client.receive()), Some(vec![done]), "the journal comes back after a restart");
 }

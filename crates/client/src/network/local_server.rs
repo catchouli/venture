@@ -29,9 +29,12 @@ impl Plugin for LocalServerPlugin {
         let ServerChoice::Local { world_folder } = app.world().resource::<ServerChoice>().clone() else { return };
         let dev = app.world().resource::<DevSettings>();
         let spawn_override = dev.start_position;
-        // Automated runs get a fresh profile each time, so they start at the requested spot.
+        // Automated runs get a fresh profile each time, so they start at the
+        // requested spot, unless they name one (VENTURE_PROFILE): then it's
+        // kept between runs, so a check can go on over several runs.
         let profile_folder = if dev.automated {
-            std::env::temp_dir().join(format!("venture-automated-{}", std::process::id()))
+            let run = dev.profile.clone().unwrap_or_else(|| std::process::id().to_string());
+            std::env::temp_dir().join(format!("venture-automated-{run}"))
         } else {
             PathBuf::from(PROFILE_FOLDER)
         };

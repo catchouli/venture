@@ -179,6 +179,12 @@ pub enum ServerMessage {
         /// Each slot: empty, or holding some of one item.
         slots: Vec<Option<ItemStack>>,
     },
+    /// The player's quest journal, sent whenever it changes: every quest
+    /// they've started, in the order they started them.
+    Quests {
+        /// Each quest.
+        quests: Vec<QuestEntry>,
+    },
     /// A shop has opened for this player: the client shows its window.
     ShopOpened {
         /// Who runs it.
@@ -235,4 +241,15 @@ pub struct ShopStock {
     pub item: String,
     /// What one costs, in coins.
     pub price: u32,
+}
+
+/// One quest in the player's journal ([`ServerMessage::Quests`]).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuestEntry {
+    /// The quest's name.
+    pub name: String,
+    /// What the journal says about where the player has got to.
+    pub journal: String,
+    /// Whether it's finished.
+    pub complete: bool,
 }

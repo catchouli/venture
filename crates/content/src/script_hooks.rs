@@ -8,8 +8,12 @@ pub const ON_INTERACT: &str = "on_interact";
 /// Called every few seconds while an NPC is standing still: `on_idle(npc)`.
 pub const ON_IDLE: &str = "on_idle";
 
+/// Called when a player's conversation with the NPC moves a quest on:
+/// `on_quest_stage(npc, player, quest, stage)`, with the quest and stage ids.
+pub const ON_QUEST_STAGE: &str = "on_quest_stage";
+
 /// Every hook, with how many arguments it takes.
-pub const HOOKS: [(&str, usize); 3] = [(ON_SPAWN, 1), (ON_INTERACT, 2), (ON_IDLE, 1)];
+pub const HOOKS: [(&str, usize); 4] = [(ON_SPAWN, 1), (ON_INTERACT, 2), (ON_IDLE, 1), (ON_QUEST_STAGE, 4)];
 
 /// Checks a script compiles, and that every function whose name starts with
 /// `on_` is a hook the game knows, with the right number of arguments (so a

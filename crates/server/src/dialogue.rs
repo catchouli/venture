@@ -10,9 +10,10 @@
 //!
 //! Dialogue can affect the game through commands (`<<give_item bread>>`, see
 //! `venture_content::dialogue_commands`). While a page runs, commands work on
-//! a copy of the player's state ([`PlayerState`]), which the dialogue's
-//! functions (`item_count`) read too, so a condition sees what a command just
-//! did. When the page is done, the copy is written back.
+//! a copy of the player's state ([`PlayerState`]: their inventory and quest
+//! log), which the dialogue's functions (`item_count`, `quest_stage`) read
+//! too, so a condition sees what a command just did. When the page is done,
+//! the copy is written back.
 //!
 //! (What an NPC says out loud, for everyone nearby, is different: that's a
 //! script calling `npc.say`, handled by [`crate::npcs`].)
@@ -22,9 +23,9 @@ use std::sync::{Arc, Mutex};
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use venture_content::ItemDef;
 use venture_content::dialogue::{CompiledDialogue, compile_dialogue};
 use venture_content::dialogue_commands::DialogueCommand;
+use venture_content::{ContentPack, ItemDef};
 use venture_protocol::{DialogueLine, ServerMessage};
 use venture_simulation::TALK_RANGE;
 use yarnspinner::prelude::{Dialogue, DialogueEvent, OptionId};
@@ -36,6 +37,7 @@ use crate::entities::{DisplayName, NetworkId, Player, Position};
 use crate::inventory::{Change, Inventory, describe_items};
 use crate::link::Link;
 use crate::npcs::{Npc, NpcInteraction};
+use crate::quests::{QuestAdvanced, QuestLog, progress_notice};
 use crate::requests::{DialogueChoice, DialogueRequest};
 use crate::shops::OpenShop;
 
@@ -81,6 +83,7 @@ struct Conversation {
 #[derive(Clone, Debug, PartialEq)]
 struct PlayerState {
     inventory: Inventory,
+    quests: QuestLog,
 }
 
 /// One page of a conversation: what's said until the player has to choose.
@@ -96,6 +99,8 @@ struct Effects {
     notices: Vec<String>,
     /// A shop to open when the page is done.
     open_shop: Option<String>,
+    /// Quests that moved on: (quest id, stage id).
+    quests_advanced: Vec<(String, String)>,
 }
 
 fn compile_when_content_changes(content: Res<LoadedContent>, mut library: ResMut<DialogueLibrary>) {
@@ -120,11 +125,11 @@ fn start_conversations(
 ) {
     for interaction in interactions.read() {
         let Ok(npc) = npcs.get(interaction.npc) else { continue };
-        let Ok((_, name, inventory)) = pages.players.get(interaction.player) else { continue };
+        let Ok((_, name, inventory, quests)) = pages.players.get(interaction.player) else { continue };
         let (Some(node), Some(compiled)) = (&npc.definition.dialogue, &library.0) else { continue };
 
-        let state = Arc::new(Mutex::new(PlayerState { inventory: inventory.clone() }));
-        let mut dialogue = new_dialogue(compiled, &name.0, &state);
+        let state = Arc::new(Mutex::new(PlayerState { inventory: inventory.clone(), quests: quests.clone() }));
+        let mut dialogue = new_dialogue(compiled, &name.0, &state, &pages.content.pack.items);
         if let Err(error) = dialogue.set_node(node.as_str()) {
             warn!("Couldn't start the conversation with NPC \"{}\": {error:?}", npc.definition.id);
             continue;
@@ -181,7 +186,8 @@ struct Pages<'w, 's> {
     content: Res<'w, LoadedContent>,
     link: ResMut<'w, Link>,
     open_shops: MessageWriter<'w, OpenShop>,
-    players: Query<'w, 's, (&'static Player, &'static DisplayName, &'static mut Inventory)>,
+    quests_advanced: MessageWriter<'w, QuestAdvanced>,
+    players: Query<'w, 's, (&'static Player, &'static DisplayName, &'static mut Inventory, &'static mut QuestLog)>,
     npc_ids: Query<'w, 's, &'static NetworkId, With<Npc>>,
 }
 
@@ -191,17 +197,17 @@ impl Pages<'_, '_> {
     /// conversation is forgotten.
     fn show_next(&mut self, player_entity: Entity) {
         let Some(conversation) = self.conversations.0.get_mut(&player_entity) else { return };
-        let Ok((player, _, mut inventory)) = self.players.get_mut(player_entity) else { return };
+        let Ok((player, _, mut inventory, mut quests)) = self.players.get_mut(player_entity) else { return };
         let Ok(&NetworkId(npc_id)) = self.npc_ids.get(conversation.npc) else { return };
         let connection = player.connection;
 
         // Run the page against a fresh copy of the player's state...
         let state = &conversation.state;
-        *lock(state) = PlayerState { inventory: inventory.clone() };
+        *lock(state) = PlayerState { inventory: inventory.clone(), quests: quests.clone() };
         let mut effects = Effects::default();
-        let items = &self.content.pack.items;
+        let pack = &self.content.pack;
         let page = next_page(&mut conversation.dialogue, &mut |command| {
-            run_command(command, &mut lock(state), items, &mut effects);
+            run_command(command, &mut lock(state), pack, &mut effects);
         });
         let page = page.unwrap_or_else(|problem| {
             warn!("A conversation went wrong, so it was ended: {problem}");
@@ -209,14 +215,20 @@ impl Pages<'_, '_> {
         });
 
         // ...then keep what its commands did.
-        let changed = lock(state).inventory.clone();
-        if changed != *inventory {
-            *inventory = changed;
+        let changed = lock(state).clone();
+        if changed.inventory != *inventory {
+            *inventory = changed.inventory;
+        }
+        if changed.quests != *quests {
+            *quests = changed.quests;
         }
         for text in effects.notices {
             self.link.send(connection, &ServerMessage::Notice { text });
         }
         let npc = conversation.npc;
+        for (quest, stage) in effects.quests_advanced {
+            self.quests_advanced.write(QuestAdvanced { npc, player: player_entity, quest, stage });
+        }
         conversation.options = page.options.iter().map(|(id, _)| *id).collect();
 
         // Opening a shop ends the conversation.
@@ -245,17 +257,30 @@ fn lock(state: &Mutex<PlayerState>) -> std::sync::MutexGuard<'_, PlayerState> {
 /// A fresh conversation over the compiled dialogue, with the player called
 /// `player_name`, whose state the dialogue's functions read from `state`.
 /// Yarn variables last as long as the conversation.
-fn new_dialogue(compiled: &CompiledDialogue, player_name: &str, state: &Arc<Mutex<PlayerState>>) -> Dialogue {
+fn new_dialogue(
+    compiled: &CompiledDialogue,
+    player_name: &str,
+    state: &Arc<Mutex<PlayerState>>,
+    items: &BTreeMap<String, ItemDef>,
+) -> Dialogue {
     let mut text = StringTableTextProvider::new();
     text.extend_base_language(compiled.strings.clone());
     let mut dialogue = Dialogue::new(Box::new(MemoryVariableStorage::new()), Box::new(text));
     // The functions listed in `venture_content::dialogue_commands::DIALOGUE_FUNCTIONS`.
     let player_name = player_name.to_string();
-    let state = state.clone();
+    let (for_count, for_room, for_quests) = (state.clone(), state.clone(), state.clone());
+    let items = items.clone();
     dialogue
         .library_mut()
         .add_function("player_name", move || player_name.clone())
-        .add_function("item_count", move |item: String| lock(&state).inventory.count(&item) as f32);
+        .add_function("item_count", move |item: String| lock(&for_count).inventory.count(&item) as f32)
+        .add_function("has_room_for", move |item: String| {
+            let mut trial = lock(&for_room).inventory.clone();
+            trial.apply(&Change::give(&item, 1), &items).is_ok()
+        })
+        .add_function("quest_stage", move |quest: String| {
+            lock(&for_quests).quests.stage(&quest).unwrap_or_default().to_string()
+        });
     dialogue.add_program(compiled.program.clone());
     dialogue
 }
@@ -292,7 +317,8 @@ fn next_page(dialogue: &mut Dialogue, on_command: &mut dyn FnMut(&str)) -> Resul
 /// Carries out one dialogue command. (Commands were checked when the content
 /// loaded, so problems here are logged rather than shown to the player,
 /// except for a full bag.)
-fn run_command(text: &str, state: &mut PlayerState, items: &BTreeMap<String, ItemDef>, effects: &mut Effects) {
+fn run_command(text: &str, state: &mut PlayerState, pack: &ContentPack, effects: &mut Effects) {
+    let items = &pack.items;
     let command = match DialogueCommand::parse(text) {
         Ok(command) => command,
         Err(problem) => {
@@ -312,6 +338,13 @@ fn run_command(text: &str, state: &mut PlayerState, items: &BTreeMap<String, Ite
             Ok(()) => effects.notices.push(format!("You hand over: {}.", describe_items(&item, count, items))),
             Err(_) => warn!("Dialogue: <<{text}>> ran when the player didn't have them (check with item_count first)."),
         },
+        DialogueCommand::SetQuest { quest, stage } => {
+            let Some(def) = pack.quests.get(&quest) else { return };
+            if let Some(progress) = state.quests.advance(def, &stage) {
+                effects.notices.push(progress_notice(progress, def));
+                effects.quests_advanced.push((quest, stage));
+            }
+        }
         DialogueCommand::OpenShop { shop } => effects.open_shop = Some(shop),
     }
 }
@@ -320,7 +353,7 @@ fn run_command(text: &str, state: &mut PlayerState, items: &BTreeMap<String, Ite
 mod tests {
     use super::*;
 
-    fn items() -> BTreeMap<String, ItemDef> {
+    fn pack() -> ContentPack {
         let item = ItemDef {
             id: "bread".to_string(),
             name: "Bread".to_string(),
@@ -329,22 +362,31 @@ mod tests {
             stackable: false,
             value: 4,
         };
-        BTreeMap::from([("bread".to_string(), item)])
+        let stage = |id: &str| venture_content::QuestStage { id: id.to_string(), journal: String::new() };
+        let quest = venture_content::QuestDef {
+            id: "loaf".to_string(),
+            name: "The Loaf".to_string(),
+            stages: vec![stage("asked"), stage("done")],
+        };
+        let mut pack = ContentPack::default();
+        pack.items.insert("bread".to_string(), item);
+        pack.quests.insert("loaf".to_string(), quest);
+        pack
     }
 
     /// A conversation at node "Start", with an empty bag.
     fn dialogue(source: &str) -> (Dialogue, Arc<Mutex<PlayerState>>) {
         let files = BTreeMap::from([("test.yarn".to_string(), source.to_string())]);
         let compiled = compile_dialogue(&files).unwrap().unwrap();
-        let state = Arc::new(Mutex::new(PlayerState { inventory: Inventory::empty() }));
-        let mut dialogue = new_dialogue(&compiled, "Alice", &state);
+        let state = Arc::new(Mutex::new(PlayerState { inventory: Inventory::empty(), quests: QuestLog::default() }));
+        let mut dialogue = new_dialogue(&compiled, "Alice", &state, &pack().items);
         dialogue.set_node("Start").unwrap();
         (dialogue, state)
     }
 
     /// Runs a page, carrying out its commands.
     fn run_page(dialogue: &mut Dialogue, state: &Mutex<PlayerState>, effects: &mut Effects) -> Result<Page, String> {
-        next_page(dialogue, &mut |command| run_command(command, &mut lock(state), &items(), effects))
+        next_page(dialogue, &mut |command| run_command(command, &mut lock(state), &pack(), effects))
     }
 
     #[test]
@@ -387,6 +429,19 @@ mod tests {
         assert_eq!(lock(&state).inventory.count("bread"), 1);
         assert_eq!(effects.notices, ["You receive: Bread (2).", "You hand over: Bread."]);
         assert_eq!(effects.open_shop.as_deref(), Some("bakery"));
+    }
+
+    #[test]
+    fn quests_move_on_once_and_conditions_see_it() {
+        let source = "title: Start\n---\n<<if quest_stage(\"loaf\") == \"\">>\nNot started.\n<<endif>>\n<<set_quest loaf asked>>\n<<set_quest loaf asked>>\n<<if quest_stage(\"loaf\") == \"asked\" and has_room_for(\"bread\")>>\nOn it.\n<<endif>>\n<<set_quest loaf done>>\n===\n";
+        let (mut dialogue, state) = dialogue(source);
+        let mut effects = Effects::default();
+        let page = run_page(&mut dialogue, &state, &mut effects).unwrap();
+        let lines: Vec<&str> = page.lines.iter().map(|line| line.text.as_str()).collect();
+        assert_eq!(lines, ["Not started.", "On it."]);
+        assert_eq!(effects.notices, ["New quest: The Loaf.", "Quest complete: The Loaf!"]);
+        assert_eq!(effects.quests_advanced.len(), 2);
+        assert_eq!(lock(&state).quests.stage("loaf"), Some("done"));
     }
 
     #[test]

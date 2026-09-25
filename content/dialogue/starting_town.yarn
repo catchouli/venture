@@ -28,6 +28,15 @@ title: Smith
 ---
 Hilda: Welcome to my forge, {player_name()}!
 Hilda: The fire isn't lit yet, I'm afraid. Come back soon and I'll have blades to sell.
+-> Have you seen Old Tomas's pipe? <<if quest_stage("tomas_pipe") == "asked">>
+    <<if has_room_for("old_pipe")>>
+        Hilda: A pipe? There was one by the anvil this morning. Reeks of cherry tobacco.
+        Hilda: That'll be his, all right. Here, take it to him.
+        <<give_item old_pipe>>
+        <<set_quest tomas_pipe found>>
+    <<else>>
+        Hilda: I've got it here, but your hands are full. Make some room in your bag and come back.
+    <<endif>>
 -> What will you make?
     Hilda: Swords, axes, pickaxes. Whatever a body needs to make their way out there.
     Hilda: Bring me ore and I'll teach you to work it yourself.
@@ -37,14 +46,27 @@ Hilda: The fire isn't lit yet, I'm afraid. Come back soon and I'll have blades t
 
 title: Tomas
 ---
-Old Tomas: Eh? Oh, hello there, young {player_name()}.
+<<if quest_stage("tomas_pipe") == "done">>
+    Old Tomas: Ah, {player_name()}! Still puffing away on my old pipe, thanks to you.
+<<elseif item_count("old_pipe") > 0>>
+    Old Tomas: Is that... my pipe? You found it!
+    <<take_item old_pipe>>
+    <<set_quest tomas_pipe done>>
+    <<give_item coins 30>>
+    Old Tomas: Here, take this for your trouble. And a story, whenever you like.
+<<elseif quest_stage("tomas_pipe") == "asked">>
+    Old Tomas: Any sign of my pipe? I'm sure I had it at the forge.
+<<else>>
+    Old Tomas: Eh? Oh, hello there, young {player_name()}.
+<<endif>>
 -> Tell me a story.
     <<jump TomasStory>>
--> Have you lost something?
+-> Have you lost something? <<if quest_stage("tomas_pipe") == "">>
     Old Tomas: My pipe! I had it this morning. Or was that yesterday?
-    Old Tomas: If you find it, I'd be ever so grateful.
--> Sorry to bother you.
-    Old Tomas: No bother at all. Nobody listens to old Tomas anyway.
+    Old Tomas: I was at the forge, chatting with Hilda. If you find it, I'd be ever so grateful.
+    <<set_quest tomas_pipe asked>>
+-> Goodbye, Tomas.
+    Old Tomas: Mind how you go.
 ===
 
 title: TomasStory

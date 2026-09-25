@@ -310,6 +310,19 @@ quest items). The shop closes with `CloseShop`, or when the player walks more
 than 6 m away (`ShopClosed`). The server keeps the stock as it was when the
 shop opened, so the player always buys what they were shown.
 
+## Quests
+
+Each player has a **quest log** (which quests they've started, and the stage
+each has reached), which the server owns and saves in their profile. Dialogue
+moves quests on with `<<set_quest ...>>`. On the server a quest log only
+changes through `QuestLog::advance`, which only moves forward, so going back a
+stage (and claiming a reward again) is impossible. Whenever it changes, the
+server sends the player their journal: `Quests { quests }`, with each quest's
+name, the journal text for its current stage, and whether it's complete. The
+text comes from the server, so clients never see quest stages they haven't
+reached. The NPC whose conversation moved a quest on can react through its
+script's `on_quest_stage` hook.
+
 ## Actions and chat commands
 
 The things a player can do are **actions**, defined in one place on the

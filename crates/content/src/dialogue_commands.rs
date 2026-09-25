@@ -25,6 +25,15 @@ pub enum DialogueCommand {
         /// How many (1 if not given).
         count: u32,
     },
+    /// `<<set_quest QUEST STAGE>>`: move a quest on to a stage (starting it
+    /// if need be). Quests only move forward: setting an earlier stage, or
+    /// the one it's at, does nothing.
+    SetQuest {
+        /// Which quest.
+        quest: String,
+        /// Which of its stages.
+        stage: String,
+    },
     /// `<<open_shop SHOP>>`: end the conversation and open a shop. It ends
     /// at once, so any lines before it on the same page aren't shown.
     OpenShop {
@@ -34,11 +43,15 @@ pub enum DialogueCommand {
 }
 
 /// The functions the game provides to dialogue, on top of Yarn Spinner's own.
-pub const DIALOGUE_FUNCTIONS: [&str; 2] = [
+pub const DIALOGUE_FUNCTIONS: [&str; 4] = [
     // player_name(): the name of the player in the conversation.
     "player_name",
     // item_count(item): how many of an item the player carries.
     "item_count",
+    // has_room_for(item): whether the player's bag has room for one more of an item.
+    "has_room_for",
+    // quest_stage(quest): the stage the player has reached in a quest ("" if not started).
+    "quest_stage",
 ];
 
 impl DialogueCommand {
@@ -65,9 +78,13 @@ impl DialogueCommand {
                 Ok(Self::TakeItem { item: item.to_string(), count: count(words.get(2))? })
             }
             ["open_shop", shop] => Ok(Self::OpenShop { shop: shop.to_string() }),
+            ["set_quest", quest, stage] => Ok(Self::SetQuest { quest: quest.to_string(), stage: stage.to_string() }),
+            ["set_quest", ..] => Err(format!("<<{text}>>: write it as <<set_quest QUEST STAGE>>")),
             ["give_item" | "take_item", ..] => Err(format!("<<{text}>>: write it as <<{} ITEM [COUNT]>>", words[0])),
             ["open_shop", ..] => Err(format!("<<{text}>>: write it as <<open_shop SHOP>>")),
-            _ => Err(format!("<<{text}>> isn't a command the game knows (commands: give_item, take_item, open_shop)")),
+            _ => Err(format!(
+                "<<{text}>> isn't a command the game knows (commands: give_item, take_item, set_quest, open_shop)"
+            )),
         }
     }
 }
@@ -82,6 +99,11 @@ mod tests {
         assert_eq!(give, Ok(DialogueCommand::GiveItem { item: "bread".to_string(), count: 2 }));
         let take = DialogueCommand::parse("take_item old_pipe");
         assert_eq!(take, Ok(DialogueCommand::TakeItem { item: "old_pipe".to_string(), count: 1 }));
+        let quest = DialogueCommand::parse("set_quest tomas_pipe found");
+        assert_eq!(
+            quest,
+            Ok(DialogueCommand::SetQuest { quest: "tomas_pipe".to_string(), stage: "found".to_string() })
+        );
         let shop = DialogueCommand::parse("open_shop elsies_bakery");
         assert_eq!(shop, Ok(DialogueCommand::OpenShop { shop: "elsies_bakery".to_string() }));
     }

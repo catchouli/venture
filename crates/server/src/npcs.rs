@@ -8,7 +8,7 @@
 use std::ops::Range;
 
 use bevy::prelude::*;
-use venture_content::script_hooks::{ON_IDLE, ON_INTERACT, ON_SPAWN};
+use venture_content::script_hooks::{ON_IDLE, ON_INTERACT, ON_QUEST_STAGE, ON_SPAWN};
 use venture_content::{NpcDef, Placement};
 use venture_navigation::Point;
 use venture_protocol::{EntityKind, ServerMessage, clean_chat_text};
@@ -19,6 +19,7 @@ use crate::ServerSystems;
 use crate::content::LoadedContent;
 use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
 use crate::link::Link;
+use crate::quests::QuestAdvanced;
 use crate::scripting::{NpcView, PlayerView, ScriptCommand, Scripts};
 use crate::world::ServerWorld;
 
@@ -36,7 +37,7 @@ impl Plugin for NpcsPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<NpcInteraction>().add_systems(
             FixedUpdate,
-            (match_content, run_interactions, run_idle_hooks, apply_script_commands)
+            (match_content, run_interactions, run_quest_hooks, run_idle_hooks, apply_script_commands)
                 .chain()
                 .in_set(ServerSystems::Npcs),
         );
@@ -150,6 +151,24 @@ fn run_interactions(
         let npc_view = NpcView { entity: interaction.npc, name: npc_name.0.clone(), position, home: npc.home };
         let player_view = PlayerView { name: player_name.0.clone(), position: player_position };
         scripts.call(script, ON_INTERACT, (npc_view, player_view));
+    }
+}
+
+/// Runs `on_quest_stage` when a conversation with an NPC moved a player's quest on.
+fn run_quest_hooks(
+    mut advances: MessageReader<QuestAdvanced>,
+    scripts: Res<Scripts>,
+    npcs: Query<(&Npc, &DisplayName, &Position)>,
+    players: Query<(&DisplayName, &Position), With<Player>>,
+) {
+    for advance in advances.read() {
+        let Ok((npc, npc_name, &Position(position))) = npcs.get(advance.npc) else { continue };
+        let Ok((player_name, &Position(player_position))) = players.get(advance.player) else { continue };
+        let Some(script) = &npc.definition.script else { continue };
+        let npc_view = NpcView { entity: advance.npc, name: npc_name.0.clone(), position, home: npc.home };
+        let player_view = PlayerView { name: player_name.0.clone(), position: player_position };
+        let arguments = (npc_view, player_view, advance.quest.clone(), advance.stage.clone());
+        scripts.call(script, ON_QUEST_STAGE, arguments);
     }
 }
 

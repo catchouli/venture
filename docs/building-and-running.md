@@ -148,9 +148,9 @@ VENTURE_CAMERA="480,2640,0.6,0.3,30" VENTURE_SCREENSHOT=shot.png cargo run -p ve
 | `VENTURE_MOVE_TO=x,y` | Once loaded, run to `(x, y)` as if it were clicked. |
 | `VENTURE_SAY=text` | Say this in chat once in the game (separate several messages with `\|`). Chat commands work too, such as `/talk`. |
 | `VENTURE_SELECT_NEAREST=1` | Select the character (player or NPC) nearest yours once one is in sight (to check the target frame, or with `VENTURE_SAY=/talk`). |
-| `VENTURE_OPEN_BAG=1` | Open the bag once in the game. |
+| `VENTURE_OPEN=bag,journal` | Open these windows once in the game. |
 | `VENTURE_CHOOSE=1,2` | Pick these dialogue replies (numbered from 1), one per page, as conversations offer them. |
-| `VENTURE_PROFILE=name` | Use a separate login token (so a separate character), for running several clients on one computer. |
+| `VENTURE_PROFILE=name` | Use a separate login token (so a separate character), for running several clients on one computer. Automated `--local` runs normally start with fresh profiles; with a name, the profile is kept between runs, so a check can carry on over several runs. |
 | `VENTURE_AUTOMATED=1` | Take the suggested name without asking (implied by `VENTURE_SCREENSHOT`). |
 
 For example, to test multiplayer on one computer, run the server, start one

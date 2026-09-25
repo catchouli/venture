@@ -137,6 +137,49 @@ pub struct ShopItem {
     pub price: u32,
 }
 
+/// A quest: a story the player follows through named stages. Dialogue moves
+/// it on (`<<set_quest tomas_pipe found>>`); reaching the last stage
+/// completes it. Stages only move forward.
+///
+/// ```ron
+/// (id: "tomas_pipe", name: "Old Tomas's Pipe", stages: [
+///     (id: "asked", journal: "Old Tomas has lost his pipe."),
+///     (id: "done", journal: "I found it for him."),
+/// ])
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuestDef {
+    /// Unique name, used by dialogue (and saved in profiles, so don't rename lightly).
+    pub id: String,
+    /// The name shown to players.
+    pub name: String,
+    /// The stages, in order. The last one completes the quest.
+    pub stages: Vec<QuestStage>,
+}
+
+/// One stage of a quest.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuestStage {
+    /// Its name, unique within the quest (and saved in profiles).
+    pub id: String,
+    /// What the player's journal says while the quest is at this stage.
+    pub journal: String,
+}
+
+impl QuestDef {
+    /// Where a stage comes in the quest, if it's one of its stages.
+    pub fn stage_index(&self, stage: &str) -> Option<usize> {
+        self.stages.iter().position(|candidate| candidate.id == stage)
+    }
+
+    /// Whether a stage is the last one, which completes the quest.
+    pub fn is_final(&self, stage: &str) -> bool {
+        self.stages.last().is_some_and(|last| last.id == stage)
+    }
+}
+
 /// What new characters start with.
 ///
 /// ```ron

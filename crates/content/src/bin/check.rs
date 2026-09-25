@@ -14,11 +14,12 @@ fn main() -> ExitCode {
     match ContentPack::load(&folder) {
         Ok(pack) => {
             println!(
-                "{} is fine: {} appearances, {} items, {} shops, {} NPCs, {} scripts, {} dialogue files.",
+                "{} is fine: {} appearances, {} items, {} shops, {} quests, {} NPCs, {} scripts, {} dialogue files.",
                 folder.display(),
                 pack.appearances.len(),
                 pack.items.len(),
                 pack.shops.len(),
+                pack.quests.len(),
                 pack.npcs.len(),
                 pack.scripts.len(),
                 pack.dialogue.len()
