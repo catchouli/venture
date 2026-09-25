@@ -1,0 +1,10 @@
+[package]
+name = "venture_world"
+description = "Core world data types: tile coordinates, chunks, layers and terrain."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
