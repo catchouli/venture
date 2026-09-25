@@ -131,7 +131,7 @@ VENTURE_CAMERA="480,2640,0.6,0.3,30" VENTURE_SCREENSHOT=shot.png cargo run -p ve
 | `VENTURE_SCREENSHOT=path` | Wait until the world around the player has loaded, save a screenshot there, and exit. Renders offscreen, so it works even when the window isn't visible. |
 | `VENTURE_CAMERA=x,y,yaw,pitch,distance` | In `--local` mode, new characters start at `(x, y)` metres. The camera starts at that rotation and tilt (radians) and distance (metres). |
 | `VENTURE_MOVE_TO=x,y` | Once loaded, run to `(x, y)` as if it were clicked. |
-| `VENTURE_SAY=text` | Say this in chat once in the game. |
+| `VENTURE_SAY=text` | Say this in chat once in the game (separate several messages with `\|`). |
 | `VENTURE_SELECT_NEAREST=1` | Select the nearest other player once one is in sight (to check the target frame). |
 | `VENTURE_PROFILE=name` | Use a separate login token (so a separate character), for running several clients on one computer. |
 | `VENTURE_AUTOMATED=1` | Take the suggested name without asking (implied by `VENTURE_SCREENSHOT`). |

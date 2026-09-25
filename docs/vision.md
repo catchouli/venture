@@ -38,6 +38,15 @@ by a deterministic generator, then shaped and filled by hand.
   do: a pointer with a trailing arrow to follow a selected player, and a
   sword to attack a selected creature.
 
+## Chat
+
+- A chat box in the bottom-left corner shows recent messages; press Enter
+  (or click it) to type, and Enter again to send.
+- What nearby players say also appears in **speech bubbles** above their
+  heads. Up to three recent messages stack up, newest nearest the name, and
+  each disappears after a few seconds. Long messages are shortened in the
+  bubble; the chat box has the full text.
+
 ## Targeting
 
 - **Selecting:** clicking a character selects it: players now, NPCs and
