@@ -12,7 +12,7 @@
 //!   name without asking (implied by `VENTURE_SCREENSHOT`).
 //! - `VENTURE_SAY=text`: say this in chat once in the game (several messages
 //!   can be separated with `|`).
-//! - `VENTURE_SELECT_NEAREST=1`: select the nearest other player once one is in sight.
+//! - `VENTURE_SELECT_NEAREST=1`: select the nearest character (player or NPC) once one is in sight.
 //!
 //! Environment variables don't exist on the web, so there these are all unset.
 
@@ -36,7 +36,7 @@ pub struct DevSettings {
     pub automated: bool,
     /// Messages to say in chat once in the game.
     pub say: Vec<String>,
-    /// Whether to select the nearest other player once one is in sight.
+    /// Whether to select the nearest character (player or NPC) once one is in sight.
     pub select_nearest: bool,
 }
 

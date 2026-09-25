@@ -3,10 +3,10 @@
 > Decided: **RON** for data, **Yarn Spinner** for dialogue, **Rhai** for
 > scripts. How they fit the client and server is in [client-server.md](client-server.md).
 >
-> **Working now (milestone 2):** appearances and NPCs in RON, NPC behaviour in
-> Rhai, hot reload, a checking tool, and streaming the client's part to
-> browsers. See "The content pack today" below. Items, dialogue (Yarn) and
-> quests come in milestone 3.
+> **Working now:** appearances and NPCs in RON, NPC behaviour in Rhai,
+> conversations in Yarn Spinner, hot reload, a checking tool, and streaming
+> the client's part to browsers. See "The content pack today" below. Items,
+> shops and quests come in milestone 3.
 
 The world's land (terrain, rivers, biomes, settlement sites, roads) is
 generated. Everything that makes it a *game* is added by people on top:
@@ -42,6 +42,7 @@ content/
   appearances/*.ron    how characters look (the only part sent to clients)
   npcs/*.ron           who lives where
   scripts/*.rhai       how NPCs behave
+  dialogue/*.yarn      conversations with NPCs
 ```
 
 Check it for mistakes (every problem is reported with its file, and line
@@ -81,6 +82,7 @@ Colours are sRGB red, green and blue, each from 0 to 1.
         appearance: "guard",
         at: StartingSettlement(offset: (11.0, 1.0)),
         script: Some("guard.rhai"),     // optional
+        dialogue: Some("Guard"),        // optional: the Yarn node its conversation starts at
         wander_radius: 0.0,             // optional: how far from home it may wander (metres)
     ),
 ]
@@ -94,6 +96,52 @@ stays put even when the terrain generator is tuned. Offsets are in metres,
   world (0 is the best site).
 - `Position((x, y))`: an exact spot in the world.
 
+### Two ways NPCs talk
+
+- **Out loud**, for everyone nearby: a script calls `npc.say(...)`. It shows
+  above the NPC's head and in the chat of players within 40 m. Use it for
+  ambient life: greetings, mutterings, hints that repeat.
+- **In conversation**, privately: when a player talks to an NPC (clicks it
+  again once selected, or types `/talk`), a **dialogue window** opens with
+  the NPC's Yarn conversation. Only that player sees it, and several players
+  can talk to the same NPC at once, each in their own conversation.
+
+### Dialogue
+
+Conversations are [Yarn Spinner](https://docs.yarnspinner.dev) files in
+`dialogue/`. All of them are compiled together, so an NPC's `dialogue` can
+name a node in any file, and nodes can `<<jump>>` between files.
+
+```
+title: Guard
+---
+Guard Aldren: Halt! Oh, a new face. Welcome to town, {player_name()}.
+-> Any advice for a traveller?
+    Guard Aldren: Stay on the roads after dark. Wolves don't.
+    <<jump GuardMore>>
+-> Goodbye.
+    Guard Aldren: Keep your wits about you.
+===
+```
+
+- A line starting with a name and a colon is said by that character; it's
+  shown in the window with the name highlighted.
+- `-> ...` lines are the player's replies. The window shows everything said
+  up to the next set of replies, then waits for the player to pick one. An
+  option with a condition that's false (`-> Secret <<if $friendly>>`) isn't
+  offered. When there are no more replies, the conversation is over and the
+  window offers "Goodbye".
+- `{player_name()}` is the name of the player in the conversation.
+- Variables (`<<set $asked to true>>`) last for one conversation for now.
+  Saved variables, and commands that affect the game (`<<start_quest ...>>`),
+  come with quests.
+- The conversation ends if the player walks more than 6 m away.
+- Comments (`// ...`) go inside a node, not before its `title:`.
+
+The check catches Yarn syntax errors, NPCs naming a node that doesn't exist,
+jumps to nodes that don't exist, and loops that would jump round forever
+without saying anything.
+
 ### Scripts
 
 A script defines **hooks**, functions the game calls when things happen:
@@ -101,7 +149,7 @@ A script defines **hooks**, functions the game calls when things happen:
 | Hook | When |
 | --- | --- |
 | `on_spawn(npc)` | The NPC appears (at startup, or after a reload replaces it). |
-| `on_interact(npc, player)` | A player talks to the NPC (clicks it again once selected; they walk over first). |
+| `on_interact(npc, player)` | A player starts talking to the NPC (after walking over). The conversation itself is Yarn dialogue; this hook is for anything else the NPC should do. |
 | `on_idle(npc)` | Every few seconds while the NPC is standing still. |
 
 What scripts can use:
@@ -118,12 +166,12 @@ What scripts can use:
 | `print(text)` | Write to the server log (handy while writing a script). |
 
 ```rhai
-fn on_interact(npc, player) {
-    let advice = [
-        "Stay on the roads after dark, " + player.name + ".",
-        "The river's safe to wade where it's shallow.",
-    ];
-    npc.say(advice[random(advice.len())]);
+fn on_idle(npc) {
+    npc.wander();
+    let mutterings = ["Where did I leave my pipe?", "Lovely weather for it."];
+    if chance(0.1) {
+        npc.say(mutterings[random(mutterings.len())]);
+    }
 }
 ```
 
@@ -161,7 +209,7 @@ Npc(
     appearance: "human_female_smith",
     settlement: "millbrook",        // placed relative to a settlement overlay
     position: (12.0, -4.5),
-    dialogue: "millbrook/blacksmith.yarn",
+    dialogue: Some("Hilda"),         // a node in dialogue/*.yarn
     shop: Some("millbrook_smithy"),
 )
 ```

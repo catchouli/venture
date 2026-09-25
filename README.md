@@ -47,7 +47,7 @@ Controls: **left-click** the ground to run there, or run with **WASD**
 (relative to the camera). **Right-drag** or the **arrow keys** rotate and tilt
 the camera, and the **mouse wheel** zooms. Click a player or NPC to **select**
 them; click again to **follow** a player or **talk** to an NPC. **Escape** deselects. **Enter** chats.
-Type **/town** in chat to go back to the starting town, and **/help** for other commands. **F1** switches to a
+Talking to an NPC opens a **dialogue window**. Type **/help** in chat for commands such as **/follow**, **/talk** and **/town**. **F1** switches to a
 free camera for flying around (**WASD** to move, **Shift** to go faster).
 
 ## Documentation
@@ -60,7 +60,7 @@ free camera for flying around (**WASD** to move, **Shift** to go faster).
 | [World generation engine](docs/world-generation-engine.md) | How worlds are generated, and how authored content is layered on top |
 | [Client and server](docs/client-server.md) | Server authority, movement prediction, streaming, profiles, LAN hosting |
 | [Plan: client/server](docs/plan-client-server.md) | The next milestones, step by step |
-| [Content authoring](docs/content-authoring.md) | Writing NPCs, looks and scripts (and later dialogue, shops and quests) |
+| [Content authoring](docs/content-authoring.md) | Writing NPCs, looks, scripts and dialogue (and later shops and quests) |
 | [Building and running](docs/building-and-running.md) | Desktop, web and dev tools in detail |
 | [Code style](docs/code-style.md) | Conventions that keep the code clean and maintainable |
 | [Roadmap](docs/roadmap.md) | What comes next |

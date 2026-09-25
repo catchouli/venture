@@ -8,9 +8,9 @@
 //! 4. its contents are validated and cleaned (tokens, names, positions,
 //!    directions, chat text),
 //!
-//! and only then does it become a [`SessionRequest`] (for [`crate::sessions`])
-//! or a [`PlayerRequest`] (for [`crate::gameplay`]). Too many strikes and the
-//! connection is closed.
+//! and only then does it become a [`SessionRequest`] (for [`crate::sessions`]),
+//! a [`PlayerRequest`] (for [`crate::gameplay`]) or a [`DialogueRequest`] (for
+//! [`crate::dialogue`]). Too many strikes and the connection is closed.
 
 use std::collections::HashMap;
 
@@ -22,7 +22,6 @@ use venture_protocol::{
 use venture_simulation::steering_direction;
 
 use crate::ServerSystems;
-use crate::chat_commands::ChatCommand;
 use crate::link::{ConnectionId, Link, LinkEvent};
 use crate::profiles::ProfileKey;
 use crate::world::ServerWorld;
@@ -46,6 +45,7 @@ impl Plugin for RequestsPlugin {
         app.init_resource::<Connections>()
             .add_message::<SessionRequest>()
             .add_message::<PlayerRequest>()
+            .add_message::<DialogueRequest>()
             .add_systems(FixedUpdate, receive_messages.in_set(ServerSystems::Requests));
     }
 }
@@ -118,14 +118,32 @@ pub enum PlayerAction {
     Steer(Point),
     /// Stop moving (and following).
     Stop,
-    /// Follow this entity.
+    /// Follow this entity (if it's a player).
     Follow(EntityId),
-    /// Talk to this NPC (walking over first if needed).
+    /// Talk to this entity (if it's an NPC), walking over first if needed.
     Interact(EntityId),
     /// Say this (already cleaned) in chat.
     Chat(String),
-    /// Carry out a chat command (such as `/town`).
-    Command(ChatCommand),
+    /// Go back to the starting town's square.
+    ReturnToTown,
+}
+
+/// A player's answer in a conversation with an NPC, for [`crate::dialogue`].
+#[derive(Message)]
+pub struct DialogueRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// What they chose.
+    pub choice: DialogueChoice,
+}
+
+/// What a player chose in a conversation. Not yet checked against the
+/// options on offer.
+pub enum DialogueChoice {
+    /// The option at this position in the list.
+    Option(u32),
+    /// Close the conversation.
+    End,
 }
 
 fn receive_messages(
@@ -135,6 +153,7 @@ fn receive_messages(
     time: Res<Time>,
     mut sessions: MessageWriter<SessionRequest>,
     mut players: MessageWriter<PlayerRequest>,
+    mut dialogue: MessageWriter<DialogueRequest>,
 ) {
     let now = time.elapsed_secs();
     while let Some(event) = link.next_event() {
@@ -161,6 +180,9 @@ fn receive_messages(
                     Verdict::Player(request) => {
                         players.write(request);
                     }
+                    Verdict::Dialogue(request) => {
+                        dialogue.write(request);
+                    }
                     Verdict::Reply(message) => link.send(id, &message),
                     Verdict::Ignore => {}
                     Verdict::Strike => {
@@ -184,6 +206,7 @@ fn receive_messages(
 enum Verdict {
     Session(SessionRequest),
     Player(PlayerRequest),
+    Dialogue(DialogueRequest),
     /// Answer the client directly, without changing anything.
     Reply(ServerMessage),
     Ignore,
@@ -256,11 +279,14 @@ fn judge_player_message(
                 });
             }
             let Some(text) = clean_chat_text(&text) else { return Verdict::Ignore };
-            match ChatCommand::parse(&text) {
-                None => PlayerAction::Chat(text),
-                Some(Ok(command)) => PlayerAction::Command(command),
-                Some(Err(problem)) => return Verdict::Reply(ServerMessage::Notice { text: problem }),
-            }
+            PlayerAction::Chat(text)
+        }
+        ClientMessage::ReturnToTown => PlayerAction::ReturnToTown,
+        ClientMessage::ChooseDialogueOption { index } => {
+            return Verdict::Dialogue(DialogueRequest { player, choice: DialogueChoice::Option(index) });
+        }
+        ClientMessage::EndDialogue => {
+            return Verdict::Dialogue(DialogueRequest { player, choice: DialogueChoice::End });
         }
         ClientMessage::Hello { .. } | ClientMessage::ChooseName { .. } => return Verdict::Strike,
     };

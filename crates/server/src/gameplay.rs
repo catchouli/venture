@@ -6,7 +6,6 @@ use bevy::prelude::*;
 use venture_protocol::{EntityId, EntityState, ServerMessage};
 use venture_simulation::{Follow, FollowOutcome, INTERACT_DISTANCE, Movement, clamp_move_goal, plan_route, step};
 
-use crate::chat_commands::ChatCommand;
 use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position};
 use crate::link::Link;
 use crate::npcs::{Npc, NpcInteraction};
@@ -38,61 +37,78 @@ fn act_on_requests(
     rules: Res<GameRules>,
     mut interactions: MessageWriter<NpcInteraction>,
     mut movers: Query<(&Position, &mut Mover)>,
-    entities: Query<(Entity, &NetworkId, &Position)>,
+    entities: Query<(Entity, &NetworkId, &Position, &DisplayName)>,
     npcs: Query<(), With<Npc>>,
     players: Query<(&Player, &NetworkId, &DisplayName)>,
 ) {
-    let find = |id: EntityId| entities.iter().find(|(_, network_id, _)| network_id.0 == id);
+    let find = |id: EntityId| entities.iter().find(|(_, network_id, ..)| network_id.0 == id);
     for request in requests.read() {
         let player = request.player;
-        // Any movement command replaces following and walking over to talk.
-        if !matches!(request.action, PlayerAction::Chat(_) | PlayerAction::Command(ChatCommand::Help)) {
-            commands.entity(player).remove::<(Following, PendingInteraction)>();
-        }
         let Ok((&Position(position), mut mover)) = movers.get_mut(player) else { continue };
+        // Tells the player something (such as why what they asked for didn't happen).
+        let mut tell = |text: String| {
+            if let Ok((me, ..)) = players.get(player) {
+                link.send(me.connection, &ServerMessage::Notice { text });
+            }
+        };
+        // Any new order replaces following and walking over to talk.
+        let mut stop_following = || {
+            commands.entity(player).remove::<(Following, PendingInteraction)>();
+        };
         match &request.action {
             PlayerAction::MoveTo(goal) => {
+                stop_following();
                 let goal = clamp_move_goal(position, *goal, rules.0.max_move_distance);
                 mover.0 = plan_route(position, goal, |x, y| world.is_blocked(x, y));
             }
-            PlayerAction::Steer(direction) => mover.0 = Movement::Steer(*direction),
-            PlayerAction::Stop => mover.0 = Movement::Idle,
+            PlayerAction::Steer(direction) => {
+                stop_following();
+                mover.0 = Movement::Steer(*direction);
+            }
+            PlayerAction::Stop => {
+                stop_following();
+                mover.0 = Movement::Idle;
+            }
             PlayerAction::Follow(target_id) => {
-                let Some((target, _, &Position(target_position))) = find(*target_id).filter(|(e, ..)| *e != player)
-                else {
-                    continue;
-                };
-                if distance(position, target_position) <= rules.0.max_move_distance {
+                // An unknown id is someone who has just left: nothing to say.
+                let Some((target, _, &Position(target_position), name)) = find(*target_id) else { continue };
+                if target == player {
+                    tell("You can't follow yourself.".to_string());
+                } else if !players.contains(target) {
+                    tell(format!("You can't follow {}. Only other players can be followed.", name.0));
+                } else if distance(position, target_position) > rules.0.max_move_distance {
+                    tell(format!("{} is too far away to follow.", name.0));
+                } else {
+                    stop_following();
                     commands.entity(player).insert(Following { target, follow: Follow::default() });
                 }
             }
             PlayerAction::Interact(target_id) => {
-                let Some((target, _, &Position(target_position))) =
-                    find(*target_id).filter(|(e, ..)| npcs.contains(*e))
-                else {
-                    continue;
-                };
-                let gap = distance(position, target_position);
-                if gap <= INTERACT_DISTANCE {
+                let Some((target, _, &Position(target_position), name)) = find(*target_id) else { continue };
+                if target == player {
+                    tell("Talking to yourself won't get you far.".to_string());
+                } else if !npcs.contains(target) {
+                    tell(format!("{} is another player. To talk to them, use the chat box.", name.0));
+                } else if distance(position, target_position) > rules.0.max_move_distance {
+                    tell(format!("{} is too far away to talk to.", name.0));
+                } else if distance(position, target_position) <= INTERACT_DISTANCE {
+                    stop_following();
                     mover.0 = Movement::Idle;
                     interactions.write(NpcInteraction { npc: target, player });
-                } else if gap <= rules.0.max_move_distance {
+                } else {
                     // Walk over, then talk (see `update_followers`).
+                    stop_following();
                     commands
                         .entity(player)
                         .insert((Following { target, follow: Follow::default() }, PendingInteraction { target }));
                 }
             }
-            PlayerAction::Command(ChatCommand::Town) => {
+            PlayerAction::ReturnToTown => {
+                stop_following();
                 // The town square, whatever development overrides say about where new characters start.
                 commands.entity(player).insert(Position(world.manifest.spawn_point));
                 mover.0 = Movement::Idle;
-                let Ok((speaker, ..)) = players.get(player) else { continue };
-                link.send(speaker.connection, &ServerMessage::Notice { text: "You return to town.".to_string() });
-            }
-            PlayerAction::Command(ChatCommand::Help) => {
-                let Ok((speaker, ..)) = players.get(player) else { continue };
-                link.send(speaker.connection, &ServerMessage::Notice { text: ChatCommand::help() });
+                tell("You return to town.".to_string());
             }
             PlayerAction::Chat(text) => {
                 let Ok((_, &NetworkId(from), name)) = players.get(player) else { continue };

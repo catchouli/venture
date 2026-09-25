@@ -19,6 +19,7 @@ venture_simulation.workspace = true
 venture_protocol.workspace = true
 venture_content = { workspace = true, features = ["scripts"] }
 rhai.workspace = true
+yarnspinner.workspace = true
 notify = "8"
 bevy = { workspace = true, features = ["std", "async_executor", "multi_threaded", "bevy_log"] }
 serde.workspace = true

@@ -30,7 +30,7 @@ pub struct AppearanceDef {
 ///
 /// ```ron
 /// (id: "millbrook_guard", name: "Guard Aldren", appearance: "guard",
-///  at: StartingSettlement(offset: (6.0, 3.0)), script: Some("guard.rhai"))
+///  at: StartingSettlement(offset: (6.0, 3.0)), script: Some("guard.rhai"), dialogue: Some("Guard"))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -46,6 +46,10 @@ pub struct NpcDef {
     /// The script that gives the NPC its behaviour (a file in `scripts/`), if any.
     #[serde(default)]
     pub script: Option<String>,
+    /// The conversation that opens when a player talks to the NPC: the title
+    /// of a node in the `dialogue/` files, if any.
+    #[serde(default)]
+    pub dialogue: Option<String>,
     /// How far from home (in metres) the NPC may wander. Zero keeps it in place.
     #[serde(default)]
     pub wander_radius: f32,

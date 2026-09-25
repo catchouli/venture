@@ -51,7 +51,7 @@ pub enum ClientMessage {
     },
     /// Stop moving (and stop following anyone).
     Stop,
-    /// Follow another player or an NPC, staying close behind them.
+    /// Follow another player, staying close behind them.
     Follow {
         /// Who to follow.
         target: EntityId,
@@ -66,6 +66,15 @@ pub enum ClientMessage {
         /// What to say.
         text: String,
     },
+    /// Go back to the starting town's square.
+    ReturnToTown,
+    /// Pick one of the options in the open conversation ([`ServerMessage::Dialogue`]).
+    ChooseDialogueOption {
+        /// The option's position in the list, from 0.
+        index: u32,
+    },
+    /// Close the open conversation.
+    EndDialogue,
 }
 
 /// Events from the server.
@@ -137,6 +146,18 @@ pub enum ServerMessage {
         /// The message.
         text: String,
     },
+    /// The next part of a conversation with an NPC, for this player only. The
+    /// client shows it in a dialogue window, replacing what was there.
+    Dialogue {
+        /// Who the player is talking to.
+        npc: EntityId,
+        /// What is said, in order.
+        lines: Vec<DialogueLine>,
+        /// The replies the player can choose from. Empty when the conversation is over.
+        options: Vec<String>,
+    },
+    /// The conversation has ended (for example, the player walked away).
+    DialogueEnded,
     /// The content pack has changed: clients should fetch the new content manifest.
     ContentChanged {
         /// The new content version.
@@ -155,4 +176,13 @@ pub struct EntityState {
     pub y: f32,
     /// Whether it is moving.
     pub moving: bool,
+}
+
+/// One line of a conversation in a [`ServerMessage::Dialogue`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DialogueLine {
+    /// Who says it, if the line names someone.
+    pub speaker: Option<String>,
+    /// What they say.
+    pub text: String,
 }

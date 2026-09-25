@@ -13,7 +13,7 @@ use crate::network::ClientState;
 use crate::world::streaming::{ChunkStore, ShownChunks};
 
 const CONTROLS_HELP: &str = "Left-click or WASD: run\nClick someone: select; again: follow/talk\n\
-                             Right-drag or arrow keys: rotate and tilt\nWheel: zoom\nEnter: chat (/town: go home)   Esc: deselect\n\
+                             Right-drag or arrow keys: rotate and tilt\nWheel: zoom\nEnter: chat (/help: commands)   Esc: deselect\n\
                              F1: free camera (WASD to fly, Shift: fast)";
 
 /// Shows the debug overlay.

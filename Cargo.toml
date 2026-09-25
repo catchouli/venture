@@ -31,6 +31,7 @@ ron = "0.12"
 async-channel = "2"
 sha2 = "0.11"
 rhai = { version = "1.26", features = ["sync"] }
+yarnspinner = "0.9"
 noise = "0.9"
 image = { version = "0.25", default-features = false, features = ["png"] }
 bevy = { version = "0.19", default-features = false }

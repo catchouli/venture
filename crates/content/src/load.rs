@@ -30,6 +30,8 @@ pub struct ContentPack {
     pub npcs: Vec<NpcDef>,
     /// Script sources, by file name within `scripts/`.
     pub scripts: BTreeMap<String, String>,
+    /// Dialogue sources, by file name within `dialogue/`.
+    pub dialogue: BTreeMap<String, String>,
     /// The part clients download.
     pub client: ClientContent,
 }
@@ -70,12 +72,31 @@ impl ContentPack {
             pack.scripts.insert(name, text);
         }
 
+        for (relative, text) in read_files(folder, "dialogue", "yarn", &mut errors) {
+            let name = relative.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            pack.dialogue.insert(name, text);
+        }
+        // Compiled together, since nodes can jump between files. The compiler's
+        // messages name the file.
+        #[cfg(feature = "scripts")]
+        let dialogue = crate::dialogue::compile_dialogue(&pack.dialogue).map_err(|message| {
+            errors.push(error(Path::new("dialogue"), message));
+        });
+
         let mut npc_ids = HashSet::new();
         for (relative, text) in read_files(folder, "npcs", "ron", &mut errors) {
             match ron::from_str::<Vec<NpcDef>>(&text) {
                 Ok(npcs) => {
                     for npc in npcs {
                         check_npc(&npc, &pack, &relative, &mut errors);
+                        #[cfg(feature = "scripts")]
+                        // (If the dialogue doesn't compile, that's already reported.)
+                        if let (Some(node), Ok(dialogue)) = (&npc.dialogue, &dialogue)
+                            && !dialogue.as_ref().is_some_and(|dialogue| dialogue.has_node(node))
+                        {
+                            let message = format!("NPC \"{}\": there's no dialogue node titled \"{node}\"", npc.id);
+                            errors.push(error(&relative, message));
+                        }
                         if !npc_ids.insert(npc.id.clone()) {
                             errors.push(error(&relative, format!("there's already an NPC called \"{}\"", npc.id)));
                         }
@@ -220,6 +241,18 @@ mod tests {
         let messages: Vec<String> = errors.iter().map(ToString::to_string).collect();
         assert_eq!(errors.len(), 4, "{messages:#?}");
         assert!(errors.iter().all(|error| error.file == Path::new("npcs/town.ron")));
+    }
+
+    #[cfg(feature = "scripts")]
+    #[test]
+    fn npcs_must_name_dialogue_that_exists() {
+        let npcs =
+            r#"[(id: "tom", name: "Tom", appearance: "villager", at: Position((1.0, 1.0)), dialogue: Some("Tom"))]"#;
+        let dialogue = "title: Tim\n---\nHello.\n===\n";
+        let files = [("appearances/people.ron", APPEARANCE), ("npcs/town.ron", npcs), ("dialogue/town.yarn", dialogue)];
+        let folder = TestPack::new("dialogue", &files);
+        let errors = ContentPack::load(&folder.0).unwrap_err();
+        assert_eq!(errors[0].to_string(), "npcs/town.ron: NPC \"tom\": there's no dialogue node titled \"Tom\"");
     }
 
     #[test]

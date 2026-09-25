@@ -1,8 +1,5 @@
-// Hilda works the forge.
-
-fn on_interact(npc, player) {
-    npc.say("Welcome, " + player.name + "! My forge isn't lit yet. Come back soon and I'll have blades to sell.");
-}
+// Hilda works the forge. (What she says when you talk to her is in
+// dialogue/starting_town.yarn; this is what everyone nearby sees.)
 
 fn on_idle(npc) {
     if chance(0.3) {

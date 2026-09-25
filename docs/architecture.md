@@ -19,9 +19,9 @@ venture_worldgen ──► venture_world     (the bake tool; nothing at runtime 
 | `venture_navigation` | Where characters can walk (blocked cells per chunk) and pathfinding (A* plus line-of-sight smoothing). |
 | `venture_simulation` | Game rules both sides run: movement, speed and input validation. The client uses them to predict, and the server to decide. |
 | `venture_protocol` | The messages between client and server, their encoding (postcard), size limits, and shared validation rules for names, chat and tokens. |
-| `venture_content` | The content pack: appearance and NPC definitions, loading with every problem reported by file, script checks (with the `scripts` feature), the client manifest, and the `check` tool. |
-| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles, gameplay, NPCs, the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
-| `venture_client` | The game client: a view of the server's game, with rendering, input, prediction, chat and debug tools. |
+| `venture_content` | The content pack: appearance and NPC definitions, loading with every problem reported by file, script and dialogue checks (with the `scripts` feature), the client manifest, and the `check` tool. |
+| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles, gameplay, NPCs, private NPC conversations (Yarn Spinner), the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
+| `venture_client` | The game client: a view of the server's game, with rendering, input, prediction, actions and chat commands, chat, the dialogue window and debug tools. |
 
 **Rule:** only the client and the server depend on Bevy. The shared crates
 are engine-free, so both sides can use them and they're easy to test.
