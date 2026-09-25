@@ -145,9 +145,10 @@ them all in the same `Snapshot`, and removes them with `EntityLeft`. So chat
 for NPCs as for players.
 
 Talking to an NPC is `Interact { target }`. If the player is within 3 m, the
-server runs the NPC's `on_interact` script straight away. If not, it walks
-them over (as with following) and runs it on arrival. The client predicts the
-walk.
+conversation starts straight away. If not, the server walks them over (as
+with following) and starts it on arrival. The client predicts the walk.
+`Interact` on a player, or `Follow` on an NPC, is refused with a `Notice`
+explaining why.
 
 ## Content: streamed from the server
 
@@ -216,6 +217,21 @@ the Yarn story, sends the client the lines and the choices, receives the
 chosen option, and runs any commands itself. Nothing a client sends can skip
 a condition or run a reward command.
 
+**How it works now** (`crates/server/src/dialogue.rs`): each player's
+conversation is private, so several players can talk to one NPC at once. The
+server runs the Yarn story until the player has to choose, and sends one page:
+`Dialogue { npc, lines, options }`. The client shows it in the dialogue
+window, and sends `ChooseDialogueOption { index }` for the reply clicked (an
+index that isn't on offer is ignored). A page with no options is the end.
+`EndDialogue` closes a conversation early, and the server sends
+`DialogueEnded` when it ends one itself (the player walked more than 6 m away,
+or the NPC went). Each page is limited in how many steps it may run, and the
+content check refuses loops that would never pause, so dialogue can't stall
+the server.
+
+This is separate from what NPCs say **out loud** (`npc.say` in scripts),
+which everyone within 40 m sees in chat and above the NPC's head.
+
 ## Player profiles and joining (vertical slice)
 
 Deliberately simple, so people can get into the game quickly:
@@ -253,8 +269,8 @@ movement command (`MoveTo`, `Steer`, `Stop`) ends following. Deselecting on
 the client sends `Stop`.
 
 **Selecting** a target is purely client-side, since it changes nothing on its
-own. Actions on the target (following now, attacking later) are commands the
-server validates.
+own. Actions on the target (following and talking now, attacking later) are
+commands the server validates.
 
 ## Chat
 
@@ -265,13 +281,26 @@ in the game. The sender's own message appears when the server's broadcast
 comes back, so every player sees exactly the same chat. Server messages
 (joins, leaves, warnings) arrive as `Notice { text }`.
 
-**Chat commands:** a message starting with `/` is a command, not chat. The
-gate parses it (`chat_commands.rs`), gameplay carries it out, and it's never
-broadcast. Commands share chat's rate limit. So far:
-- `/town`: go back to the starting town's square;
-- `/help`: list the commands.
+## Actions and chat commands
 
-Unknown commands get a notice pointing to `/help`.
+The things a player can do are **actions**, defined in one place on the
+client (`crates/client/src/interaction/actions.rs`). Every way of doing
+something asks for an action: clicking a selected character, typing a chat
+command, and later an action bar or key bindings. So they all behave the
+same, and a new action is added once.
+
+A chat message starting with `/` names an action and is never sent as chat:
+- `/follow`: follow the selected player;
+- `/talk`: talk to the selected NPC;
+- `/town`: go back to the starting town's square;
+- `/help`: list the commands (shown by the client itself).
+
+Actions become ordinary protocol commands (`Follow`, `Interact`,
+`ReturnToTown`), which the server validates like any other. Actions on the
+selected target are sent even when they can't work (`/follow` with an NPC
+selected), so the server decides and explains in a `Notice`; the client only
+predicts the ones that will work. An unknown command gets a message pointing
+to `/help`.
 
 ## Connection problems
 

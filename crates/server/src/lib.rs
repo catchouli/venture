@@ -19,6 +19,7 @@
 //!    [`profiles`]).
 //! 4. [`gameplay`]: handles in-game requests and runs the simulation (the only
 //!    code that changes players in the game).
+//! 5. [`dialogue`]: runs each player's private conversations with NPCs.
 //!
 //! Content scripts follow the same rule from the other side: a script can
 //! only queue commands ([`scripting`]), which [`npcs`] checks and applies.
@@ -30,9 +31,9 @@
 // lists and query types are normal here.
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
-pub mod chat_commands;
 pub mod config;
 pub mod content;
+pub mod dialogue;
 pub mod entities;
 pub mod gameplay;
 #[cfg(feature = "http")]
@@ -88,6 +89,8 @@ pub enum ServerSystems {
     Gameplay,
     /// NPCs: matching the content, running their scripts, applying script commands.
     Npcs,
+    /// Conversations with NPCs.
+    Dialogue,
 }
 
 impl GameServer {
@@ -106,7 +109,13 @@ impl GameServer {
             .insert_resource(sessions::SpawnPoint(self.spawn_override))
             .configure_sets(
                 FixedUpdate,
-                (ServerSystems::Requests, ServerSystems::Sessions, ServerSystems::Gameplay, ServerSystems::Npcs)
+                (
+                    ServerSystems::Requests,
+                    ServerSystems::Sessions,
+                    ServerSystems::Gameplay,
+                    ServerSystems::Npcs,
+                    ServerSystems::Dialogue,
+                )
                     .chain(),
             )
             .add_plugins((
@@ -114,6 +123,7 @@ impl GameServer {
                 sessions::SessionsPlugin,
                 gameplay::GameplayPlugin,
                 npcs::NpcsPlugin,
+                dialogue::DialoguePlugin,
                 content::ContentPlugin,
             ));
     }

@@ -1,0 +1,70 @@
+title: Guard
+---
+// Conversations with the people of the starting town. Each NPC's `dialogue`
+// (in npcs/starting_town.ron) names the node its conversation starts at.
+Guard Aldren: Halt! Oh, a new face. Welcome to town, {player_name()}.
+-> Any advice for a traveller?
+    Guard Aldren: Stay on the roads after dark. Wolves don't.
+    Guard Aldren: And the river's safe to wade where it's shallow. Mind the deep pools.
+    <<jump GuardMore>>
+-> What's that smoke to the south?
+    Guard Aldren: That's the volcano. Don't go poking at it.
+    <<jump GuardMore>>
+-> Goodbye.
+    Guard Aldren: Keep your wits about you.
+===
+
+title: GuardMore
+---
+Guard Aldren: Anything else?
+-> What's there to do around here?
+    Guard Aldren: Hilda at the forge could use a hand, and Elsie always needs flour carried.
+    Guard Aldren: Old Tomas knows every story in these hills, if you've an afternoon to spare.
+-> That's all, thanks.
+    Guard Aldren: Safe travels, {player_name()}.
+===
+
+title: Smith
+---
+Hilda: Welcome to my forge, {player_name()}!
+Hilda: The fire isn't lit yet, I'm afraid. Come back soon and I'll have blades to sell.
+-> What will you make?
+    Hilda: Swords, axes, pickaxes. Whatever a body needs to make their way out there.
+    Hilda: Bring me ore and I'll teach you to work it yourself.
+-> I'll come back later.
+    Hilda: Mind the anvil on your way out.
+===
+
+title: Tomas
+---
+Old Tomas: Eh? Oh, hello there, young {player_name()}.
+-> Tell me a story.
+    <<jump TomasStory>>
+-> Have you lost something?
+    Old Tomas: My pipe! I had it this morning. Or was that yesterday?
+    Old Tomas: If you find it, I'd be ever so grateful.
+-> Sorry to bother you.
+    Old Tomas: No bother at all. Nobody listens to old Tomas anyway.
+===
+
+title: TomasStory
+---
+Old Tomas: When I was your age, these hills were all forest.
+Old Tomas: They say the dwarves dig so deep they hear the world's heart beating.
+-> Another one!
+    Old Tomas: Elsie's bread is the best in three valleys. Don't tell her I said so.
+    Old Tomas: That's not a story, you say? Well, it's true, and that's better.
+-> Thank you, Tomas.
+    Old Tomas: Come back any time.
+===
+
+title: Baker
+---
+Elsie: Mind the flour! Oh, it's you, {player_name()}.
+-> Something smells good.
+    Elsie: That'll be tomorrow's bread. I'll save you a loaf.
+-> Need any help?
+    Elsie: Not yet, dear. Once the mill's turning, I'll need all the flour I can get.
+-> Goodbye.
+    Elsie: Come back hungry!
+===

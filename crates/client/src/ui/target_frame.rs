@@ -1,19 +1,14 @@
 //! The target frame, at the top middle of the screen: the selected target's
 //! name, a health bar for creatures, and an ✕ to deselect.
 
-use std::f32::consts::FRAC_PI_4;
-
 use bevy::prelude::*;
 
 use crate::characters::nameplates::Nameplate;
 use crate::interaction::targeting::{Health, Target, TargetKind, Targetable};
+use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, spawn_close_button};
 
 /// Width of the frame, in pixels.
 const WIDTH: f32 = 240.0;
-/// Size of the ✕ button, in pixels.
-const CLOSE_SIZE: f32 = 12.0;
-/// Colour of the frame's border.
-const BORDER_COLOUR: Color = Color::srgba(0.85, 0.7, 0.4, 0.8);
 
 /// Shows the target frame.
 pub struct TargetFramePlugin;
@@ -69,7 +64,7 @@ fn spawn_frame(mut commands: Commands) {
                     border_radius: BorderRadius::all(px(4)),
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.05, 0.04, 0.03, 0.8)),
+                BackgroundColor(WINDOW_BACKGROUND),
                 BorderColor::all(BORDER_COLOUR),
                 Visibility::Hidden,
             ))
@@ -91,36 +86,7 @@ fn spawn_frame(mut commands: Commands) {
                         Node { width: percent(100), height: percent(100), ..default() },
                         BackgroundColor(Color::srgb(0.75, 0.12, 0.1)),
                     ));
-                // The ✕, drawn as two crossed bars (the default font has no ✕ character).
-                frame
-                    .spawn((
-                        CloseButton,
-                        Button,
-                        Node {
-                            position_type: PositionType::Absolute,
-                            top: px(4),
-                            right: px(4),
-                            width: px(CLOSE_SIZE),
-                            height: px(CLOSE_SIZE),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                    ))
-                    .with_children(|button| {
-                        for angle in [FRAC_PI_4, -FRAC_PI_4] {
-                            button.spawn((
-                                Node {
-                                    position_type: PositionType::Absolute,
-                                    width: px(CLOSE_SIZE),
-                                    height: px(2),
-                                    ..default()
-                                },
-                                BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.7)),
-                                UiTransform::from_rotation(Rot2::radians(angle)),
-                            ));
-                        }
-                    });
+                spawn_close_button(frame, CloseButton);
             });
         });
 }

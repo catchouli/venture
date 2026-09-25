@@ -8,6 +8,8 @@ use bevy::time::TimeUpdateStrategy;
 use venture_content::ContentPack;
 use venture_protocol::{ClientMessage, EntityId, EntityKind, PROTOCOL_VERSION, ServerMessage};
 use venture_server::content::LoadedContent;
+use venture_server::entities::NetworkId;
+use venture_server::npcs::Npc;
 use venture_server::{ConnectionId, ContentSetup, GameServer, Link, LinkEvent, LinkSender, ProfileStore, ServerWorld};
 use venture_simulation::{FOLLOW_DISTANCE, RUN_SPEED, Rules, TICK_RATE};
 use venture_world::{CHUNK_FORMAT_VERSION, CHUNK_SIZE, Chunk, ChunkPos, WorldManifest};
@@ -88,6 +90,13 @@ impl TestServer {
         }
         let id = client.receive_all_until_welcome();
         (client, id)
+    }
+
+    /// The id of the (first) NPC in the game.
+    fn npc(&mut self) -> EntityId {
+        let world = self.app.world_mut();
+        let mut npcs = world.query_filtered::<&NetworkId, With<Npc>>();
+        npcs.iter(world).next().expect("an NPC").0
     }
 }
 
@@ -319,6 +328,11 @@ fn players_follow_until_told_otherwise() {
 /// A content pack with one appearance, and NPCs defined by `npcs` (RON), and
 /// one script.
 fn content_with(npcs: &str, script: &str) -> ContentPack {
+    content_with_dialogue(npcs, script, None)
+}
+
+/// Like [`content_with`], plus one dialogue file.
+fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> ContentPack {
     let folder =
         std::env::temp_dir().join(format!("venture-test-content-{}-{}", std::process::id(), fastrand_suffix()));
     let write = |path: &str, text: &str| {
@@ -332,6 +346,9 @@ fn content_with(npcs: &str, script: &str) -> ContentPack {
     );
     write("npcs/town.ron", npcs);
     write("scripts/greeter.rhai", script);
+    if let Some(dialogue) = dialogue {
+        write("dialogue/town.yarn", dialogue);
+    }
     let pack = ContentPack::load(&folder).unwrap();
     std::fs::remove_dir_all(&folder).unwrap();
     pack
@@ -427,7 +444,7 @@ fn npc_speech_only_reaches_players_nearby() {
 }
 
 #[test]
-fn the_town_command_sends_players_home_without_being_said_aloud() {
+fn returning_to_town_sends_players_home() {
     let mut server = TestServer::new("town");
     let (walker, me) = server.join(TOKEN_A, "Wanderer");
     let (listener, _) = server.join(TOKEN_B, "Listener");
@@ -436,7 +453,7 @@ fn the_town_command_sends_players_home_without_being_said_aloud() {
     assert!(walker.latest_position(me).unwrap().0 > 120.0);
     listener.receive();
 
-    walker.send(&ClientMessage::Chat { text: "/town".to_string() });
+    walker.send(&ClientMessage::ReturnToTown);
     server.run(2);
     let messages = walker.receive();
     let home = messages.iter().rev().find_map(|m| match m {
@@ -445,12 +462,84 @@ fn the_town_command_sends_players_home_without_being_said_aloud() {
     });
     assert_eq!(home, Some((100.0, 100.0)), "back at the spawn point");
     assert!(messages.iter().any(|m| matches!(m, ServerMessage::Notice { text } if text == "You return to town.")));
-    assert!(
-        !listener.receive().iter().any(|m| matches!(m, ServerMessage::Chat { .. })),
-        "commands aren't broadcast as chat"
-    );
+    assert!(!listener.receive().iter().any(|m| matches!(m, ServerMessage::Notice { .. })), "only they are told");
+}
 
-    walker.send(&ClientMessage::Chat { text: "/fly".to_string() });
-    server.run(1);
-    assert!(walker.receive().iter().any(|m| matches!(m, ServerMessage::Notice { text } if text.contains("/help"))));
+/// The notices in a batch of messages.
+fn notices(messages: &[ServerMessage]) -> Vec<String> {
+    messages
+        .iter()
+        .filter_map(|m| if let ServerMessage::Notice { text } = m { Some(text.clone()) } else { None })
+        .collect()
+}
+
+#[test]
+fn players_are_told_why_they_cant_follow_npcs_or_talk_to_players() {
+    let mut server = TestServer::with_content("refusals", content_with(GREETER, GREETING));
+    let (client, me) = server.join(TOKEN_A, "Visitor");
+    let (_, other) = server.join(TOKEN_B, "Other");
+    let npc = server.npc();
+    client.receive();
+
+    client.send(&ClientMessage::Follow { target: npc });
+    client.send(&ClientMessage::Interact { target: other });
+    client.send(&ClientMessage::Follow { target: me });
+    server.run(2);
+    assert_eq!(
+        notices(&client.receive()),
+        [
+            "You can't follow Greeter Tom. Only other players can be followed.",
+            "Other is another player. To talk to them, use the chat box.",
+            "You can't follow yourself.",
+        ]
+    );
+    server.run(40);
+    assert_eq!(client.latest_position(me), Some((100.0, 100.0)), "refused orders don't move anyone");
+}
+
+const TALKER: &str =
+    r#"[(id: "talker", name: "Tom", appearance: "villager", at: Position((102.0, 100.0)), dialogue: Some("Tom"))]"#;
+const TALK: &str = "title: Tom\n---\nTom: Hello, {player_name()}.\n-> Who are you?\n    Tom: I'm Tom.\n-> Bye.\n===\n";
+
+/// The conversation pages in a batch of messages: (lines, options).
+fn pages(messages: &[ServerMessage]) -> Vec<(Vec<String>, Vec<String>)> {
+    messages
+        .iter()
+        .filter_map(|m| match m {
+            ServerMessage::Dialogue { lines, options, .. } => {
+                Some((lines.iter().map(|line| line.text.clone()).collect(), options.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn conversations_are_private_and_branch_on_the_players_choices() {
+    let mut server = TestServer::with_content("dialogue", content_with_dialogue(TALKER, "", Some(TALK)));
+    let (talker, _) = server.join(TOKEN_A, "Visitor");
+    let (bystander, _) = server.join(TOKEN_B, "Bystander");
+    let npc = server.npc();
+
+    talker.send(&ClientMessage::Interact { target: npc });
+    server.run(2);
+    let expected_options = vec!["Who are you?".to_string(), "Bye.".to_string()];
+    assert_eq!(pages(&talker.receive()), [(vec!["Hello, Visitor.".to_string()], expected_options)]);
+    assert!(pages(&bystander.receive()).is_empty(), "nobody else sees the conversation");
+
+    // A choice that isn't on offer is ignored; a real one moves the conversation on.
+    talker.send(&ClientMessage::ChooseDialogueOption { index: 7 });
+    talker.send(&ClientMessage::ChooseDialogueOption { index: 0 });
+    server.run(2);
+    assert_eq!(pages(&talker.receive()), [(vec!["I'm Tom.".to_string()], vec![])], "and then it's over");
+
+    // Walking away ends a conversation.
+    talker.send(&ClientMessage::Interact { target: npc });
+    server.run(2);
+    talker.receive();
+    talker.send(&ClientMessage::MoveTo { x: 90.0, y: 100.0 });
+    server.run(10);
+    assert!(!talker.receive().contains(&ServerMessage::DialogueEnded), "not while still close by");
+    server.run(30);
+    assert!(talker.receive().contains(&ServerMessage::DialogueEnded));
 }

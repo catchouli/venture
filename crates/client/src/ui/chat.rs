@@ -8,6 +8,10 @@
 //! Sending only *asks* the server to say something ([`ToServer`]). Messages
 //! appear in the box when the server sends them back ([`FromServer`]), for
 //! the sender and everyone else alike, already checked and cleaned.
+//!
+//! A message starting with `/` is a command instead, naming an
+//! [action](crate::interaction::actions) (`/follow`, `/help`, ...). The
+//! client's own messages (such as the `/help` list) are [`SystemMessage`]s.
 
 use std::collections::VecDeque;
 
@@ -15,6 +19,7 @@ use bevy::prelude::*;
 use venture_protocol::{ClientMessage, MAX_CHAT_CHARS, ServerMessage, clean_chat_text};
 
 use crate::dev::settings::DevSettings;
+use crate::interaction::actions::{Action, PerformAction};
 use crate::interaction::targeting::{TargetKind, Targetable};
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
@@ -30,7 +35,7 @@ const WIDTH: f32 = 440.0;
 /// Colour of players' names.
 const NAME_COLOUR: Color = Color::srgb(0.95, 0.8, 0.45);
 /// Colour of NPCs' names.
-const NPC_NAME_COLOUR: Color = Color::srgb(0.6, 0.9, 0.55);
+pub const NPC_NAME_COLOUR: Color = Color::srgb(0.6, 0.9, 0.55);
 /// Colour of what players say.
 const MESSAGE_COLOUR: Color = Color::srgb(0.95, 0.95, 0.92);
 /// Colour of messages from the server itself.
@@ -41,7 +46,7 @@ pub struct ChatPlugin;
 
 impl Plugin for ChatPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ChatLog>().add_systems(Startup, spawn_chat_box).add_systems(
+        app.init_resource::<ChatLog>().add_message::<SystemMessage>().add_systems(Startup, spawn_chat_box).add_systems(
             Update,
             (
                 record_messages,
@@ -58,6 +63,10 @@ impl Plugin for ChatPlugin {
         );
     }
 }
+
+/// A message from the client itself, shown in chat like the server's notices.
+#[derive(Message, Clone, Debug)]
+pub struct SystemMessage(pub String);
 
 /// The messages received, oldest first.
 #[derive(Resource, Default)]
@@ -119,8 +128,13 @@ fn spawn_chat_box(mut commands: Commands) {
         });
 }
 
-/// Adds chat and notices from the server to the log.
-fn record_messages(mut events: MessageReader<FromServer>, mut log: ResMut<ChatLog>, speakers: Query<&Targetable>) {
+/// Adds chat and notices from the server, and the client's own messages, to the log.
+fn record_messages(
+    mut events: MessageReader<FromServer>,
+    mut system: MessageReader<SystemMessage>,
+    mut log: ResMut<ChatLog>,
+    speakers: Query<&Targetable>,
+) {
     for FromServer(message) in events.read() {
         let line = match message {
             ServerMessage::Chat { from, name, text } => {
@@ -130,9 +144,18 @@ fn record_messages(mut events: MessageReader<FromServer>, mut log: ResMut<ChatLo
             ServerMessage::Notice { text } => ChatLine::Notice(text.clone()),
             _ => continue,
         };
-        log.0.push_back(line);
-        if log.0.len() > HISTORY {
-            log.0.pop_front();
+        log.push(line);
+    }
+    for SystemMessage(text) in system.read() {
+        log.push(ChatLine::Notice(text.clone()));
+    }
+}
+
+impl ChatLog {
+    fn push(&mut self, line: ChatLine) {
+        self.0.push_back(line);
+        if self.0.len() > HISTORY {
+            self.0.pop_front();
         }
     }
 }
@@ -177,33 +200,64 @@ fn send_typed_message(
     mut submitted: MessageReader<TextSubmitted>,
     mut focus: ResMut<KeyboardFocus>,
     mut input: Single<(Entity, &mut TextField), With<ChatInput>>,
-    mut to_server: MessageWriter<ToServer>,
+    mut sender: ChatSender,
 ) {
     let (entity, ref mut field) = *input;
     for submission in submitted.read().filter(|submission| submission.field == entity) {
-        if let Some(text) = clean_chat_text(&submission.text) {
-            to_server.write(ToServer(ClientMessage::Chat { text }));
-        }
+        sender.submit(&submission.text);
         field.text.clear();
         focus.0 = None;
     }
 }
 
-/// For development: says the `VENTURE_SAY` messages once the world around
-/// the player has loaded.
+/// For development: says (or runs) the `VENTURE_SAY` messages once the
+/// world around the player has loaded.
 fn say_once_if_requested(
     dev: Res<DevSettings>,
     progress: Res<StreamingProgress>,
     mut said: Local<bool>,
-    mut to_server: MessageWriter<ToServer>,
+    mut sender: ChatSender,
 ) {
     if *said || !progress.measured || progress.waiting > 0 {
         return;
     }
     for text in &dev.say {
-        to_server.write(ToServer(ClientMessage::Chat { text: text.clone() }));
+        sender.submit(text);
     }
     *said = true;
+}
+
+/// Everything needed to act on what the player typed.
+#[derive(bevy::ecs::system::SystemParam)]
+struct ChatSender<'w> {
+    to_server: MessageWriter<'w, ToServer>,
+    actions: MessageWriter<'w, PerformAction>,
+    system: MessageWriter<'w, SystemMessage>,
+}
+
+impl ChatSender<'_> {
+    /// Says the text in chat, or carries out the command if it starts with `/`.
+    fn submit(&mut self, text: &str) {
+        let Some(text) = clean_chat_text(text) else { return };
+        let Some(command) = text.strip_prefix('/') else {
+            self.to_server.write(ToServer(ClientMessage::Chat { text }));
+            return;
+        };
+        let name = command.split_whitespace().next().unwrap_or_default();
+        match Action::named(name) {
+            Some(action) => {
+                self.actions.write(PerformAction(action));
+            }
+            None => {
+                let problem = if name.is_empty() {
+                    "Type /help to see the commands.".to_string()
+                } else {
+                    format!("There's no /{name} command. Type /help to see the commands.")
+                };
+                self.system.write(SystemMessage(problem));
+            }
+        }
+    }
 }
 
 fn show_only_while_playing(state: Res<State<ClientState>>, mut chat: Single<&mut Visibility, With<ChatBox>>) {

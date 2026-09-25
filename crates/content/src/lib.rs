@@ -8,6 +8,7 @@
 //!   appearances/*.ron   how characters look (sent to clients)
 //!   npcs/*.ron          who lives where (server only)
 //!   scripts/*.rhai      how NPCs behave (server only)
+//!   dialogue/*.yarn     conversations with NPCs (server only)
 //! ```
 //!
 //! [`ContentPack::load`] reads and checks everything, and reports every
@@ -17,6 +18,8 @@
 
 mod client;
 mod definitions;
+#[cfg(feature = "scripts")]
+pub mod dialogue;
 mod load;
 #[cfg(feature = "scripts")]
 pub mod script_hooks;

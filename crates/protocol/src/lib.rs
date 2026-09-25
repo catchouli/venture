@@ -13,12 +13,12 @@
 mod messages;
 mod rules;
 
-pub use messages::{ClientMessage, EntityId, EntityKind, EntityState, ServerMessage};
+pub use messages::{ClientMessage, DialogueLine, EntityId, EntityKind, EntityState, ServerMessage};
 pub use rules::{MAX_CHAT_CHARS, MAX_NAME_CHARS, MIN_NAME_CHARS, clean_chat_text, clean_name, is_valid_token};
 
 /// The protocol version. Increase it whenever messages change; the server
 /// turns away clients speaking a different version.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 /// The largest message a client may send, in bytes. Anything bigger is
 /// refused before decoding.

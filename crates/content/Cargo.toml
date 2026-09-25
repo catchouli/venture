@@ -9,13 +9,14 @@ rust-version.workspace = true
 [features]
 # Checking scripts compile. The server and the `check` tool need it; the
 # client doesn't (it only reads presentation data), so it's optional.
-scripts = ["dep:rhai"]
+scripts = ["dep:rhai", "dep:yarnspinner"]
 
 [dependencies]
 serde.workspace = true
 ron.workspace = true
 sha2.workspace = true
 rhai = { workspace = true, optional = true }
+yarnspinner = { workspace = true, optional = true }
 
 [[bin]]
 name = "check"
