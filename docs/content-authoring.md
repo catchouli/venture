@@ -1,6 +1,8 @@
 # Content authoring
 
-> Design only: nothing here is implemented yet.
+> Design only: nothing here is implemented yet. Decided: **RON** for data,
+> **Yarn Spinner** for dialogue, **Rhai** for scripts. How they fit the client
+> and server is in [client-server.md](client-server.md).
 
 The world's land (terrain, rivers, biomes, settlement sites, roads) is
 generated. Everything that makes it a *game* is added by people on top:
@@ -22,6 +24,9 @@ events. Much of it should be writable by **people who aren't programmers**
    files or reach the network. Scripts only get the game functions we give them.
 5. **The server is in charge.** Quest state, rewards and shop transactions run
    on the server. The client shows dialogue and sends the player's choices.
+   Client-side scripts (for presentation only) are streamed from the server
+   and run in a strict sandbox. See "Scripts on both sides" in
+   [client-server.md](client-server.md).
 6. **Mistakes are caught early.** Content is checked on load (does this NPC's
    shop exist? does this quest give an item that exists?) and errors point to
    the file and line.

@@ -45,6 +45,8 @@ the camera, and the **mouse wheel** zooms. **F1** switches to a free camera for 
 | [Architecture](docs/architecture.md) | Crates, how they depend on each other, client/server plans, platforms |
 | [World model](docs/world-model.md) | Units, coordinates, chunks, terrain, and how caves and buildings will fit in |
 | [World generation engine](docs/world-generation-engine.md) | How worlds are generated, and how authored content is layered on top |
+| [Client and server](docs/client-server.md) | Server authority, movement prediction, streaming, profiles, LAN hosting |
+| [Plan: client/server](docs/plan-client-server.md) | The next milestones, step by step |
 | [Content authoring](docs/content-authoring.md) | How NPCs, dialogue, shops and quests will be written (data, Yarn Spinner, Rhai) |
 | [Building and running](docs/building-and-running.md) | Desktop, web and dev tools in detail |
 | [Code style](docs/code-style.md) | Conventions that keep the code clean and maintainable |

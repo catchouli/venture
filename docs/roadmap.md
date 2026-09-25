@@ -34,6 +34,13 @@ like the finished game, with a character walking around it.
 - Structures: buildings and bridges placed by overlays.
 - Multi-layer navigation grid, once there are structures to walk on and under.
 
+## Next: playing together
+
+Milestone 1 of [plan-client-server.md](plan-client-server.md): an
+authoritative server that hosts the game on a LAN, automatic profiles, and
+seeing other players. Then the content pack (milestone 2), and dialogue,
+inventory and shops (milestone 3).
+
 ## Next: the game
 
 - Proper character models and animation (imported, rigged models to replace the placeholder).
