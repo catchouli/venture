@@ -29,7 +29,8 @@ the engine, so the future server can use them, and they are easy to test.
 ## Client and server
 
 The server is authoritative, and the client predicts the player's own
-movement so it feels instant. The server streams the world settings and
+movement so it feels instant. The world is baked ahead of time. The server
+loads it (building collision and navigation from it) and streams chunks and
 content to clients. The full design is in [client-server.md](client-server.md),
 and the build order in [plan-client-server.md](plan-client-server.md).
 

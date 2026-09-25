@@ -88,34 +88,50 @@ simulates rather than checking reported positions, there's no separate
 Click-to-move suits this approach particularly well, because one small
 message ("go to x, y") describes a whole run.
 
-## Terrain and content: streamed from the server
+## The world is baked ahead of time
 
-The client should need nothing but itself. On joining, the server sends
-everything else:
+World generation is a **build step**, not something done while playing:
 
-- **World:** the generator settings, the generator version, and any overlay
-  stamps. The client then **generates the terrain itself**, which is
-  deterministic, so no chunk data needs to be sent. Changes made while the
-  server runs (such as a placed building) are sent as overlay updates. If
-  the generator versions don't match, the client refuses to join rather
-  than show the wrong world.
-- **Content pack:** a manifest of files with content hashes. The client
-  downloads what it's missing or what changed, and (later) caches it in the
-  browser. When the server hot-reloads content, it sends the changed files to
-  connected clients.
+1. **Bake:** a command-line tool runs the generator, applies authored overlay
+   stamps, and writes the finished world to disk: a manifest (world
+   settings, generator version, bake date) plus one file per chunk with its
+   heights, cells and props. Because this happens offline, the generator can
+   afford to be slow and thorough (for example, erosion simulation later).
+2. **Server:** loads the baked world. Collision and navigation data
+   (`ChunkObstacles` now, the multi-layer nav grid later) are built from it at
+   load time, so pathfinding and movement checks use exactly the baked terrain.
+3. **Clients:** download chunk files from the server over HTTP as the player
+   moves (small and compressed, and cached by the browser), then mesh them as
+   they do now. The desktop build can ship with the whole world file instead.
+
+Why bake:
+
+- Server and clients see **exactly the same world**, with no dependence on
+  floating-point maths being identical on every platform.
+- Browsers don't spend time generating terrain, so streaming is smoother.
+- Authored edits (overlay stamps, and later hand-sculpted terrain) are baked
+  in, so there's one source of truth.
+- The full world is too large to put in the initial web download (tens of
+  megabytes compressed), so it's streamed chunk by chunk rather than built in.
+
+**Size estimate:** heights and liquid levels are stored as whole centimetres
+(`i16`), and cells as a few bytes each, so a chunk is about 30 KB before
+compression. The whole 4 × 4 km world is about 120 MB on the server's disk,
+and much smaller compressed. A client only ever downloads the chunks near
+its player.
+
+**Changes while running:** when authored content changes, the affected
+chunks are re-baked (a fraction of a second each) and clients are told to
+fetch the new versions.
+
+## Content: streamed from the server
 
 The client needs content for display: NPC names and appearances, item
 icons and descriptions, dialogue text, UI strings, and client-side scripts
-for presentation.
-
-**Determinism across platforms:** the server runs natively and browsers run
-WebAssembly. Floating-point `+ − × ÷` and square roots are identical
-everywhere, but functions like `exp`, `powf` and `sin` come from different
-maths libraries on different platforms and can differ in the last bit. To
-keep terrain bit-identical, world generation should use the pure-Rust
-[`libm`](https://crates.io/crates/libm) crate for those functions (the same
-code on every target). The server still validates movement against its own
-terrain, so a mismatch could never be exploited, only cause corrections.
+for presentation. On joining, the client gets a manifest of content files
+with hashes, downloads what it's missing or what changed, and (later)
+caches it. When the server hot-reloads content, it sends the changed files
+to connected clients.
 
 ## Scripts on both sides, and whether client scripts are safe
 
@@ -187,6 +203,32 @@ Deliberately simple, so people can get into the game quickly:
   no passwords. This is fine for LAN testing, and must be replaced by real
   accounts before any public server.
 
+## Connection problems
+
+The live game always needs the server. If the client can't connect, or loses
+the connection, the game fades out under a dark overlay with a red message
+("Disconnected from the server, reconnecting…"), and keeps retrying. When it
+reconnects, the overlay lifts and the player carries on from the server's
+saved state.
+
+## Offline development: an in-process server
+
+For working on terrain, art and features without starting a separate server,
+the **desktop client** has a development mode (`--local`) that runs the real
+server code *inside the same process*. Client and server talk through an
+in-memory connection instead of a WebSocket. It's the same code path as live
+play, just without the network. The automatic screenshot tools use this mode.
+
+## Joining
+
+- The first time a browser joins, it asks "What's your name?", with a box
+  pre-filled with a random fantasy name. After that, the token logs in
+  automatically.
+- Milestone 1 supports both the browser and the desktop client.
+- Networking is our own thin layer: WebSocket plus our messages and
+  prediction. We understand and control all of it, and it's enough for
+  click-and-path movement. We can adopt a bigger framework later if we need one.
+
 ## Hosting on a LAN
 
 One command runs everything:
@@ -198,8 +240,8 @@ cargo run --release -p venture_server
 The server:
 
 - serves the **web client** (the built `dist/` files) over HTTP,
+- serves **baked world chunks** and the **content pack** over HTTP,
 - accepts game connections over **WebSockets** on the same port,
-- serves the content pack to clients,
 - prints its LAN address, such as `http://192.168.1.20:8080`, for others on
   your network to open in their browser.
 

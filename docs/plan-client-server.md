@@ -11,16 +11,18 @@ around the same world. Characters come back where they left off.
 
 ### 1. Groundwork
 
-- **Identical terrain everywhere:** use the pure-Rust `libm` crate for `exp`,
-  `powf`, `hypot` and friends in `venture_worldgen`. Add a test that
-  fingerprints a few chunks (a hash of their heights and cells), and check it
-  gives the same result natively and in WebAssembly.
+- **Baked world format and tool:** a `bake` command (in `venture_worldgen`)
+  that generates the world, applies overlay stamps, and writes
+  `world/manifest.ron` plus `world/chunks/{x}_{y}.bin`. Chunk files are
+  serialised with `postcard`, with heights and liquid levels stored as whole
+  centimetres. Loading code lives with the data types, so the server and the
+  desktop client can read baked worlds. Tests check that a baked and reloaded
+  chunk matches the generated one to within a centimetre.
+- A **generator version** in the manifest, so stale bakes are noticed.
 - **`venture_simulation` crate:** move the movement rules out of the client
   (route following, WASD steering with sliding, run speed) into shared,
   engine-free code with unit tests. The client keeps working exactly as it
   does now, calling the shared code.
-- Add a **generator version** constant to `venture_worldgen`, increased
-  whenever the generated world changes.
 
 ### 2. Protocol (`venture_protocol`)
 
@@ -28,7 +30,9 @@ around the same world. Characters come back where they left off.
   [`postcard`](https://crates.io/crates/postcard) (compact, and works in WebAssembly):
   - Client to server: `Hello { token, protocol_version }`,
     `MoveTo { x, y }`, `Steer { direction }`, `Stop`.
-  - Server to client: `Welcome { your_id, name, world_settings, generator_version, position }`,
+  - Client to server also: `ChooseName { name }` (first join only).
+  - Server to client: `Welcome { your_id, name, world_id, position }` (or
+    `NameNeeded` for a new player),
     `PlayerJoined`, `PlayerLeft`, `Snapshot { tick, positions }`
     (everyone nearby, 20 times a second), and your own authoritative state.
 - A protocol version, checked on `Hello`.
@@ -43,9 +47,10 @@ around the same world. Characters come back where they left off.
   loop through channels:
   - `GET /` and friends serve the built web client (`crates/client/dist`);
   - `GET /ws` upgrades to a WebSocket game connection.
-- **World:** the server generates the chunks around each player (for
-  navigation and movement checks), using the same streaming radius idea as
-  the client.
+- **World:** loads the baked world and builds the obstacle grids from it.
+  Serves chunk files at `GET /world/chunks/{x}/{y}` (compressed, cacheable).
+- **Local mode:** the server's game plugin can also run inside the desktop
+  client (`--local`), connected through an in-memory transport.
 - **Movement:** applies `MoveTo` / `Steer` intents with `venture_simulation`,
   so positions only ever come from the server's own simulation.
 - **Profiles:** load on `Hello` (or create a temporary profile with a
@@ -56,23 +61,29 @@ around the same world. Characters come back where they left off.
 
 ### 4. Client networking
 
-- **Connection layer** with one interface and two implementations: the
-  browser's WebSocket (through `web-sys`) and a native WebSocket client on
-  desktop.
+- **Connection layer** with one interface and three implementations: the
+  browser's WebSocket (through `web-sys`), a native WebSocket client on
+  desktop, and an in-memory connection for `--local` mode.
 - **Token:** created on first run, stored in `localStorage` (browser) or a
   file (desktop).
-- On `Welcome`, set up the world from the server's settings and spawn the
-  player where the server says.
+- **First join:** a small "What's your name?" box, pre-filled with a random
+  fantasy name.
+- **World data from the server:** chunk streaming fetches baked chunks over
+  HTTP (or reads the local world file on desktop) instead of generating them.
+  The rest of the rendering is unchanged.
 - **Prediction and correction:** keep moving instantly as now, send intents,
   and correct smoothly towards the server's position when they differ.
 - **Other players:** spawn a character for each, move them by interpolating
   between snapshots, and show name labels.
-- A simple "Connecting…" / "Disconnected, retrying" overlay.
+- **Disconnected overlay:** the game fades out with a red "Disconnected from
+  the server, reconnecting…" message, and keeps retrying.
 
 ### 5. Check it works
 
 - Two browser tabs plus the desktop client, all seeing each other move smoothly.
-- Restart the server: everyone reconnects to their saved position.
+- Restart the server: everyone sees the disconnected overlay, then reconnects
+  to their saved position.
+- `--local` desktop mode plays without a separate server.
 - Join from another device on the LAN.
 - Send forged messages (a far-away `MoveTo`, a huge steer vector) from a
   test client: the server doesn't let the character move any faster than

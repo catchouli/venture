@@ -7,6 +7,11 @@ standard, well-known techniques, each named in the code so you can look it up.
 
 The default world is 4 × 4 km, surrounded by sea.
 
+The generator runs **ahead of time**: a bake step writes the finished world
+to disk, and the server and clients use the baked chunks (see
+[client-server.md](client-server.md)). For now the prototype client still
+generates chunks on the fly.
+
 ## Overview
 
 ```
