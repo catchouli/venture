@@ -296,6 +296,20 @@ the player the whole thing (`Inventory { slots }`), which is small, and the
 client's bag window shows it. Item names, descriptions and icons come from
 the content pack's client files.
 
+## Shops
+
+A shop opens when an NPC's dialogue runs `<<open_shop ...>>`: the server
+ends the conversation and sends `ShopOpened { npc, name, stock }`. The client
+shows the shop beside the bag. `Buy { index, count }` and `Sell { slot, count }`
+(counts from 1 to 100, checked by the gate) each become one inventory
+`Change`, coins for goods or goods for coins, so a trade happens completely or
+not at all. The server answers every trade with a `Notice` saying how it went
+("You buy: Bread (2) for 10 coins.", "You don't have enough coins for that.").
+Shops pay half an item's value, and won't buy items worth nothing (such as
+quest items). The shop closes with `CloseShop`, or when the player walks more
+than 6 m away (`ShopClosed`). The server keeps the stock as it was when the
+shop opened, so the player always buys what they were shown.
+
 ## Actions and chat commands
 
 The things a player can do are **actions**, defined in one place on the

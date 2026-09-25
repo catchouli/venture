@@ -10,6 +10,9 @@ pub const FOLLOW_DISTANCE: f32 = 2.0;
 
 /// How close (in metres) a player must be to an NPC to talk to them.
 pub const INTERACT_DISTANCE: f32 = 3.0;
+/// Once talking or trading with an NPC, the player may walk this far from
+/// them (in metres) before the conversation or shop closes.
+pub const TALK_RANGE: f32 = 6.0;
 
 /// The route is re-planned once the target has moved this far (in metres)
 /// from where the current route was planned to.

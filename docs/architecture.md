@@ -92,7 +92,7 @@ src/
     clicks.rs          left clicks: select, follow, talk, or run there
     move_marker.rs     the glowing move marker
   ui/                the interface
-    chat.rs, dialogue_window.rs, inventory.rs (the bag), name_prompt.rs,
+    chat.rs, dialogue_window.rs, inventory.rs (the bag), shop.rs, name_prompt.rs,
     target_frame.rs, connection_overlay.rs, cursor.rs, text_input.rs,
     tooltip.rs, widgets.rs (shared pieces such as the close button)
   dev/               development tools

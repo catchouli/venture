@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::client::{ClientContent, parse_appearances, parse_items};
 use crate::definitions::{
     AppearanceDef, COINS, ItemDef, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS,
-    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement,
+    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, ShopDef,
 };
 
 /// The file saying what new characters start with.
@@ -40,6 +40,8 @@ pub struct ContentPack {
     pub items: BTreeMap<String, ItemDef>,
     /// What new characters start with.
     pub new_characters: NewCharacterDef,
+    /// Shops, by id.
+    pub shops: BTreeMap<String, ShopDef>,
     /// NPCs, in file order.
     pub npcs: Vec<NpcDef>,
     /// Script sources, by file name within `scripts/`.
@@ -122,6 +124,21 @@ impl ContentPack {
             }
         }
 
+        for (relative, text) in read_files(folder, "shops", "ron", &mut errors) {
+            match ron::from_str::<Vec<ShopDef>>(&text) {
+                Ok(shops) => {
+                    for shop in shops {
+                        check_shop(&shop, &pack, &relative, &mut errors);
+                        if pack.shops.contains_key(&shop.id) {
+                            errors.push(error(&relative, format!("there's already a shop called \"{}\"", shop.id)));
+                        }
+                        pack.shops.insert(shop.id.clone(), shop);
+                    }
+                }
+                Err(message) => errors.push(error(&relative, message.to_string())),
+            }
+        }
+
         for (relative, text) in read_files(folder, "scripts", "rhai", &mut errors) {
             let name = file_name(&relative);
             #[cfg(feature = "scripts")]
@@ -140,6 +157,14 @@ impl ContentPack {
         let dialogue = crate::dialogue::compile_dialogue(&pack.dialogue).map_err(|message| {
             errors.push(error(Path::new("dialogue"), message));
         });
+        #[cfg(feature = "scripts")]
+        if let Ok(Some(dialogue)) = &dialogue {
+            for (node, command) in dialogue.commands() {
+                if let Err(message) = check_dialogue_command(&command, &pack) {
+                    errors.push(error(Path::new("dialogue"), format!("node \"{node}\": {message}")));
+                }
+            }
+        }
 
         let mut npc_ids = HashSet::new();
         for (relative, text) in read_files(folder, "npcs", "ron", &mut errors) {
@@ -199,6 +224,40 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
     if !icons.contains(&item.icon) {
         problem(format!("there's no icon called \"{}\" in icons/", item.icon));
     }
+}
+
+fn check_shop(shop: &ShopDef, pack: &ContentPack, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, format!("shop \"{}\": {message}", shop.id)));
+    if shop.name.trim().is_empty() {
+        problem("it needs a name".to_string());
+    }
+    for stock in &shop.stock {
+        if !pack.items.contains_key(&stock.item) {
+            problem(format!("there's no item called \"{}\"", stock.item));
+        }
+        if stock.price == 0 {
+            problem(format!("{} needs a price of at least 1 coin", stock.item));
+        }
+    }
+}
+
+/// Checks a dialogue command exists and refers to things that do.
+#[cfg(feature = "scripts")]
+fn check_dialogue_command(text: &str, pack: &ContentPack) -> Result<(), String> {
+    use crate::dialogue_commands::DialogueCommand;
+    match DialogueCommand::parse(text)? {
+        DialogueCommand::GiveItem { item, .. } | DialogueCommand::TakeItem { item, .. } => {
+            if !pack.items.contains_key(&item) {
+                return Err(format!("<<{text}>>: there's no item called \"{item}\""));
+            }
+        }
+        DialogueCommand::OpenShop { shop } => {
+            if !pack.shops.contains_key(&shop) {
+                return Err(format!("<<{text}>>: there's no shop called \"{shop}\""));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn check_npc(npc: &NpcDef, pack: &ContentPack, file: &Path, errors: &mut Vec<ContentError>) {
@@ -364,6 +423,19 @@ mod tests {
         let folder = TestPack::new("dialogue", &files);
         let errors = ContentPack::load(&folder.0).unwrap_err();
         assert_eq!(errors[0].to_string(), "npcs/town.ron: NPC \"tom\": there's no dialogue node titled \"Tom\"");
+    }
+
+    #[cfg(feature = "scripts")]
+    #[test]
+    fn dialogue_commands_must_refer_to_real_things() {
+        let dialogue = "title: A\n---\n<<open_shop nowhere>>\n<<give_item unicorn 2>>\n<<dance>>\n===\n";
+        let folder =
+            TestPack::new("commands", &[("appearances/people.ron", APPEARANCE), ("dialogue/a.yarn", dialogue)]);
+        let messages: Vec<String> = ContentPack::load(&folder.0).unwrap_err().iter().map(ToString::to_string).collect();
+        assert_eq!(messages.len(), 3, "{messages:#?}");
+        assert!(messages[0].contains("no shop called \"nowhere\""));
+        assert!(messages[1].contains("no item called \"unicorn\""));
+        assert!(messages[2].contains("isn't a command the game knows"));
     }
 
     #[test]

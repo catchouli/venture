@@ -167,6 +167,12 @@ fn give(slots: &mut [Option<ItemStack>], item: &str, count: u32, stackable: bool
     Ok(())
 }
 
+/// An item's name, with the count if there's more than one: "Bread (2)".
+pub fn describe_items(item: &str, count: u32, items: &BTreeMap<String, ItemDef>) -> String {
+    let name = items.get(item).map_or(item, |def| def.name.as_str());
+    if count == 1 { name.to_string() } else { format!("{name} ({count})") }
+}
+
 fn send_changed_inventories(mut link: ResMut<Link>, players: Query<(&Player, &Inventory), Changed<Inventory>>) {
     for (player, inventory) in &players {
         link.send(player.connection, &ServerMessage::Inventory { slots: inventory.slots.clone() });

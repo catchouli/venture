@@ -20,6 +20,7 @@
 //! 4. [`gameplay`]: handles in-game requests and runs the simulation (the only
 //!    code that changes players in the game).
 //! 5. [`dialogue`]: runs each player's private conversations with NPCs.
+//! 6. [`shops`]: buying and selling.
 //!
 //! Inventories are the exception that proves the rule: several modules may
 //! change them (shops, dialogue), but only through [`inventory::Inventory::apply`],
@@ -50,6 +51,7 @@ pub mod profiles;
 pub mod requests;
 pub mod scripting;
 pub mod sessions;
+pub mod shops;
 pub mod world;
 
 use std::time::Duration;
@@ -96,6 +98,8 @@ pub enum ServerSystems {
     Npcs,
     /// Conversations with NPCs.
     Dialogue,
+    /// Shops.
+    Shops,
     /// Telling players about changes to their own state (such as their inventory).
     Updates,
 }
@@ -132,6 +136,7 @@ impl GameServer {
                 npcs::NpcsPlugin,
                 dialogue::DialoguePlugin,
                 inventory::InventoryPlugin,
+                shops::ShopsPlugin,
                 content::ContentPlugin,
             ));
     }

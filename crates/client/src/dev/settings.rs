@@ -13,7 +13,9 @@
 //! - `VENTURE_SAY=text`: say this in chat once in the game (several messages
 //!   can be separated with `|`).
 //! - `VENTURE_OPEN_BAG=1`: open the bag once in the game.
-//! - `VENTURE_SELECT_NEAREST=1`: select the nearest character (player or NPC) once one is in sight.
+//! - `VENTURE_CHOOSE=1,2`: pick these replies (numbered from 1), one per
+//!   dialogue page, as conversations offer them.
+//! - `VENTURE_SELECT_NEAREST=1`: select the character (player or NPC) nearest yours once one is in sight.
 //!
 //! Environment variables don't exist on the web, so there these are all unset.
 
@@ -37,10 +39,12 @@ pub struct DevSettings {
     pub automated: bool,
     /// Messages to say in chat once in the game.
     pub say: Vec<String>,
-    /// Whether to select the nearest character (player or NPC) once one is in sight.
+    /// Whether to select the character (player or NPC) nearest yours once one is in sight.
     pub select_nearest: bool,
     /// Whether to open the bag once in the game.
     pub open_bag: bool,
+    /// Dialogue replies to pick, in order (numbered from 1).
+    pub choose: Vec<u32>,
 }
 
 impl DevSettings {
@@ -60,6 +64,7 @@ impl DevSettings {
                 .unwrap_or_default(),
             select_nearest: std::env::var_os("VENTURE_SELECT_NEAREST").is_some(),
             open_bag: std::env::var_os("VENTURE_OPEN_BAG").is_some(),
+            choose: numbers("VENTURE_CHOOSE").unwrap_or_default().into_iter().map(|n| n as u32).collect(),
         }
     }
 }

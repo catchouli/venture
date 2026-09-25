@@ -61,8 +61,11 @@ Old Tomas: They say the dwarves dig so deep they hear the world's heart beating.
 title: Baker
 ---
 Elsie: Mind the flour! Oh, it's you, {player_name()}.
+-> What have you got today?
+    // Opening the shop ends the conversation at once.
+    <<open_shop elsies_bakery>>
 -> Something smells good.
-    Elsie: That'll be tomorrow's bread. I'll save you a loaf.
+    Elsie: That'll be the sweet rolls. Eight coins, and worth every one.
 -> Need any help?
     Elsie: Not yet, dear. Once the mill's turning, I'll need all the flour I can get.
 -> Goodbye.

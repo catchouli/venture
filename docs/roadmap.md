@@ -44,9 +44,10 @@ like the finished game, with a character walking around it.
 - Trim Bevy features the client doesn't use (audio, glTF and so on) to shrink
   the web download (about 31 MB, or roughly a third of that compressed).
 
-## Next: content
+## Content
 
-The content pack (milestone 2), then dialogue, inventory and shops (milestone 3).
+Done: the content pack (milestone 2), then dialogue, items, inventories and a
+shop (milestone 3). Next: the first quest, which finishes milestone 3.
 
 ## Next: the game
 
@@ -54,7 +55,3 @@ The content pack (milestone 2), then dialogue, inventory and shops (milestone 3)
 - Targeting: selecting creatures and players, with the sword cursor to attack.
 - Skills design (see [vision.md](vision.md)), then the first gathering skill
   (felling trees) and the first crafting skill.
-- Server and protocol crates, with the client receiving chunks from the server.
-- Content pipeline ([content-authoring.md](content-authoring.md)): a `venture_content`
-  crate loading RON data, Yarn dialogue and Rhai scripts with hot reload, then
-  a first NPC with a conversation and a shop in the first town.

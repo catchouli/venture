@@ -1,0 +1,14 @@
+// What the shops in the starting town sell, and for how much (in coins).
+// Shops buy anything with a value, for half of it. A shop opens from its
+// NPC's dialogue with <<open_shop ID>>.
+[
+    (
+        id: "elsies_bakery",
+        name: "Elsie's Bakery",
+        stock: [
+            (item: "bread", price: 5),
+            (item: "sweet_roll", price: 8),
+            (item: "meat_pie", price: 15),
+        ],
+    ),
+]

@@ -18,7 +18,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use yarnspinner::core::Node;
-use yarnspinner::prelude::{StringTable, YarnCompiler, YarnFile, YarnProgram};
+use yarnspinner::prelude::{StringTable, YarnCompiler, YarnFile, YarnLibrary, YarnProgram};
+
+use crate::dialogue_commands::DIALOGUE_FUNCTIONS;
 
 /// Yarn Spinner's instruction codes that the loop check needs (see
 /// `yarnspinner_core`'s `OpCode`, which isn't exported).
@@ -30,6 +32,7 @@ mod opcode {
     pub const SHOW_OPTIONS: i32 = 5;
     pub const PUSH_STRING: i32 = 6;
     pub const JUMP_IF_FALSE: i32 = 10;
+    pub const CALL_FUNC: i32 = 12;
     pub const STOP: i32 = 15;
     pub const RUN_NODE: i32 = 16;
 }
@@ -47,6 +50,26 @@ impl CompiledDialogue {
     /// Whether there's a node with this title.
     pub fn has_node(&self, title: &str) -> bool {
         self.program.nodes.contains_key(title)
+    }
+
+    /// Every command the dialogue runs: (node title, command text).
+    pub fn commands(&self) -> Vec<(&str, String)> {
+        self.operands_of(opcode::RUN_COMMAND)
+    }
+
+    /// Every operand of every instruction of one kind: (node title, operand).
+    fn operands_of(&self, kind: i32) -> Vec<(&str, String)> {
+        let mut found = Vec::new();
+        for (title, node) in &self.program.nodes {
+            for instruction in node.instructions.iter().filter(|instruction| instruction.opcode == kind) {
+                if let Some(operand) = instruction.operands.first()
+                    && let Ok(text) = String::try_from(operand.clone())
+                {
+                    found.push((title.as_str(), text));
+                }
+            }
+        }
+        found
     }
 }
 
@@ -77,8 +100,34 @@ pub fn compile_dialogue(files: &BTreeMap<String, String>) -> Result<Option<Compi
     }
     if problems.is_empty() {
         problems.extend(find_silent_loops(&dialogue.program));
+        problems.extend(find_unknown_functions(&dialogue));
     }
     if problems.is_empty() { Ok(Some(dialogue)) } else { Err(problems.join("\n")) }
+}
+
+/// Finds calls to functions neither Yarn Spinner nor the game provides (such
+/// as a misspelt `item_cuont`), which would otherwise only fail when reached.
+fn find_unknown_functions(dialogue: &CompiledDialogue) -> Vec<String> {
+    let yarn = YarnLibrary::standard_library();
+    // Yarn Spinner adds these when a conversation starts.
+    let built_in = ["visited", "visited_count"];
+    let mut unknown: Vec<String> = dialogue
+        .operands_of(opcode::CALL_FUNC)
+        .into_iter()
+        .filter(|(_, name)| {
+            !yarn.contains_function(name)
+                && !built_in.contains(&name.as_str())
+                && !DIALOGUE_FUNCTIONS.contains(&name.as_str())
+        })
+        .map(|(node, name)| {
+            format!(
+                "node \"{node}\": there's no function called {name}() (the game's: {})",
+                DIALOGUE_FUNCTIONS.join(", ")
+            )
+        })
+        .collect();
+    unknown.dedup();
+    unknown
 }
 
 /// Finds nodes that can jump round in a circle without saying anything or
@@ -179,6 +228,16 @@ mod tests {
         let files = BTreeMap::from([("a.yarn".to_string(), "title: Start\n---\n<<jump Nowhere>>\n===\n".to_string())]);
         assert_eq!(compile_dialogue(&files).unwrap_err(), "a.yarn:3: there's no node titled \"Nowhere\" to jump to");
         assert!(compile_dialogue(&BTreeMap::new()).unwrap().is_none());
+    }
+
+    #[test]
+    fn unknown_functions_are_caught() {
+        let source =
+            "title: A\n---\n<<if item_cuont(\"bread\") > 1 and visited(\"A\")>>\nHi {player_name()}.\n<<endif>>\n===\n";
+        let files = BTreeMap::from([("a.yarn".to_string(), source.to_string())]);
+        let problems = compile_dialogue(&files).unwrap_err();
+        assert!(problems.starts_with("node \"A\": there's no function called item_cuont()"), "{problems}");
+        assert_eq!(problems.lines().count(), 1, "only the misspelt one: {problems}");
     }
 
     #[test]
