@@ -1,4 +1,4 @@
-//! A full-screen overlay while not in the game: "Connecting…", or, when the
+//! A full-screen overlay while not in the game: "Connecting...", or, when the
 //! connection is lost, the game fades out under a red message while the
 //! client keeps trying to reconnect.
 
@@ -69,11 +69,11 @@ fn update_overlay(
 ) {
     let (target, title, colour) = match (state.get(), &world_error) {
         (_, Some(_)) => (0.85, "Can't load the world", Color::srgb(1.0, 0.35, 0.3)),
-        (ClientState::Connecting, _) => (0.8, "Connecting…", Color::WHITE),
+        (ClientState::Connecting, _) => (0.8, "Connecting...", Color::WHITE),
         (ClientState::ChoosingName, _) => (0.5, "", Color::WHITE),
         (ClientState::Playing, _) => (0.0, "", Color::WHITE),
         (ClientState::Disconnected, _) => {
-            (0.75, "Disconnected from the server. Reconnecting…", Color::srgb(1.0, 0.35, 0.3))
+            (0.75, "Disconnected from the server. Reconnecting...", Color::srgb(1.0, 0.35, 0.3))
         }
     };
     let reason = match (&world_error, state.get()) {
