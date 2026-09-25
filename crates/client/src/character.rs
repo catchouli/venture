@@ -88,6 +88,8 @@ pub struct CharacterAssets {
     trousers: Handle<StandardMaterial>,
     boots: Handle<StandardMaterial>,
     belt: Handle<StandardMaterial>,
+    /// Tunic colours, so characters are easier to tell apart.
+    tunics: Vec<Handle<StandardMaterial>>,
 }
 
 struct CharacterMeshes {
@@ -137,12 +139,27 @@ impl FromWorld for CharacterAssets {
             trousers: material(0.30, 0.26, 0.22, 0.9),
             boots: material(0.20, 0.14, 0.10, 0.6),
             belt: material(0.16, 0.10, 0.07, 0.5),
+            tunics: vec![
+                material(0.46, 0.31, 0.19, 0.7),
+                material(0.25, 0.35, 0.22, 0.8),
+                material(0.45, 0.18, 0.15, 0.8),
+                material(0.22, 0.28, 0.42, 0.8),
+                material(0.40, 0.36, 0.30, 0.8),
+                material(0.35, 0.22, 0.38, 0.8),
+            ],
         }
     }
 }
 
 /// Spawns a character standing at `transform` and returns its entity.
-pub fn spawn_character(commands: &mut Commands, assets: &CharacterAssets, transform: Transform) -> Entity {
+/// `variant` picks its tunic colour (any number; it wraps around).
+pub fn spawn_character(
+    commands: &mut Commands,
+    assets: &CharacterAssets,
+    transform: Transform,
+    variant: u32,
+) -> Entity {
+    let tunic = &assets.tunics[variant as usize % assets.tunics.len()];
     let owner = commands.spawn((Name::new("Character"), transform, Visibility::default(), Gait::default())).id();
     let m = &assets.meshes;
     let joint = |kind| Joint { owner, kind };
@@ -160,8 +177,8 @@ pub fn spawn_character(commands: &mut Commands, assets: &CharacterAssets, transf
         .with_children(|body| {
             // Hips, tunic and belt.
             body.spawn(sphere(&assets.trousers, Vec3::new(0.0, 0.02, 0.0), Vec3::new(0.17, 0.11, 0.12)));
-            body.spawn(part(&m.skirt, &assets.leather, scaled(0.0, -0.06, 0.0, Vec3::new(1.1, 1.0, 0.85))));
-            body.spawn(part(&m.torso, &assets.leather, scaled(0.0, 0.30, 0.0, Vec3::new(1.3, 1.0, 0.85))));
+            body.spawn(part(&m.skirt, tunic, scaled(0.0, -0.06, 0.0, Vec3::new(1.1, 1.0, 0.85))));
+            body.spawn(part(&m.torso, tunic, scaled(0.0, 0.30, 0.0, Vec3::new(1.3, 1.0, 0.85))));
             body.spawn(part(&m.belt, &assets.belt, scaled(0.0, 0.06, 0.0, Vec3::new(1.25, 1.0, 0.85))));
             // Neck, head and hair. The top of the hair is 1.8 m above the ground.
             body.spawn(part(&m.neck, &assets.skin, Transform::from_xyz(0.0, 0.60, 0.0)));

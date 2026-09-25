@@ -1,6 +1,14 @@
 [workspace]
 resolver = "3"
-members = ["crates/world", "crates/worldgen", "crates/navigation", "crates/client"]
+members = [
+    "crates/world",
+    "crates/worldgen",
+    "crates/navigation",
+    "crates/simulation",
+    "crates/protocol",
+    "crates/server",
+    "crates/client",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,9 +20,16 @@ rust-version = "1.95"
 venture_world = { path = "crates/world" }
 venture_worldgen = { path = "crates/worldgen" }
 venture_navigation = { path = "crates/navigation" }
+venture_simulation = { path = "crates/simulation" }
+venture_protocol = { path = "crates/protocol" }
+venture_server = { path = "crates/server", default-features = false }
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1", default-features = false, features = ["use-std"] }
+ron = "0.12"
+async-channel = "2"
 noise = "0.9"
 image = { version = "0.25", default-features = false, features = ["png"] }
-bevy = "0.19"
+bevy = { version = "0.19", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

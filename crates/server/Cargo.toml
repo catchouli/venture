@@ -1,0 +1,37 @@
+[package]
+name = "venture_server"
+description = "The authoritative Venture game server."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["http"]
+# Hosting over the network: the HTTP server, WebSockets and the command line.
+# The desktop client's `--local` mode runs the game without it.
+http = ["dep:tokio", "dep:axum", "dep:tower-http", "dep:clap"]
+
+[dependencies]
+venture_world.workspace = true
+venture_navigation.workspace = true
+venture_simulation.workspace = true
+venture_protocol.workspace = true
+bevy = { workspace = true, features = ["std", "async_executor", "multi_threaded", "bevy_log"] }
+serde.workspace = true
+ron.workspace = true
+async-channel.workspace = true
+sha2 = "0.11"
+fastrand = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"], optional = true }
+axum = { version = "0.8", features = ["ws"], optional = true }
+tower-http = { version = "0.7", features = ["fs", "compression-gzip"], optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "venture_server"
+path = "src/main.rs"
+required-features = ["http"]

@@ -1,5 +1,7 @@
 //! Terrain cell and chunk coordinates.
 
+use serde::{Deserialize, Serialize};
+
 use crate::CHUNK_SIZE;
 
 /// The position of one terrain cell. Cell `(x, y)` covers the square from
@@ -37,7 +39,7 @@ impl CellPos {
 /// The position of a chunk, measured in chunks (not cells).
 ///
 /// Chunk `(0, 0)` covers cells `0..CHUNK_SIZE` on both axes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ChunkPos {
     /// Chunk coordinate along the east axis.
     pub x: i32,

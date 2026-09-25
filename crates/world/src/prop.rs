@@ -1,7 +1,9 @@
 //! Props: trees, rocks and bushes standing on the terrain.
 
+use serde::{Deserialize, Serialize};
+
 /// What kind of prop something is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PropKind {
     /// A broad, leafy tree.
     Oak,
@@ -18,7 +20,7 @@ pub enum PropKind {
 }
 
 /// One prop placed in the world.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Prop {
     /// What it is.
     pub kind: PropKind,

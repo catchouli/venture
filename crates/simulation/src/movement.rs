@@ -1,0 +1,136 @@
+//! How characters move: along a planned route (click to move), or steered in
+//! a direction (keyboard).
+
+use std::collections::VecDeque;
+
+use venture_navigation::{Point, find_path};
+
+/// How fast characters run, in metres per second.
+pub const RUN_SPEED: f32 = 5.0;
+
+/// How many times per second the server simulates the world.
+pub const TICK_RATE: f32 = 20.0;
+
+/// The most terrain cells the pathfinder may explore when planning one route.
+const MAX_ROUTE_SEARCH_CELLS: usize = 40_000;
+
+/// What a character is doing with its legs.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Movement {
+    /// Standing still.
+    #[default]
+    Idle,
+    /// Running through these waypoints, in order.
+    Route(VecDeque<Point>),
+    /// Running in a direction (a unit vector in world `(x, y)`) until told otherwise.
+    Steer(Point),
+}
+
+impl Movement {
+    /// Whether the character is moving.
+    pub fn is_moving(&self) -> bool {
+        !matches!(self, Movement::Idle)
+    }
+}
+
+/// Plans a route from `start` towards `goal`. See [`find_path`] for what
+/// happens when the goal can't be reached.
+pub fn plan_route(start: Point, goal: Point, is_blocked: impl Fn(i32, i32) -> bool) -> Movement {
+    let route: VecDeque<Point> = find_path(start, goal, is_blocked, MAX_ROUTE_SEARCH_CELLS).into();
+    if route.is_empty() { Movement::Idle } else { Movement::Route(route) }
+}
+
+/// Turns a requested steering direction into a unit vector, or `None` for
+/// "stop". Anything that isn't a sensible direction (zero, infinite or NaN)
+/// means stop, so a bad request can never make a character move faster.
+pub fn steering_direction((x, y): Point) -> Option<Point> {
+    let length = x.hypot(y);
+    (length.is_finite() && length > 1e-6).then(|| (x / length, y / length))
+}
+
+/// Moves a character for `dt` seconds from `position`, and returns where it
+/// ends up. Routes shorten as waypoints are reached, and become `Idle` at
+/// the end.
+pub fn step(position: Point, movement: &mut Movement, dt: f32, is_blocked: impl Fn(i32, i32) -> bool) -> Point {
+    let distance = RUN_SPEED * dt.max(0.0);
+    match movement {
+        Movement::Idle => position,
+        Movement::Steer(direction) => steer(position, (direction.0 * distance, direction.1 * distance), is_blocked),
+        Movement::Route(route) => {
+            let end = follow_route(position, distance, route);
+            if route.is_empty() {
+                *movement = Movement::Idle;
+            }
+            end
+        }
+    }
+}
+
+/// Moves up to `distance` metres along `route` from `(x, y)`, dropping
+/// waypoints as they are reached.
+fn follow_route((mut x, mut y): Point, distance: f32, route: &mut VecDeque<Point>) -> Point {
+    let mut remaining = distance;
+    while remaining > 0.0 {
+        let Some(&(target_x, target_y)) = route.front() else { break };
+        let to_target = (target_x - x).hypot(target_y - y);
+        if to_target <= remaining {
+            (x, y) = (target_x, target_y);
+            remaining -= to_target;
+            route.pop_front();
+        } else {
+            x += (target_x - x) / to_target * remaining;
+            y += (target_y - y) / to_target * remaining;
+            remaining = 0.0;
+        }
+    }
+    (x, y)
+}
+
+/// Moves from `(x, y)` by `offset` without entering blocked cells. If the full
+/// move is blocked, slides along whichever axis is free, so characters glide
+/// along walls and shores instead of sticking to them.
+fn steer((x, y): Point, (dx, dy): Point, is_blocked: impl Fn(i32, i32) -> bool) -> Point {
+    let open = |(px, py): Point| !is_blocked(px.floor() as i32, py.floor() as i32);
+    [(x + dx, y + dy), (x + dx, y), (x, y + dy)].into_iter().find(|&candidate| open(candidate)).unwrap_or((x, y))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const OPEN: fn(i32, i32) -> bool = |_, _| false;
+
+    #[test]
+    fn routes_are_followed_at_running_speed() {
+        let mut movement = Movement::Route(VecDeque::from([(10.0, 0.0)]));
+        let position = step((0.0, 0.0), &mut movement, 1.0, OPEN);
+        assert_eq!(position, (RUN_SPEED, 0.0));
+        assert!(movement.is_moving());
+    }
+
+    #[test]
+    fn routes_end_idle_at_the_destination() {
+        let mut movement = Movement::Route(VecDeque::from([(1.0, 0.0), (1.0, 1.0)]));
+        let position = step((0.0, 0.0), &mut movement, 1.0, OPEN);
+        assert_eq!(position, (1.0, 1.0));
+        assert_eq!(movement, Movement::Idle);
+    }
+
+    #[test]
+    fn steering_slides_along_walls() {
+        // A wall along x = 5: moving diagonally into it slides along y.
+        let wall = |x: i32, _: i32| x == 5;
+        let mut movement = Movement::Steer(steering_direction((1.0, 1.0)).unwrap());
+        let position = step((4.9, 0.5), &mut movement, 0.1, wall);
+        assert!(position.0 < 5.0 && position.1 > 0.5);
+    }
+
+    #[test]
+    fn bad_steering_requests_mean_stop() {
+        assert_eq!(steering_direction((0.0, 0.0)), None);
+        assert_eq!(steering_direction((f32::NAN, 1.0)), None);
+        assert_eq!(steering_direction((f32::INFINITY, 0.0)), None);
+        let (x, y) = steering_direction((300.0, 400.0)).unwrap();
+        assert!((x.hypot(y) - 1.0).abs() < 1e-6, "huge vectors are normalised, never faster");
+    }
+}

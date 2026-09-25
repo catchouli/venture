@@ -1,8 +1,10 @@
 //! Biomes: the broad regions the world is divided into.
 
+use serde::{Deserialize, Serialize};
+
 /// A kind of region. Each has its own terrain, materials and (later) wildlife,
 /// resources and music, and is home to one of the peoples of the world.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Biome {
     /// Open grassy plains and wide river valleys. Home of the humans.
     Grassland,

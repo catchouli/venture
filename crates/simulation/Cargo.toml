@@ -1,0 +1,13 @@
+[package]
+name = "venture_simulation"
+description = "Game rules shared by the server (which decides) and the client (which predicts)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+venture_navigation.workspace = true
+
+[lints]
+workspace = true

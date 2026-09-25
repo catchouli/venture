@@ -9,32 +9,73 @@
   cargo install --locked trunk
   ```
 
-## Desktop
+## The world
+
+The server and clients use a **baked** world: generated once, ahead of
+time, and written to the `world/` folder.
 
 ```sh
-cargo run -p venture_client            # development build
-cargo run -p venture_client --release  # optimised build
+cargo run --release -p venture_worldgen --bin bake [folder] [seed]
 ```
 
-Development builds optimise dependencies (Bevy) and the world generator, but
-not the rest of our code, so they compile quickly and still run smoothly. This
-is set up in the workspace `Cargo.toml`.
+Bake again whenever world generation changes. The manifest records the
+generator version.
 
-## Web
+## The server
+
+```sh
+cargo run --release -p venture_server
+```
+
+This serves the game, the web client and the world on one port (8080 by
+default), and prints the addresses to open. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--port` | `8080` | Port to listen on |
+| `--bind` | `0.0.0.0` | Address to listen on (the default accepts your local network) |
+| `--world` | `world` | The baked world folder |
+| `--profiles` | `server_data/profiles` | Where player profiles are saved |
+| `--client` | `crates/client/dist` | The built web client |
+
+Profiles are saved when players leave, every minute, and when the server
+stops (Ctrl+C).
+
+If other devices can't connect, check that your computer's firewall allows
+the port.
+
+## Web client
+
+Build it once (and again after changing the client), then run the server,
+which serves it:
 
 ```sh
 cd crates/client
-trunk serve                                            # development, with live reload
-trunk build --release --cargo-profile wasm-release     # small, optimised build in dist/
+trunk build --release --cargo-profile wasm-release   # small, optimised build in dist/
+trunk build --watch                                  # while developing: rebuilds on every change
 ```
 
-The web build uses WebGL2, so it runs in every modern browser. The client fills
-the page (`crates/client/index.html`). On the web there are no background
-threads, so chunk generation runs on the main thread between frames. The
-streaming code starts only one chunk per frame there, to keep things smooth.
+The web client connects to the server that served the page. It uses WebGL2,
+so it runs in every modern browser. On the web there are no background
+threads, so chunk loading is spread across frames.
 
 Development WebAssembly files are very large because they include debug
-information. Use the `wasm-release` profile for anything you deploy.
+information. Use the `wasm-release` profile for anything you share.
+
+## Desktop client
+
+```sh
+cargo run -p venture_client                                   # a server on this computer
+cargo run -p venture_client -- --connect http://192.168.1.20:8080
+cargo run -p venture_client -- --local                        # a server inside the client
+```
+
+`--local` runs the real server code inside the client, connected through an
+in-memory link instead of the network (with `--world <folder>` to choose the
+world). Profiles are kept in `local_data/`.
+
+Development builds optimise dependencies (Bevy) and the world generator, but
+not the rest of our code, so they compile quickly and still run smoothly.
 
 ## Mobile (later)
 
@@ -58,19 +99,24 @@ This writes three images to `preview/`:
 
 Use it to tune `WorldGenConfig` in seconds, without launching the client.
 
-### Automatic screenshots
+### Automatic screenshots and test clients
 
-The client can take a screenshot by itself, which is useful for checking how
-changes look (and for scripts or AI assistants):
+The desktop client can run without anyone at the keyboard, which is useful
+for checking changes (and for scripts or AI assistants):
 
 ```sh
-VENTURE_CAMERA="480,2640,0.6,0.3,30" VENTURE_SCREENSHOT=shot.png cargo run -p venture_client
+VENTURE_CAMERA="480,2640,0.6,0.3,30" VENTURE_SCREENSHOT=shot.png cargo run -p venture_client -- --local
 ```
 
-- `VENTURE_CAMERA` is `x,y,yaw,pitch,distance`: where the player starts (in
-  metres), and the camera's rotation and tilt (in radians) and distance (in metres).
-- `VENTURE_MOVE_TO` is `x,y`: once loaded, the player runs there as if that
-  point were clicked (useful for seeing the run animation and the move marker).
-- `VENTURE_SCREENSHOT` is where to save the image. The client waits until every
-  visible chunk has loaded, saves the screenshot and exits. It renders
-  offscreen, so it works even when the window isn't visible.
+| Variable | Meaning |
+| --- | --- |
+| `VENTURE_SCREENSHOT=path` | Wait until the world around the player has loaded, save a screenshot there, and exit. Renders offscreen, so it works even when the window isn't visible. |
+| `VENTURE_CAMERA=x,y,yaw,pitch,distance` | In `--local` mode, new characters start at `(x, y)` metres. The camera starts at that rotation and tilt (radians) and distance (metres). |
+| `VENTURE_MOVE_TO=x,y` | Once loaded, run to `(x, y)` as if it were clicked. |
+| `VENTURE_SAY=text` | Say this in chat once in the game. |
+| `VENTURE_PROFILE=name` | Use a separate login token (so a separate character), for running several clients on one computer. |
+| `VENTURE_AUTOMATED=1` | Take the suggested name without asking (implied by `VENTURE_SCREENSHOT`). |
+
+For example, to test multiplayer on one computer, run the server, start one
+client with `VENTURE_PROFILE=alice VENTURE_AUTOMATED=1`, and screenshot from
+another with `VENTURE_PROFILE=bob`.

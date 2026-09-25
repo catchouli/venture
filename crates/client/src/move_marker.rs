@@ -11,7 +11,7 @@ use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
 use crate::coords::from_bevy;
-use crate::player::Player;
+use crate::player::LocalPlayer;
 use crate::procedural_image::{distance_to_segment, paint_image};
 
 /// Width of the crest, in metres.
@@ -169,8 +169,8 @@ fn animate_markers(
 }
 
 /// Starts vanishing the marker once the player has stopped moving.
-fn vanish_on_arrival(player: Single<&Player>, mut markers: Query<&mut MoveMarker>) {
-    if player.is_moving() {
+fn vanish_on_arrival(player: Option<Single<&LocalPlayer>>, mut markers: Query<&mut MoveMarker>) {
+    if player.is_some_and(|player| player.movement.is_moving()) {
         return;
     }
     for mut marker in &mut markers {

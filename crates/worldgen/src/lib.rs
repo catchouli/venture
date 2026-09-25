@@ -44,6 +44,10 @@ use overlay::Overlay;
 use regions::Regions;
 use venture_world::{Chunk, ChunkPos, Ground};
 
+/// The version of the generator. Increase it whenever a change alters the
+/// generated world, so worlds baked by an older version are noticed.
+pub const GENERATOR_VERSION: u32 = 1;
+
 /// How far a settlement's levelled ground blends into the land around it, in metres.
 const SETTLEMENT_FALLOFF: f32 = 35.0;
 

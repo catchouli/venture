@@ -1,7 +1,9 @@
 # Client and server
 
-> Design for the next stage. Nothing here is implemented yet; see the plan at
-> the end.
+> Milestone 1 of this design is implemented: the baked world, the
+> authoritative server with LAN hosting, automatic profiles, movement
+> prediction and chat. Content streaming, client scripts and dialogue are
+> still to come (see [plan-client-server.md](plan-client-server.md)).
 
 ## The rule: the server decides
 
@@ -78,6 +80,14 @@ with server authority**, and it avoids trusting the client:
 4. **Other** players and creatures aren't predicted. They're shown slightly
    in the past, interpolating between the last two server updates, which
    looks smooth.
+
+**As implemented:** the client and server share the movement code
+(`venture_simulation`) and the baked obstacle data. When the prediction and the
+server's position differ by more than a few metres while moving, the client
+snaps to the server. Once both have stopped, it glides the last few
+centimetres. On a LAN this is invisible. For play over the internet,
+the standard next step is numbering each command, so the client can replay its
+unacknowledged inputs on top of each server update.
 
 So the answer to "client or server?" is both: the client *predicts* for
 smoothness, and the server *simulates* for correctness. Because the server
@@ -202,6 +212,15 @@ Deliberately simple, so people can get into the game quickly:
   character. Anyone who copies a token can play that character. There are
   no passwords. This is fine for LAN testing, and must be replaced by real
   accounts before any public server.
+
+## Chat
+
+The client sends `Chat { text }`. The server's gate rate-limits it (a
+burst of 5, then one every 2 seconds), removes control characters, trims it
+and caps its length, then broadcasts `Chat { from, name, text }` to everyone
+in the game. The sender's own message appears when the server's broadcast
+comes back, so every player sees exactly the same chat. Server messages
+(joins, leaves, warnings) arrive as `Notice { text }`.
 
 ## Connection problems
 
