@@ -42,6 +42,8 @@ by a deterministic generator, then shaped and filled by hand.
 
 - A chat box in the bottom-left corner shows recent messages; press Enter
   (or click it) to type, and Enter again to send.
+- Messages starting with `/` are commands: `/town` takes you back to the
+  starting town, and `/help` lists the others.
 - What nearby players say also appears in **speech bubbles** above their
   heads. Up to three recent messages stack up, newest nearest the name, and
   each disappears after a few seconds. Long messages are shortened in the

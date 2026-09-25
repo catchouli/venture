@@ -240,16 +240,17 @@ fn predict_movement(
 }
 
 /// Compares the prediction with the server's position in each snapshot. A
-/// large difference snaps the character to the server; when both have
-/// stopped, it glides the last bit.
+/// large difference (such as the server moving the character with `/town`)
+/// snaps the character to the server and drops the predicted route; when both
+/// have stopped, it glides the last bit.
 fn correct_towards_server(
     time: Res<Time>,
     mut events: MessageReader<FromServer>,
     mut server_position: Local<Option<(Point, bool)>>,
-    player: Option<Single<(&mut Transform, &LocalPlayer)>>,
+    player: Option<Single<(&mut Transform, &mut LocalPlayer)>>,
 ) {
     let Some(player) = player else { return };
-    let (mut transform, player) = player.into_inner();
+    let (mut transform, mut player) = player.into_inner();
     for FromServer(message) in events.read() {
         if let ServerMessage::Snapshot { entities, .. } = message
             && let Some(me) = entities.iter().find(|state| state.id == player.id)
@@ -264,6 +265,11 @@ fn correct_towards_server(
     if error > MAX_PREDICTION_ERROR {
         transform.translation.x = server_x;
         transform.translation.z = server_y;
+        // The prediction was wrong, so its route is too; the server will say where we're going.
+        if !server_moving {
+            player.movement = Movement::Idle;
+            player.following = None;
+        }
     } else if !server_moving && !player.movement.is_moving() && error > SETTLE_TOLERANCE {
         let blend = (SETTLE_RATE * time.delta_secs()).min(1.0);
         transform.translation.x += (server_x - x) * blend;

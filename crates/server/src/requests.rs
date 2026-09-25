@@ -22,6 +22,7 @@ use venture_protocol::{
 use venture_simulation::steering_direction;
 
 use crate::ServerSystems;
+use crate::chat_commands::ChatCommand;
 use crate::link::{ConnectionId, Link, LinkEvent};
 use crate::profiles::ProfileKey;
 use crate::world::ServerWorld;
@@ -123,6 +124,8 @@ pub enum PlayerAction {
     Interact(EntityId),
     /// Say this (already cleaned) in chat.
     Chat(String),
+    /// Carry out a chat command (such as `/town`).
+    Command(ChatCommand),
 }
 
 fn receive_messages(
@@ -252,9 +255,11 @@ fn judge_player_message(
                     text: "You're sending messages too quickly.".to_string(),
                 });
             }
-            match clean_chat_text(&text) {
-                Some(text) => PlayerAction::Chat(text),
-                None => return Verdict::Ignore,
+            let Some(text) = clean_chat_text(&text) else { return Verdict::Ignore };
+            match ChatCommand::parse(&text) {
+                None => PlayerAction::Chat(text),
+                Some(Ok(command)) => PlayerAction::Command(command),
+                Some(Err(problem)) => return Verdict::Reply(ServerMessage::Notice { text: problem }),
             }
         }
         ClientMessage::Hello { .. } | ClientMessage::ChooseName { .. } => return Verdict::Strike,
