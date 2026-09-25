@@ -11,6 +11,7 @@
 use bevy::prelude::*;
 use venture_protocol::EntityId;
 
+use crate::characters::player::LocalPlayer;
 use crate::dev::settings::DevSettings;
 use crate::ui::text_input::KeyboardFocus;
 use crate::world::query::raycast_ground;
@@ -146,22 +147,22 @@ fn forget_missing_target(mut target: ResMut<Target>, targetables: Query<(), With
     }
 }
 
-/// For development: selects the nearest other character once, if
-/// `VENTURE_SELECT_NEAREST` is set.
+/// For development: selects the character nearest the player's own, once,
+/// if `VENTURE_SELECT_NEAREST` is set.
 fn select_nearest_if_requested(
     dev: Res<DevSettings>,
     mut done: Local<bool>,
-    camera: Single<&GlobalTransform, With<Camera3d>>,
+    player: Single<&GlobalTransform, With<LocalPlayer>>,
     targetables: Query<(Entity, &GlobalTransform), With<Targetable>>,
     mut target: ResMut<Target>,
 ) {
     if !dev.select_nearest || *done {
         return;
     }
-    let camera = camera.translation();
+    let player = player.translation();
     let nearest = targetables
         .iter()
-        .min_by(|a, b| a.1.translation().distance(camera).total_cmp(&b.1.translation().distance(camera)));
+        .min_by(|a, b| a.1.translation().distance(player).total_cmp(&b.1.translation().distance(player)));
     if let Some((entity, _)) = nearest {
         target.0 = Some(entity);
         *done = true;

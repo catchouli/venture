@@ -126,10 +126,10 @@ Original plan:
 - ~~**Yarn dialogue** on the server; a dialogue window on the client.~~ Done:
   private conversations run on the server, one page at a time.
   Still to come: saved Yarn variables and game commands from dialogue.
-- **Item definitions** in the content pack, streamed to clients (names,
-  descriptions, icons).
-- **Inventory** (server-authoritative) and a first **shop** NPC in the
-  first town.
+- ~~**Item definitions** in the content pack, streamed to clients (names,
+  descriptions, icons).~~ Done, with placeholder icons.
+- ~~**Inventory** (server-authoritative) and a first **shop** NPC in the
+  first town.~~ Done: Elsie's bakery, opened from her dialogue.
 - First steps of a quest, written with RON + Yarn + Rhai, end to end.
 
 ## Later

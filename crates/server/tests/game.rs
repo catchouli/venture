@@ -332,7 +332,8 @@ fn content_with(npcs: &str, script: &str) -> ContentPack {
 }
 
 /// Like [`content_with`], plus one dialogue file. Every test pack also has
-/// coins and bread, and new characters start with 25 coins and a loaf.
+/// coins and bread, a bakery selling bread for 5 coins, and new characters
+/// start with 25 coins and a loaf.
 fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> ContentPack {
     let folder =
         std::env::temp_dir().join(format!("venture-test-content-{}-{}", std::process::id(), fastrand_suffix()));
@@ -348,6 +349,7 @@ fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> Co
     write("npcs/town.ron", npcs.as_bytes());
     write("scripts/greeter.rhai", script.as_bytes());
     write("items/things.ron", ITEMS.as_bytes());
+    write("shops/bakery.ron", br#"[(id: "bakery", name: "The Bakery", stock: [(item: "bread", price: 5)])]"#);
     write("new_characters.ron", br#"(items: [(item: "coins", count: 25), (item: "bread", count: 1)])"#);
     // Only the start of a PNG, but that's all the content check looks at.
     write("icons/thing.png", b"\x89PNG\r\n\x1a\n");
@@ -582,4 +584,73 @@ fn new_characters_get_starting_items_and_keep_them() {
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
     server.run(2);
     assert_eq!(latest_inventory(&client.receive()), Some(expected), "the bag comes back after a restart");
+}
+
+const SHOPKEEPER: &str = "title: Tom\n---\nTom: Buying?\n-> Yes, please.\n    <<open_shop bakery>>\n===\n";
+
+/// The slot holding an item, in the latest inventory in a batch of messages.
+fn slot_of(messages: &[ServerMessage], item: &str) -> Option<u32> {
+    messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Inventory { slots } => {
+            slots.iter().position(|slot| slot.as_ref().is_some_and(|stack| stack.item == item)).map(|i| i as u32)
+        }
+        _ => None,
+    })
+}
+
+#[test]
+fn shops_open_from_dialogue_and_trade_coins_for_goods() {
+    let mut server = TestServer::with_content("shop", content_with_dialogue(TALKER, "", Some(SHOPKEEPER)));
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
+    server.run(2);
+    client.send(&ClientMessage::ChooseName { name: "Shopper".to_string() });
+    server.run(2);
+    client.receive();
+    let npc = server.npc();
+
+    client.send(&ClientMessage::Interact { target: npc });
+    server.run(2);
+    client.send(&ClientMessage::ChooseDialogueOption { index: 0 });
+    server.run(2);
+    let messages = client.receive();
+    assert!(messages.contains(&ServerMessage::DialogueEnded), "opening the shop ends the conversation");
+    let opened = messages.iter().any(|m| {
+        matches!(m, ServerMessage::ShopOpened { name, stock, .. }
+        if name == "The Bakery" && stock.len() == 1 && stock[0].price == 5)
+    });
+    assert!(opened, "the shop opens: {messages:?}");
+
+    // 25 coins: two loaves cost 10.
+    client.send(&ClientMessage::Buy { index: 0, count: 2 });
+    server.run(2);
+    let messages = client.receive();
+    assert_eq!(notices(&messages), ["You buy: Bread (2) for 10 coins."]);
+    assert_eq!(
+        latest_inventory(&messages),
+        Some(vec![
+            ("coins".to_string(), 15),
+            ("bread".to_string(), 1),
+            ("bread".to_string(), 1),
+            ("bread".to_string(), 1)
+        ])
+    );
+
+    // Selling a loaf pays half its value of 4.
+    let bread = slot_of(&messages, "bread").unwrap();
+    client.send(&ClientMessage::Sell { slot: bread, count: 1 });
+    client.send(&ClientMessage::Buy { index: 0, count: 5 });
+    server.run(2);
+    let messages = client.receive();
+    assert_eq!(notices(&messages), ["You sell: Bread for 2 coins.", "You don't have enough coins for that."]);
+    let coins = latest_inventory(&messages).unwrap().into_iter().find(|(item, _)| item == "coins");
+    assert_eq!(coins, Some(("coins".to_string(), 17)));
+
+    // Walking away closes the shop, and then nothing more can be bought.
+    client.send(&ClientMessage::MoveTo { x: 90.0, y: 100.0 });
+    server.run(40);
+    assert!(client.receive().contains(&ServerMessage::ShopClosed));
+    client.send(&ClientMessage::Buy { index: 0, count: 1 });
+    server.run(2);
+    assert!(notices(&client.receive()).is_empty());
 }

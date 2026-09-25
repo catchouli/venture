@@ -75,6 +75,22 @@ pub enum ClientMessage {
     },
     /// Close the open conversation.
     EndDialogue,
+    /// Buy from the open shop ([`ServerMessage::ShopOpened`]).
+    Buy {
+        /// The item's position in the shop's stock, from 0.
+        index: u32,
+        /// How many to buy.
+        count: u32,
+    },
+    /// Sell to the open shop.
+    Sell {
+        /// The inventory slot holding the item, from 0.
+        slot: u32,
+        /// How many to sell.
+        count: u32,
+    },
+    /// Close the open shop.
+    CloseShop,
 }
 
 /// Events from the server.
@@ -163,6 +179,17 @@ pub enum ServerMessage {
         /// Each slot: empty, or holding some of one item.
         slots: Vec<Option<ItemStack>>,
     },
+    /// A shop has opened for this player: the client shows its window.
+    ShopOpened {
+        /// Who runs it.
+        npc: EntityId,
+        /// The shop's name.
+        name: String,
+        /// What it sells, in order.
+        stock: Vec<ShopStock>,
+    },
+    /// The open shop has closed (for example, the player walked away).
+    ShopClosed,
     /// The content pack has changed: clients should fetch the new content manifest.
     ContentChanged {
         /// The new content version.
@@ -199,4 +226,13 @@ pub struct ItemStack {
     pub item: String,
     /// How many. Always at least 1.
     pub count: u32,
+}
+
+/// Something a shop sells, in a [`ServerMessage::ShopOpened`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShopStock {
+    /// Which item.
+    pub item: String,
+    /// What one costs, in coins.
+    pub price: u32,
 }

@@ -102,6 +102,41 @@ pub struct ItemDef {
     pub value: u32,
 }
 
+impl ItemDef {
+    /// What shops pay for one, if they'll buy it at all: half its value
+    /// (rounded down, but at least 1 coin).
+    pub fn sell_price(&self) -> Option<u32> {
+        (self.value > 0).then(|| (self.value / 2).max(1))
+    }
+}
+
+/// A shop: what it sells, and for how much. A shop is opened from an NPC's
+/// dialogue (`<<open_shop elsies_bakery>>`), and it buys anything with a value.
+///
+/// ```ron
+/// (id: "elsies_bakery", name: "Elsie's Bakery", stock: [(item: "bread", price: 5)])
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShopDef {
+    /// Unique name, used by dialogue to open it.
+    pub id: String,
+    /// The name shown at the top of the shop window.
+    pub name: String,
+    /// What it sells, in the order shown.
+    pub stock: Vec<ShopItem>,
+}
+
+/// Something a shop sells.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShopItem {
+    /// Which item (an [`ItemDef`] id).
+    pub item: String,
+    /// What one costs, in coins.
+    pub price: u32,
+}
+
 /// What new characters start with.
 ///
 /// ```ron

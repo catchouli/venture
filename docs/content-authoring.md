@@ -5,8 +5,8 @@
 >
 > **Working now:** appearances, NPCs and items in RON, NPC behaviour in Rhai,
 > conversations in Yarn Spinner, hot reload, a checking tool, and streaming
-> the client's part to browsers. See "The content pack today" below. Shops
-> and quests are next (milestone 3).
+> the client's part to browsers, and shops opened from dialogue. See "The
+> content pack today" below. Quests are next (milestone 3).
 
 The world's land (terrain, rivers, biomes, settlement sites, roads) is
 generated. Everything that makes it a *game* is added by people on top:
@@ -44,6 +44,7 @@ content/
   icons/*.png          item pictures (sent to clients)
   new_characters.ron   what new characters start with
   npcs/*.ron           who lives where
+  shops/*.ron          what shops sell
   scripts/*.rhai       how NPCs behave
   dialogue/*.yarn      conversations with NPCs
 ```
@@ -100,6 +101,24 @@ name whenever they're ready.
 ```ron
 (items: [(item: "coins", count: 25), (item: "bread", count: 1)])
 ```
+
+### Shops
+
+```ron
+[
+    (
+        id: "elsies_bakery",
+        name: "Elsie's Bakery",            // shown at the top of the shop window
+        stock: [
+            (item: "bread", price: 5),     // price in coins
+            (item: "meat_pie", price: 15),
+        ],
+    ),
+]
+```
+
+A shop is opened from its NPC's dialogue with `<<open_shop elsies_bakery>>`
+(see below). Shops buy anything with a `value`, for half of it.
 
 ### NPCs
 
@@ -160,7 +179,19 @@ Guard Aldren: Halt! Oh, a new face. Welcome to town, {player_name()}.
   option with a condition that's false (`-> Secret <<if $friendly>>`) isn't
   offered. When there are no more replies, the conversation is over and the
   window offers "Goodbye".
-- `{player_name()}` is the name of the player in the conversation.
+- `{player_name()}` is the name of the player in the conversation, and
+  `item_count("bread")` is how many of an item they carry
+  (`-> Here's your pie. <<if item_count("meat_pie") > 0>>`).
+- **Commands** make things happen:
+  - `<<give_item bread 2>>` puts items in the player's bag (the count is
+    optional). If the bag is full, the player is told and gets nothing.
+  - `<<take_item old_pipe>>` takes items. Check they have them first with
+    `item_count`.
+  - `<<open_shop elsies_bakery>>` ends the conversation and opens a shop. It
+    ends at once, so lines before it on the same page aren't shown.
+
+  The player sees what they received or handed over in chat. Conditions
+  later on the same page already see the change.
 - Variables (`<<set $asked to true>>`) last for one conversation for now.
   Saved variables, and commands that affect the game (`<<start_quest ...>>`),
   come with quests.
@@ -168,8 +199,9 @@ Guard Aldren: Halt! Oh, a new face. Welcome to town, {player_name()}.
 - Comments (`// ...`) go inside a node, not before its `title:`.
 
 The check catches Yarn syntax errors, NPCs naming a node that doesn't exist,
-jumps to nodes that don't exist, and loops that would jump round forever
-without saying anything.
+jumps to nodes that don't exist, loops that would jump round forever without
+saying anything, misspelt functions, and commands that don't exist or name
+items or shops that don't.
 
 ### Scripts
 

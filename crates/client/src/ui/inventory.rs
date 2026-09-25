@@ -1,16 +1,18 @@
 //! The bag: the player's inventory, as a grid of slots in a window on the
 //! right. **I** (or the "Bag" button) opens and closes it; pointing at an
-//! item shows what it is.
+//! item shows what it is. While a shop is open, the bag opens too, and
+//! clicking an item asks to sell one (see [`crate::ui::shop`]).
 //!
 //! The inventory itself belongs to the server, which sends it whenever it
 //! changes ([`ServerMessage::Inventory`]). This is only a view of it.
 
 use bevy::prelude::*;
-use venture_protocol::{ItemStack, ServerMessage};
+use venture_protocol::{ClientMessage, ItemStack, ServerMessage};
 
 use crate::content::ContentStore;
 use crate::dev::settings::DevSettings;
-use crate::network::{ClientState, FromServer};
+use crate::network::{ClientState, FromServer, ToServer};
+use crate::ui::shop::OpenShop;
 use crate::ui::text_input::KeyboardFocus;
 use crate::ui::tooltip::Tooltip;
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND};
@@ -46,6 +48,7 @@ impl Plugin for InventoryPlugin {
                     rebuild_slots.run_if(resource_changed::<PlayerInventory>),
                     fill_slots,
                     highlight_slots,
+                    sell_on_click,
                     (toggle_bag, show_only_while_playing).chain(),
                 )
                     .chain(),
@@ -189,17 +192,19 @@ fn rebuild_slots(
     });
 }
 
-/// Shows each slot's item: its icon, its count if it's a stack, and a tooltip.
-/// Runs when the inventory or the content changes, or new slots appear.
+/// Shows each slot's item: its icon, its count if it's a stack, and a
+/// tooltip (with what it sells for, while a shop is open). Runs when any of
+/// those change, or new slots appear.
 fn fill_slots(
     inventory: Res<PlayerInventory>,
     content: Res<ContentStore>,
+    shop: Res<OpenShop>,
     new_slots: Query<(), Added<InventorySlot>>,
     mut slots: Query<(&InventorySlot, &Children, &mut Tooltip)>,
     mut icons: Query<(&mut ImageNode, &mut Visibility), With<SlotIcon>>,
     mut counts: Query<&mut Text, With<SlotCount>>,
 ) {
-    if !inventory.is_changed() && !content.is_changed() && new_slots.is_empty() {
+    if !inventory.is_changed() && !content.is_changed() && !shop.is_changed() && new_slots.is_empty() {
         return;
     }
     for (&InventorySlot(index), children, mut tooltip) in &mut slots {
@@ -225,10 +230,18 @@ fn fill_slots(
             }
         }
         *tooltip = match (stack, definition) {
-            (Some(stack), Some(item)) if stack.count > 1 => {
-                Tooltip { title: format!("{} ({})", item.name, stack.count), body: item.description.clone() }
+            (Some(stack), Some(item)) => {
+                let title =
+                    if stack.count > 1 { format!("{} ({})", item.name, stack.count) } else { item.name.clone() };
+                let mut body = item.description.clone();
+                if let Some(shop) = &shop.0 {
+                    match item.sell_price() {
+                        Some(price) => body.push_str(&format!("\nSells for {price} coins.")),
+                        None => body.push_str(&format!("\n{} won't buy this.", shop.name)),
+                    }
+                }
+                Tooltip { title, body }
             }
-            (Some(_), Some(item)) => Tooltip { title: item.name.clone(), body: item.description.clone() },
             (Some(stack), None) => Tooltip { title: stack.item.clone(), body: String::new() },
             (None, _) => Tooltip::default(),
         };
@@ -252,8 +265,28 @@ fn highlight_slots(
     }
 }
 
-/// **I** or the "Bag" button opens and closes the bag (unless the player is typing).
+/// While a shop is open, clicking an item asks to sell one.
+fn sell_on_click(
+    shop: Res<OpenShop>,
+    inventory: Res<PlayerInventory>,
+    slots: Query<(&Interaction, &InventorySlot), Changed<Interaction>>,
+    mut to_server: MessageWriter<ToServer>,
+) {
+    if shop.0.is_none() {
+        return;
+    }
+    for (interaction, &InventorySlot(index)) in &slots {
+        let holds_something = inventory.0.get(index).is_some_and(Option::is_some);
+        if *interaction == Interaction::Pressed && holds_something {
+            to_server.write(ToServer(ClientMessage::Sell { slot: index as u32, count: 1 }));
+        }
+    }
+}
+
+/// **I** or the "Bag" button opens and closes the bag (unless the player is
+/// typing). A shop opening opens it too.
 fn toggle_bag(
+    mut events: MessageReader<FromServer>,
     keys: Res<ButtonInput<KeyCode>>,
     focus: Res<KeyboardFocus>,
     button: Query<&Interaction, (With<BagButton>, Changed<Interaction>)>,
@@ -264,6 +297,9 @@ fn toggle_bag(
     if dev.open_bag && !*opened_for_dev {
         bag.open = true;
         *opened_for_dev = true;
+    }
+    if events.read().any(|FromServer(message)| matches!(message, ServerMessage::ShopOpened { .. })) {
+        bag.open = true;
     }
     let pressed_key = focus.0.is_none() && keys.just_pressed(KeyCode::KeyI);
     let clicked = button.iter().any(|interaction| *interaction == Interaction::Pressed);

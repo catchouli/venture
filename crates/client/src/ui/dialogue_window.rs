@@ -13,6 +13,7 @@ use bevy::prelude::*;
 use venture_protocol::{ClientMessage, DialogueLine, EntityId, ServerMessage};
 
 use crate::characters::nameplates::Nameplate;
+use crate::dev::settings::DevSettings;
 use crate::interaction::targeting::Targetable;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::chat::NPC_NAME_COLOUR;
@@ -35,7 +36,10 @@ pub struct DialogueWindowPlugin;
 impl Plugin for DialogueWindowPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_window)
-            .add_systems(Update, (show_pages, choose_replies, highlight_replies, close_on_click))
+            .add_systems(
+                Update,
+                (show_pages, choose_replies, choose_replies_if_requested, highlight_replies, close_on_click),
+            )
             .add_systems(OnExit(ClientState::Playing), close_window);
     }
 }
@@ -180,6 +184,21 @@ fn choose_replies(
     to_server.write(ToServer(ClientMessage::ChooseDialogueOption { index }));
     for reply in &all_replies {
         commands.entity(reply).despawn();
+    }
+}
+
+/// For development: picks the `VENTURE_CHOOSE` replies, one per page.
+fn choose_replies_if_requested(
+    dev: Res<DevSettings>,
+    mut events: MessageReader<FromServer>,
+    mut chosen: Local<usize>,
+    mut to_server: MessageWriter<ToServer>,
+) {
+    for FromServer(message) in events.read() {
+        let ServerMessage::Dialogue { options, .. } = message else { continue };
+        let Some(&number) = dev.choose.get(*chosen).filter(|_| !options.is_empty()) else { continue };
+        to_server.write(ToServer(ClientMessage::ChooseDialogueOption { index: number.saturating_sub(1) }));
+        *chosen += 1;
     }
 }
 
