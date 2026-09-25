@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use venture_protocol::{ClientMessage, PROTOCOL_VERSION, PlayerId, ServerMessage};
 use venture_server::{ConnectionId, GameServer, Link, LinkEvent, LinkSender, ProfileStore, ServerWorld};
-use venture_simulation::{RUN_SPEED, TICK_RATE};
+use venture_simulation::{FOLLOW_DISTANCE, RUN_SPEED, Rules, TICK_RATE};
 use venture_world::{CHUNK_FORMAT_VERSION, CHUNK_SIZE, Chunk, ChunkPos, WorldManifest};
 
 /// A small flat world, 4 × 4 chunks.
@@ -46,7 +46,8 @@ impl TestServer {
         app.add_plugins(MinimalPlugins)
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(1.0 / TICK_RATE)));
         let profiles = ProfileStore::new(&profile_folder).unwrap();
-        GameServer { world: flat_world(), profiles, link, spawn_override: None }.install(&mut app);
+        let rules = Rules { max_move_distance: 30.0 };
+        GameServer { world: flat_world(), profiles, link, rules, spawn_override: None }.install(&mut app);
         Self { app, link: link_sender, profile_folder, delete_profiles: true }
     }
 
@@ -267,4 +268,37 @@ fn characters_come_back_where_they_left_off() {
         _ => None,
     });
     assert_eq!(welcome, Some(("Wanderer".to_string(), left_at)));
+}
+
+#[test]
+fn far_clicks_only_go_as_far_as_the_rules_allow() {
+    let mut server = TestServer::new("reach");
+    let (client, me) = server.join(TOKEN_A, "Walker");
+    // The test rules allow 30 m; ask for 100 m.
+    client.send(&ClientMessage::MoveTo { x: 200.0, y: 100.0 });
+    server.run(200); // Ten seconds: plenty of time to get there.
+    let (x, _) = client.latest_position(me).unwrap();
+    assert!((x - 130.0).abs() < 0.5, "stopped at {x}");
+}
+
+#[test]
+fn players_follow_until_told_otherwise() {
+    let mut server = TestServer::new("follow");
+    let (leader, leader_id) = server.join(TOKEN_A, "Leader");
+    let (follower, follower_id) = server.join(TOKEN_B, "Follower");
+
+    leader.send(&ClientMessage::MoveTo { x: 120.0, y: 100.0 });
+    follower.send(&ClientMessage::Follow { target: leader_id });
+    server.run(100);
+    let leader_at = leader.latest_position(leader_id).unwrap();
+    let follower_at = follower.latest_position(follower_id).unwrap();
+    let gap = (leader_at.0 - follower_at.0).hypot(leader_at.1 - follower_at.1);
+    assert!(gap <= FOLLOW_DISTANCE + 0.5, "the follower is {gap} m behind");
+
+    // Stopping ends following: the leader moves on alone.
+    follower.send(&ClientMessage::Stop);
+    leader.send(&ClientMessage::MoveTo { x: 100.0, y: 120.0 });
+    server.run(100);
+    let follower_after = follower.latest_position(follower_id).unwrap();
+    assert!((follower_after.0 - follower_at.0).hypot(follower_after.1 - follower_at.1) < 0.5);
 }

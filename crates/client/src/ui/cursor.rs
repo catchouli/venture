@@ -1,5 +1,6 @@
-//! The mouse cursor: an ornate gold pointer normally, and a sword when a
-//! click would attack (for when targets exist).
+//! The mouse cursor: an ornate gold pointer normally, a pointer with a
+//! trailing arrow when a click would follow the player under it, and a sword
+//! when a click would attack (for when creatures exist).
 //!
 //! Both are original placeholder art drawn in code. On the web they become
 //! CSS cursors, so they move as smoothly as the system cursor.
@@ -8,7 +9,8 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::window::{CursorIcon, CustomCursor, CustomCursorImage};
 
-use crate::procedural_image::{distance_to_polygon_edge, distance_to_segment, inside_polygon, paint_image};
+use crate::common::procedural_image::{distance_to_polygon_edge, distance_to_segment, inside_polygon, paint_image};
+use crate::interaction::targeting::{Hovered, Target, TargetKind, Targetable};
 
 /// Cursor images are this many pixels square.
 const SIZE: u32 = 32;
@@ -20,17 +22,21 @@ pub struct CursorPlugin;
 
 impl Plugin for CursorPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CursorStyle>().add_systems(Startup, create_cursors).add_systems(Update, apply_cursor_style);
+        app.init_resource::<CursorStyle>()
+            .add_systems(Startup, create_cursors)
+            .add_systems(Update, (choose_cursor_style, apply_cursor_style).chain());
     }
 }
 
 /// Which cursor to show.
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
-#[allow(dead_code)] // `Attack` is waiting for targeting.
+#[allow(dead_code)] // `Attack` is waiting for creatures.
 pub enum CursorStyle {
     /// The normal pointer.
     #[default]
     Pointer,
+    /// Clicking will follow the (selected) player under the cursor.
+    Follow,
     /// A sword: clicking again will attack the selected target.
     Attack,
 }
@@ -38,14 +44,34 @@ pub enum CursorStyle {
 #[derive(Resource)]
 struct CursorImages {
     pointer: Handle<Image>,
+    follow: Handle<Image>,
     attack: Handle<Image>,
 }
 
 fn create_cursors(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     commands.insert_resource(CursorImages {
         pointer: images.add(draw(pointer_pixel)),
+        follow: images.add(draw(follow_pixel)),
         attack: images.add(draw(sword_pixel)),
     });
+}
+
+/// Picks the cursor for what's under it: the follow cursor over the
+/// selected player (clicking will follow them), otherwise the pointer.
+fn choose_cursor_style(
+    hovered: Res<Hovered>,
+    target: Res<Target>,
+    targetables: Query<&Targetable>,
+    mut style: ResMut<CursorStyle>,
+) {
+    let over_selected = hovered.0.filter(|&entity| target.0 == Some(entity));
+    let wanted = match over_selected.and_then(|entity| targetables.get(entity).ok()) {
+        Some(Targetable(TargetKind::Player(_))) => CursorStyle::Follow,
+        _ => CursorStyle::Pointer,
+    };
+    if *style != wanted {
+        *style = wanted;
+    }
 }
 
 fn apply_cursor_style(
@@ -61,6 +87,7 @@ fn apply_cursor_style(
     }
     let handle = match *style {
         CursorStyle::Pointer => images.pointer.clone(),
+        CursorStyle::Follow => images.follow.clone(),
         CursorStyle::Attack => images.attack.clone(),
     };
     // Both cursors point from their top-left corner.
@@ -98,6 +125,22 @@ const CLEAR: [f32; 4] = [0.0; 4];
 fn gold(t: f32) -> [f32; 4] {
     let t = t.clamp(0.0, 1.0);
     [1.0 - 0.45 * t, 0.86 - 0.5 * t, 0.45 - 0.35 * t, 1.0]
+}
+
+/// The follow cursor: the pointer, with a smaller arrow trailing behind it,
+/// like someone following in its footsteps.
+fn follow_pixel(p: Vec2) -> [f32; 4] {
+    // The main pointer, scaled down to make room.
+    let main = pointer_pixel(p / 0.8);
+    if main[3] > 0.0 {
+        return main;
+    }
+    // The trailing arrow: smaller, lower right, and a lighter gold.
+    let trailing = pointer_pixel((p - Vec2::new(14.0, 14.0)) / 0.55);
+    if trailing[3] > 0.0 && trailing != OUTLINE {
+        return [trailing[0] * 0.85 + 0.15, trailing[1] * 0.85 + 0.15, trailing[2] * 0.85 + 0.1, trailing[3]];
+    }
+    trailing
 }
 
 /// The pointer: an arrow with a gold body and a dark outline.

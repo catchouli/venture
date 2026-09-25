@@ -1,6 +1,7 @@
 //! The message types.
 
 use serde::{Deserialize, Serialize};
+use venture_simulation::Rules;
 
 /// Identifies a connected player for the length of their session.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -35,8 +36,13 @@ pub enum ClientMessage {
         /// See `x`.
         y: f32,
     },
-    /// Stop moving.
+    /// Stop moving (and stop following anyone).
     Stop,
+    /// Follow another player, staying close behind them.
+    Follow {
+        /// Who to follow.
+        target: PlayerId,
+    },
     /// Say something in chat.
     Chat {
         /// What to say.
@@ -66,6 +72,8 @@ pub enum ServerMessage {
         name: String,
         /// Where the character is, in metres.
         position: (f32, f32),
+        /// The server's game rules, which the client's prediction must follow too.
+        rules: Rules,
     },
     /// The server won't accept this connection (for example, a different
     /// protocol version). The connection is closed after this.

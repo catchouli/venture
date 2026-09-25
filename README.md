@@ -30,6 +30,7 @@ cargo run --release -p venture_server
 ```
 
 Others on your network can join by opening the "On your network" address.
+Server settings, such as the port and game rules, are in `server.ron`.
 
 Desktop client: `cargo run -p venture_client` connects to a server on this
 computer (`--connect http://host:port` for another), and
@@ -41,7 +42,8 @@ and `cargo fmt --check`.
 
 Controls: **left-click** the ground to run there, or run with **WASD**
 (relative to the camera). **Right-drag** or the **arrow keys** rotate and tilt
-the camera, and the **mouse wheel** zooms. **Enter** chats. **F1** switches to a
+the camera, and the **mouse wheel** zooms. Click a player to **select** them,
+and click them again to **follow**. **Escape** deselects. **Enter** chats. **F1** switches to a
 free camera for flying around (**WASD** to move, **Shift** to go faster).
 
 ## Documentation

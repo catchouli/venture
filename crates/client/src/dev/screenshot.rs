@@ -10,15 +10,15 @@
 //! VENTURE_SCREENSHOT=shot.png cargo run -p venture_client -- --local
 //! ```
 //!
-//! Combine with `VENTURE_CAMERA` (see [`crate::dev_settings`]) to choose the view.
+//! Combine with `VENTURE_CAMERA` (see [`crate::dev::settings`]) to choose the view.
 
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 
-use crate::chunk_streaming::StreamingProgress;
 use crate::network::ClientState;
+use crate::world::streaming::StreamingProgress;
 
 /// Size of the screenshot, in pixels.
 const SIZE: (u32, u32) = (1600, 900);

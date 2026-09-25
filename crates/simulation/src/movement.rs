@@ -40,6 +40,18 @@ pub fn plan_route(start: Point, goal: Point, is_blocked: impl Fn(i32, i32) -> bo
     if route.is_empty() { Movement::Idle } else { Movement::Route(route) }
 }
 
+/// Where a move from `start` towards `goal` should aim, at most `max_distance`
+/// metres away (in a straight line). Closer goals are unchanged.
+pub fn clamp_move_goal(start: Point, goal: Point, max_distance: f32) -> Point {
+    let (dx, dy) = (goal.0 - start.0, goal.1 - start.1);
+    let distance = dx.hypot(dy);
+    if distance <= max_distance || distance == 0.0 {
+        return goal;
+    }
+    let scale = max_distance / distance;
+    (start.0 + dx * scale, start.1 + dy * scale)
+}
+
 /// Turns a requested steering direction into a unit vector, or `None` for
 /// "stop". Anything that isn't a sensible direction (zero, infinite or NaN)
 /// means stop, so a bad request can never make a character move faster.
@@ -123,6 +135,12 @@ mod tests {
         let mut movement = Movement::Steer(steering_direction((1.0, 1.0)).unwrap());
         let position = step((4.9, 0.5), &mut movement, 0.1, wall);
         assert!(position.0 < 5.0 && position.1 > 0.5);
+    }
+
+    #[test]
+    fn far_goals_are_brought_within_reach() {
+        assert_eq!(clamp_move_goal((0.0, 0.0), (300.0, 400.0), 100.0), (60.0, 80.0));
+        assert_eq!(clamp_move_goal((0.0, 0.0), (3.0, 4.0), 100.0), (3.0, 4.0));
     }
 
     #[test]

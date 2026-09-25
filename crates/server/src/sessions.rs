@@ -5,13 +5,13 @@ use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{PlayerId, ServerMessage};
 
-use crate::ServerSystems;
 use crate::link::{ConnectionId, Link};
 use crate::names::random_name;
 use crate::players::{Mover, Player, Position};
 use crate::profiles::{Profile, ProfileKey, ProfileStore};
 use crate::requests::{Connections, SessionRequest, Stage};
 use crate::world::ServerWorld;
+use crate::{GameRules, ServerSystems};
 
 /// How often everyone's profile is saved while they play, in seconds.
 const AUTOSAVE_INTERVAL: f32 = 60.0;
@@ -60,6 +60,7 @@ struct Sessions<'w, 's> {
     spawn_point: Res<'w, SpawnPoint>,
     next_id: ResMut<'w, NextPlayerId>,
     online: ResMut<'w, OnlineProfiles>,
+    rules: Res<'w, GameRules>,
     players: Query<'w, 's, (Entity, &'static Player, &'static Position)>,
 }
 
@@ -108,7 +109,8 @@ impl Sessions<'_, '_> {
         let name = saved.name;
 
         // Tell the newcomer about themselves and everyone already here.
-        self.link.send(connection, &ServerMessage::Welcome { you: id, name: name.clone(), position });
+        let welcome = ServerMessage::Welcome { you: id, name: name.clone(), position, rules: self.rules.0 };
+        self.link.send(connection, &welcome);
         let others: Vec<ConnectionId> = self.players.iter().map(|(_, player, _)| player.connection).collect();
         for (_, player, Position(their_position)) in &self.players {
             let joined =

@@ -6130,6 +6130,7 @@ version = "0.1.0"
 dependencies = [
  "postcard",
  "serde",
+ "venture_simulation",
 ]
 
 [[package]]
@@ -6156,6 +6157,7 @@ dependencies = [
 name = "venture_simulation"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "venture_navigation",
 ]
 

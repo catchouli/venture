@@ -14,9 +14,9 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 use venture_protocol::{ClientMessage, MAX_CHAT_CHARS, ServerMessage, clean_chat_text};
 
-use crate::dev_settings::DevSettings;
+use crate::dev::settings::DevSettings;
 use crate::network::{ClientState, FromServer, ToServer};
-use crate::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
+use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
 
 /// How many messages are shown.
 const VISIBLE_LINES: usize = 8;

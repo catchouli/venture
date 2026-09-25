@@ -213,6 +213,26 @@ Deliberately simple, so people can get into the game quickly:
   no passwords. This is fine for LAN testing, and must be replaced by real
   accounts before any public server.
 
+## Rules and following
+
+The server's tunable **game rules** live in its config file (`server.ron`,
+the `player` block), and are sent to each client in `Welcome`, so the client
+predicts by the same rules. The first rule is `max_move_distance`: the
+furthest one click can send a character (the server clamps any further
+`MoveTo` to that distance in the same direction), and the furthest a
+character keeps following someone.
+
+**Following:** the client sends `Follow { target }` for a selected player.
+The server checks the target exists and is within reach, then keeps
+re-planning the follower's route as the target moves (shared code in
+`venture_simulation`, which the client also uses to predict). Any other
+movement command (`MoveTo`, `Steer`, `Stop`) ends following. Deselecting on
+the client sends `Stop`.
+
+**Selecting** a target is purely client-side, since it changes nothing on its
+own. Actions on the target (following now, attacking later) are commands the
+server validates.
+
 ## Chat
 
 The client sends `Chat { text }`. The server's gate rate-limits it (a

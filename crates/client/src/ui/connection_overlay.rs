@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 
 use crate::network::{ClientState, Session};
-use crate::world_source::WorldLoadError;
+use crate::world::source::WorldLoadError;
 
 /// How quickly the overlay fades in and out (per second).
 const FADE_RATE: f32 = 3.0;

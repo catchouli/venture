@@ -8,16 +8,17 @@
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{ClientMessage, PlayerId, ServerMessage};
-use venture_simulation::{Movement, step};
+use venture_simulation::{Follow, FollowOutcome, Movement, Rules, step};
 
 use crate::camera::{CameraHeading, CameraMode, wasd_direction};
-use crate::character::{CharacterAssets, Gait, spawn_character};
-use crate::chunk_streaming::{ChunkStore, ObstacleStore};
-use crate::coords::{from_bevy, to_bevy};
-use crate::nameplates::Nameplate;
+use crate::characters::model::{CharacterAssets, Gait, spawn_character};
+use crate::characters::nameplates::Nameplate;
+use crate::common::coords::{from_bevy, to_bevy};
+use crate::interaction::targeting::Target;
 use crate::network::{ClientState, FromServer, ToServer};
-use crate::terrain_query::{ground_height, is_blocked};
-use crate::text_input::KeyboardFocus;
+use crate::ui::text_input::KeyboardFocus;
+use crate::world::query::{ground_height, is_blocked};
+use crate::world::streaming::{ChunkStore, ObstacleStore};
 
 /// How quickly the character turns to face where it's going (per second).
 const TURN_RATE: f32 = 12.0;
@@ -37,11 +38,13 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SteeringSent>().add_systems(
+        app.init_resource::<SteeringSent>().init_resource::<GameRules>().add_systems(
             Update,
             (
                 place_on_welcome,
                 steer_with_keyboard.run_if(in_state(ClientState::Playing)),
+                stop_following_when_deselected,
+                predict_following,
                 predict_movement,
                 correct_towards_server,
             )
@@ -62,7 +65,21 @@ pub struct LocalPlayer {
     pub id: PlayerId,
     /// How the character is moving, as predicted locally.
     pub movement: Movement,
+    /// Who the character is following, if anyone.
+    pub following: Option<Following>,
 }
+
+/// Following another character.
+pub struct Following {
+    /// The character entity being followed.
+    pub target: Entity,
+    /// The state of the chase.
+    pub follow: Follow,
+}
+
+/// The server's game rules, received when joining.
+#[derive(Resource, Default)]
+pub struct GameRules(pub Rules);
 
 /// The steering direction last sent to the server, and how long ago.
 #[derive(Resource, Default)]
@@ -78,14 +95,17 @@ fn place_on_welcome(
     mut events: MessageReader<FromServer>,
     assets: Res<CharacterAssets>,
     store: Res<ChunkStore>,
+    mut rules: ResMut<GameRules>,
     mut players: Query<(&mut LocalPlayer, &mut Transform, &mut Nameplate)>,
 ) {
     for FromServer(message) in events.read() {
-        let ServerMessage::Welcome { you, name, position: (x, y) } = message else { continue };
+        let ServerMessage::Welcome { you, name, position: (x, y), rules: server_rules } = message else { continue };
+        rules.0 = *server_rules;
         let translation = to_bevy(*x, *y, ground_height(&store, *x, *y).unwrap_or(0.0));
         if let Ok((mut player, mut transform, mut nameplate)) = players.single_mut() {
             player.id = *you;
             player.movement = Movement::Idle;
+            player.following = None;
             transform.translation = translation;
             nameplate.0.clone_from(name);
             continue;
@@ -93,7 +113,7 @@ fn place_on_welcome(
         let character = spawn_character(&mut commands, &assets, Transform::from_translation(translation), you.0);
         commands.entity(character).insert((
             Name::new("Player"),
-            LocalPlayer { id: *you, movement: Movement::Idle },
+            LocalPlayer { id: *you, movement: Movement::Idle, following: None },
             Nameplate(name.clone()),
         ));
     }
@@ -116,7 +136,11 @@ fn steer_with_keyboard(
     let steering = (heading.forward * input.y + heading.right * input.x).try_normalize().map(|d| (d.x, d.y));
 
     match steering {
-        Some(direction) => player.movement = Movement::Steer(direction),
+        Some(direction) => {
+            // Steering takes over from following (the server does the same).
+            player.following = None;
+            player.movement = Movement::Steer(direction);
+        }
         // Releasing the keys stops steering, but not a route from a click.
         None if matches!(player.movement, Movement::Steer(_)) => player.movement = Movement::Idle,
         None => {}
@@ -136,6 +160,47 @@ fn steer_with_keyboard(
         to_server.write(ToServer(command));
         sent.direction = steering;
         sent.seconds_since = 0.0;
+    }
+}
+
+/// Stops following when the followed character is no longer the target
+/// (deselected with ✕ or Escape, another target chosen, or they left), and
+/// tells the server.
+fn stop_following_when_deselected(
+    target: Res<Target>,
+    mut to_server: MessageWriter<ToServer>,
+    player: Option<Single<&mut LocalPlayer>>,
+) {
+    let Some(mut player) = player else { return };
+    let Some(following) = &player.following else { return };
+    if target.0 != Some(following.target) {
+        player.following = None;
+        player.movement = Movement::Idle;
+        to_server.write(ToServer(ClientMessage::Stop));
+    }
+}
+
+/// Predicts following: runs towards the followed character with the same
+/// shared rules the server uses.
+fn predict_following(
+    rules: Res<GameRules>,
+    obstacles: Res<ObstacleStore>,
+    targets: Query<&Transform, Without<LocalPlayer>>,
+    player: Option<Single<(&Transform, &mut LocalPlayer)>>,
+) {
+    let Some(player) = player else { return };
+    let (transform, mut player) = player.into_inner();
+    let LocalPlayer { following, movement, .. } = &mut *player;
+    let Some(chase) = following else { return };
+    let Ok(target) = targets.get(chase.target) else {
+        *following = None;
+        return;
+    };
+    let (position, target) = (from_bevy(transform.translation), from_bevy(target.translation));
+    let outcome =
+        chase.follow.update(position, target, movement, rules.0.max_move_distance, |x, y| is_blocked(&obstacles, x, y));
+    if outcome == FollowOutcome::Stop {
+        *following = None;
     }
 }
 

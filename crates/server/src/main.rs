@@ -4,9 +4,10 @@
 //! cargo run --release -p venture_server
 //! ```
 //!
-//! Then open the printed address in a browser. See `docs/building-and-running.md`.
+//! Then open the printed address in a browser. Settings are read from
+//! `server.ron` (or `--config <file>`). See `docs/building-and-running.md`.
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -15,7 +16,7 @@ use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use clap::Parser;
 use venture_server::http::{self, HttpConfig};
-use venture_server::{GameServer, Link, ProfileStore, ServerWorld};
+use venture_server::{GameServer, Link, ProfileStore, ServerConfig, ServerWorld};
 
 /// How often the server's main loop runs. The game itself ticks at a fixed
 /// rate within it.
@@ -25,51 +26,35 @@ const LOOP_RATE: f64 = 60.0;
 #[derive(Parser)]
 #[command(version, about)]
 struct Options {
-    /// Port to listen on.
-    #[arg(long, default_value_t = 8080)]
-    port: u16,
-    /// Address to listen on. The default accepts connections from the local network.
-    #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
-    bind: IpAddr,
-    /// The baked world folder.
-    #[arg(long, default_value = "world")]
-    world: PathBuf,
-    /// Where player profiles are saved.
-    #[arg(long, default_value = "server_data/profiles")]
-    profiles: PathBuf,
-    /// The built web client.
-    #[arg(long, default_value = "crates/client/dist")]
-    client: PathBuf,
+    /// The settings file (see `server.ron`). If it doesn't exist, every setting takes its default.
+    #[arg(long, default_value = "server.ron")]
+    config: PathBuf,
 }
 
 fn main() {
     let options = Options::parse();
+    let config = ServerConfig::load(&options.config).unwrap_or_else(|error| fail(&format!("Bad settings: {error}")));
+    let paths = &config.paths;
 
     let started = Instant::now();
-    let world = match ServerWorld::load(&options.world) {
-        Ok(world) => world,
-        Err(error) => {
-            eprintln!("Couldn't load the world: {error}");
-            std::process::exit(1);
-        }
-    };
+    let world =
+        ServerWorld::load(&paths.world).unwrap_or_else(|error| fail(&format!("Couldn't load the world: {error}")));
     println!("World loaded in {:.2?}.", started.elapsed());
 
-    let profiles = ProfileStore::new(&options.profiles).unwrap_or_else(|error| {
-        eprintln!("Can't use the profile folder {}: {error}", options.profiles.display());
-        std::process::exit(1);
-    });
-    if !options.client.join("index.html").exists() {
+    let profiles = ProfileStore::new(&paths.profiles)
+        .unwrap_or_else(|error| fail(&format!("Can't use the profile folder {}: {error}", paths.profiles.display())));
+    if !paths.client.join("index.html").exists() {
         eprintln!(
             "Warning: no web client in {}. Build it with: cd crates/client && trunk build --release --cargo-profile wasm-release",
-            options.client.display()
+            paths.client.display()
         );
     }
 
     let (link_sender, link) = Link::new();
-    let address = SocketAddr::new(options.bind, options.port);
-    http::start(HttpConfig { address, world_folder: options.world, client_folder: options.client }, link_sender);
-    print_addresses(options.port);
+    let address = SocketAddr::new(config.network.bind, config.network.port);
+    let http_config = HttpConfig { address, world_folder: paths.world.clone(), client_folder: paths.client.clone() };
+    http::start(http_config, link_sender);
+    print_addresses(config.network.port);
 
     let mut app = App::new();
     app.add_plugins((
@@ -77,8 +62,14 @@ fn main() {
         LogPlugin::default(),
         TerminalCtrlCHandlerPlugin,
     ));
-    GameServer { world, profiles, link, spawn_override: None }.install(&mut app);
+    GameServer { world, profiles, link, rules: config.rules(), spawn_override: None }.install(&mut app);
     app.run();
+}
+
+/// Prints a message and stops the server.
+fn fail(message: &str) -> ! {
+    eprintln!("{message}");
+    std::process::exit(1);
 }
 
 /// Prints the addresses players can open, on this machine and on the local network.

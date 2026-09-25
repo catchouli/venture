@@ -11,13 +11,18 @@
 //! - **Out:** input modules write [`ToServer`] commands, and
 //!   [`send_to_server`] sends them. Nothing else touches the connection.
 
+pub mod connection;
+pub mod launch;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod local_server;
+pub mod token;
+
 use bevy::prelude::*;
 use venture_protocol::{ClientMessage, PROTOCOL_VERSION, ServerMessage};
 
-use crate::connection::{Connection, ConnectionEvent};
-use crate::dev_settings::DevSettings;
-use crate::launch::{ServerChoice, websocket_url};
-use crate::token;
+use self::connection::{Connection, ConnectionEvent};
+use self::launch::{ServerChoice, websocket_url};
+use crate::dev::settings::DevSettings;
 
 /// Seconds between attempts to reconnect.
 const RETRY_SECONDS: f32 = 3.0;
@@ -27,6 +32,10 @@ pub struct NetworkPlugin;
 
 impl Plugin for NetworkPlugin {
     fn build(&self, app: &mut App) {
+        // In `--local` mode, start the server inside the client first.
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_plugins(local_server::LocalServerPlugin);
+
         let choice = app.world().resource::<ServerChoice>();
         let profile = app.world().resource::<DevSettings>().profile.clone();
         let slot = profile.or_else(|| choice.is_local().then(|| "local".to_string()));

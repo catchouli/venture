@@ -10,7 +10,7 @@
 //! - Arrow keys, or Q / E and R / F: rotate and tilt
 //! - Mouse wheel: zoom
 //!
-//! WASD runs the character (see [`crate::player`]); in free mode it moves the
+//! WASD runs the character (see [`crate::characters::player`]); in free mode it moves the
 //! sphere instead, and Shift moves faster.
 
 use std::f32::consts::FRAC_PI_2;
@@ -19,14 +19,14 @@ use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseSc
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 
-use crate::chunk_streaming::{ChunkStore, StreamingFocus};
-use crate::coords::{from_bevy, to_bevy};
-use crate::dev_settings::DevSettings;
-use crate::palette;
-use crate::player::{LocalPlayer, PlayerSystems};
-use crate::terrain_query::ground_height;
-use crate::text_input::KeyboardFocus;
-use crate::world_source::WorldInfo;
+use crate::characters::player::{LocalPlayer, PlayerSystems};
+use crate::common::coords::{from_bevy, to_bevy};
+use crate::common::palette;
+use crate::dev::settings::DevSettings;
+use crate::ui::text_input::KeyboardFocus;
+use crate::world::query::ground_height;
+use crate::world::source::WorldInfo;
+use crate::world::streaming::{ChunkStore, StreamingFocus};
 
 /// Radius of the free camera's sphere, in metres.
 const SPHERE_RADIUS: f32 = 0.5;
@@ -36,8 +36,6 @@ const FOLLOW_HEIGHT: f32 = 1.4;
 const MOVE_SPEED_PER_DISTANCE: f32 = 1.0;
 /// Multiplier applied to sphere movement while Shift is held.
 const FAST_MULTIPLIER: f32 = 3.0;
-/// Keyboard rotation speed, in radians per second.
-const KEY_ROTATE_SPEED: f32 = 1.8;
 /// Mouse rotation speed, in radians per pixel.
 const MOUSE_ROTATE_SPEED: f32 = 0.005;
 /// Zoom change per scroll line, as a fraction of the current distance.
@@ -84,8 +82,10 @@ pub enum CameraMode {
 }
 
 /// How the camera responds to input. These will become player settings.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct CameraControls {
+    /// How fast the keys rotate and tilt the camera, in radians per second.
+    pub key_turn_speed: f32,
     /// Reverse which way the left/right keys (and Q/E) rotate the camera.
     pub invert_key_rotate: bool,
     /// Reverse which way the up/down keys (and R/F) tilt the camera.
@@ -94,6 +94,18 @@ pub struct CameraControls {
     pub invert_drag_rotate: bool,
     /// Reverse which way dragging up/down tilts the camera.
     pub invert_drag_tilt: bool,
+}
+
+impl Default for CameraControls {
+    fn default() -> Self {
+        Self {
+            key_turn_speed: 1.0,
+            invert_key_rotate: false,
+            invert_key_tilt: false,
+            invert_drag_rotate: false,
+            invert_drag_tilt: false,
+        }
+    }
 }
 
 /// `-1.0` if `invert` is set, otherwise `1.0`.
@@ -252,7 +264,7 @@ fn orbit_controls(
     mut orbit: Single<&mut Orbit>,
 ) {
     // Left/right keys orbit the camera around the target, up/down tilt it.
-    let key_turn = if focus.is_typing() { 0.0 } else { KEY_ROTATE_SPEED * time.delta_secs() };
+    let key_turn = if focus.is_typing() { 0.0 } else { controls.key_turn_speed * time.delta_secs() };
     let axis = |positive: [KeyCode; 2], negative: [KeyCode; 2]| {
         f32::from(keys.any_pressed(positive)) - f32::from(keys.any_pressed(negative))
     };

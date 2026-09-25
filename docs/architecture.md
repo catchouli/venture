@@ -19,7 +19,7 @@ venture_worldgen ──► venture_world     (the bake tool; nothing at runtime 
 | `venture_navigation` | Where characters can walk (blocked cells per chunk) and pathfinding (A* plus line-of-sight smoothing). |
 | `venture_simulation` | Game rules both sides run: movement, speed and input validation. The client uses them to predict, and the server to decide. |
 | `venture_protocol` | The messages between client and server, their encoding (postcard), size limits, and shared validation rules for names, chat and tokens. |
-| `venture_server` | The authoritative game server: the gate for client messages, sessions and profiles, gameplay, and the HTTP/WebSocket host. |
+| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles, gameplay, and the HTTP/WebSocket host. |
 | `venture_client` | The game client: a view of the server's game, with rendering, input, prediction, chat and debug tools. |
 
 **Rule:** only the client and the server depend on Bevy. The shared crates
@@ -53,34 +53,50 @@ Every change to the live game goes through one path (see the `venture_server` cr
 
 ## Client structure
 
-`venture_client` is organised as Bevy plugins, one per job. Data from the
+`venture_client` is grouped by concern: one folder per concern, each with a
+`mod.rs` that explains it and adds a single plugin for it. Data from the
 server flows in through `network` as `FromServer` messages, and commands
 flow out as `ToServer` messages. No other module touches the connection.
 
-| Module | Job |
-| --- | --- |
-| `launch` | Which server to use (the page's own server on the web; `--connect` or `--local` on desktop). |
-| `connection` | The transport: a WebSocket, or the in-memory link in `--local` mode. |
-| `network` | The client's end of the protocol: connection state, publishing server events, and sending commands. |
-| `token` | The login token, in `localStorage` (web) or `~/.venture` (desktop). |
-| `local_server` | `--local` mode: runs the game server inside the client. |
-| `world_source` | Loads the world manifest and chunk files, from the server over HTTP or from disk. |
-| `chunk_streaming` | Loads chunk data around the camera, builds meshes when a chunk's neighbours are ready, and unloads distant chunks. |
-| `terrain_mesh`, `terrain_material` + `shaders/terrain.wgsl` | Terrain and liquid meshes, and the terrain's shader. |
-| `prop_mesh` | Tree, rock and bush meshes, merged per chunk. |
-| `character` | The placeholder human character (1.8 m tall) and its procedural animation. |
-| `player` | The player's own character: prediction, WASD steering and correction towards the server. |
-| `remote_players` | Other players, interpolated between server snapshots. |
-| `nameplates` | Names floating above characters. |
-| `click_to_move`, `move_marker` | Clicking the ground to run there, and the glowing marker. |
-| `chat` | The chat box. |
-| `name_prompt` | Asking new players for a name. |
-| `connection_overlay` | "Connecting…", and the red "Disconnected" overlay. |
-| `text_input` | Simple text fields, and keyboard focus (which pauses keyboard game controls). |
-| `camera`, `cursor` | The follow and free cameras; custom cursors. |
-| `terrain_query` | Ground height, raycasts and blocked cells from loaded chunk data. |
-| `palette`, `coords`, `mesh_data`, `procedural_image` | Colours, the coordinate mapping, and helpers. |
-| `debug_hud`, `screenshot`, `dev_settings` | Development tools. |
+```
+src/
+  main.rs            the app: adds one plugin per concern
+  camera.rs          follow and free cameras, and their controls
+  network/           the connection to the server
+    mod.rs             protocol flow and connection state (FromServer / ToServer)
+    connection.rs      the transport: WebSocket, or in-memory for --local
+    launch.rs          which server to use
+    token.rs           the login token
+    local_server.rs    --local mode: the game server inside the client
+  world/             the world as the client shows it
+    source.rs          loading the manifest and chunk files
+    streaming.rs       chunks around the camera: data, meshes, unloading
+    terrain_mesh.rs    terrain and liquid meshes
+    terrain_material.rs + shaders/terrain.wgsl   the terrain's shader
+    props.rs           tree, rock and bush meshes
+    query.rs           ground height, raycasts, blocked cells
+    lighting.rs        sun, sky and ambient light
+  characters/        characters in the world
+    model.rs           the placeholder character and its animation
+    player.rs          your character: prediction, steering, following, correction
+    remote.rs          other players, interpolated between snapshots
+    nameplates.rs      names above characters, with orbs on the target
+  interaction/       the mouse and the world
+    targeting.rs       what's hovered and selected
+    clicks.rs          left clicks: select, follow, or run there
+    move_marker.rs     the glowing move marker
+  ui/                the interface
+    chat.rs, name_prompt.rs, target_frame.rs, connection_overlay.rs,
+    cursor.rs, text_input.rs
+  dev/               development tools
+    debug_hud.rs, screenshot.rs, settings.rs
+  common/            helpers
+    coords.rs, palette.rs, mesh_data.rs, procedural_image.rs
+```
+
+A concern gets split further (for example into `components.rs` and
+`systems.rs`) when it grows large. The grouping stays by concern, so
+everything about one feature lives together.
 
 ## Platforms
 

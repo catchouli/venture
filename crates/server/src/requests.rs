@@ -16,7 +16,9 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 use venture_navigation::Point;
-use venture_protocol::{ClientMessage, PROTOCOL_VERSION, ServerMessage, clean_chat_text, clean_name, is_valid_token};
+use venture_protocol::{
+    ClientMessage, PROTOCOL_VERSION, PlayerId, ServerMessage, clean_chat_text, clean_name, is_valid_token,
+};
 use venture_simulation::steering_direction;
 
 use crate::ServerSystems;
@@ -113,8 +115,10 @@ pub enum PlayerAction {
     MoveTo(Point),
     /// Run in this direction (a unit vector).
     Steer(Point),
-    /// Stop moving.
+    /// Stop moving (and following).
     Stop,
+    /// Follow this player.
+    Follow(PlayerId),
     /// Say this (already cleaned) in chat.
     Chat(String),
 }
@@ -238,6 +242,7 @@ fn judge_player_message(
             None => PlayerAction::Stop,
         },
         ClientMessage::Stop => PlayerAction::Stop,
+        ClientMessage::Follow { target } => PlayerAction::Follow(target),
         ClientMessage::Chat { text } => {
             if !connection.chat.allow(now) {
                 return Verdict::Reply(ServerMessage::Notice {

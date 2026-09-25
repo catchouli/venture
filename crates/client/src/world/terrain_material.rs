@@ -45,6 +45,6 @@ impl Default for TerrainExtension {
 
 impl MaterialExtension for TerrainExtension {
     fn fragment_shader() -> ShaderRef {
-        "embedded://venture_client/shaders/terrain.wgsl".into()
+        "embedded://venture_client/world/shaders/terrain.wgsl".into()
     }
 }

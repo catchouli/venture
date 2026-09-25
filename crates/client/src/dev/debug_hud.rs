@@ -7,13 +7,14 @@ use bevy::prelude::*;
 use venture_world::CellPos;
 
 use crate::camera::CameraMode;
-use crate::chunk_streaming::{ChunkStore, ShownChunks};
-use crate::coords::from_bevy;
+use crate::characters::player::LocalPlayer;
+use crate::common::coords::from_bevy;
 use crate::network::ClientState;
-use crate::player::LocalPlayer;
+use crate::world::streaming::{ChunkStore, ShownChunks};
 
-const CONTROLS_HELP: &str = "Left-click or WASD: run\nRight-drag or arrow keys: rotate and tilt\nWheel: zoom\n\
-                             Enter: chat\nF1: free camera (WASD to fly, Shift: fast)";
+const CONTROLS_HELP: &str = "Left-click or WASD: run\nClick a player: select; again: follow\n\
+                             Right-drag or arrow keys: rotate and tilt\nWheel: zoom\nEnter: chat   Esc: deselect\n\
+                             F1: free camera (WASD to fly, Shift: fast)";
 
 /// Shows the debug overlay.
 pub struct DebugHudPlugin;

@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 use venture_world::{ChunkPos, MANIFEST_FILE, WorldManifest, chunk_file_path};
 
-use crate::launch::ServerChoice;
+use crate::network::launch::ServerChoice;
 
 /// Loads the world manifest, then makes it available as [`WorldInfo`].
 pub struct WorldSourcePlugin;
