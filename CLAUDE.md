@@ -7,7 +7,9 @@
 - On the server, client messages are only read and validated in `requests.rs` (the gate); players are only
   created/removed in `sessions.rs` and changed in `gameplay.rs`; profiles only touched in `profiles.rs`.
   Keep it that way.
-- On the client, only `network.rs` touches the connection: views read `FromServer`, input writes `ToServer`.
+- On the client, only `network/` touches the connection: views read `FromServer`, input writes `ToServer`.
+- Client code is grouped by concern (one folder and one plugin per concern); see "Client structure" in
+  `docs/architecture.md`. Server settings and game rules go in `server.ron` (`ServerConfig`), not code.
 - World generation must stay deterministic and seamless: see "Determinism rules" in
   `docs/world-generation-engine.md` (especially the rule about `lerp`).
 - Before finishing: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,

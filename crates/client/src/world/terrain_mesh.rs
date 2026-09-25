@@ -12,9 +12,9 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use venture_world::{CHUNK_SIZE, Chunk, ChunkPos, FluidKind, TerrainCell};
 
-use crate::coords::to_bevy;
-use crate::mesh_data::MeshData;
-use crate::palette;
+use crate::common::coords::to_bevy;
+use crate::common::mesh_data::MeshData;
+use crate::common::palette;
 
 /// Metres of ground covered by one unit of texture coordinates.
 const METRES_PER_UV: f32 = 4.0;

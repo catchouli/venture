@@ -4,13 +4,13 @@
 
 use bevy::prelude::*;
 use venture_protocol::{PlayerState, ServerMessage};
-use venture_simulation::{Movement, plan_route, step};
+use venture_simulation::{Follow, FollowOutcome, Movement, clamp_move_goal, plan_route, step};
 
-use crate::ServerSystems;
 use crate::link::Link;
-use crate::players::{Mover, Player, Position};
+use crate::players::{Following, Mover, Player, Position};
 use crate::requests::{PlayerAction, PlayerRequest};
 use crate::world::ServerWorld;
+use crate::{GameRules, ServerSystems};
 
 /// Runs the game.
 pub struct GameplayPlugin;
@@ -19,7 +19,7 @@ impl Plugin for GameplayPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Tick>().add_systems(
             FixedUpdate,
-            (act_on_requests, simulate, send_snapshot).chain().in_set(ServerSystems::Gameplay),
+            (act_on_requests, update_followers, simulate, send_snapshot).chain().in_set(ServerSystems::Gameplay),
         );
     }
 }
@@ -29,16 +29,23 @@ impl Plugin for GameplayPlugin {
 struct Tick(u64);
 
 fn act_on_requests(
+    mut commands: Commands,
     mut requests: MessageReader<PlayerRequest>,
     mut link: ResMut<Link>,
     world: Res<ServerWorld>,
-    mut players: Query<(&Player, &Position, &mut Mover)>,
+    rules: Res<GameRules>,
+    mut players: Query<(Entity, &Player, &Position, &mut Mover)>,
 ) {
     for request in requests.read() {
+        // Any movement command replaces following.
+        if !matches!(request.action, PlayerAction::Chat(_)) {
+            commands.entity(request.player).remove::<Following>();
+        }
         match &request.action {
             PlayerAction::MoveTo(goal) => {
-                let Ok((_, &Position(position), mut mover)) = players.get_mut(request.player) else { continue };
-                mover.0 = plan_route(position, *goal, |x, y| world.is_blocked(x, y));
+                let Ok((_, _, &Position(position), mut mover)) = players.get_mut(request.player) else { continue };
+                let goal = clamp_move_goal(position, *goal, rules.0.max_move_distance);
+                mover.0 = plan_route(position, goal, |x, y| world.is_blocked(x, y));
             }
             PlayerAction::Steer(direction) => {
                 let Ok((.., mut mover)) = players.get_mut(request.player) else { continue };
@@ -48,12 +55,47 @@ fn act_on_requests(
                 let Ok((.., mut mover)) = players.get_mut(request.player) else { continue };
                 mover.0 = Movement::Idle;
             }
+            PlayerAction::Follow(target_id) => {
+                let Ok((_, _, &Position(position), _)) = players.get(request.player) else { continue };
+                let target =
+                    players.iter().find(|(entity, player, ..)| player.id == *target_id && *entity != request.player);
+                let Some((target, _, &Position(target_position), _)) = target else { continue };
+                let distance = (target_position.0 - position.0).hypot(target_position.1 - position.1);
+                if distance <= rules.0.max_move_distance {
+                    commands.entity(request.player).insert(Following { target, follow: Follow::default() });
+                }
+            }
             PlayerAction::Chat(text) => {
-                let Ok((speaker, ..)) = players.get(request.player) else { continue };
+                let Ok((_, speaker, ..)) = players.get(request.player) else { continue };
                 let message = ServerMessage::Chat { from: speaker.id, name: speaker.name.clone(), text: text.clone() };
-                let everyone: Vec<_> = players.iter().map(|(player, ..)| player.connection).collect();
+                let everyone: Vec<_> = players.iter().map(|(_, player, ..)| player.connection).collect();
                 link.broadcast(everyone, &message);
             }
+        }
+    }
+}
+
+/// Steers followers towards whoever they follow, and stops those whose target
+/// has left or got out of reach.
+fn update_followers(
+    mut commands: Commands,
+    world: Res<ServerWorld>,
+    rules: Res<GameRules>,
+    positions: Query<&Position>,
+    mut followers: Query<(Entity, &mut Following, &Position, &mut Mover)>,
+) {
+    for (entity, mut following, &Position(position), mut mover) in &mut followers {
+        let outcome = match positions.get(following.target) {
+            Ok(&Position(target)) => {
+                following
+                    .follow
+                    .update(position, target, &mut mover.0, rules.0.max_move_distance, |x, y| world.is_blocked(x, y))
+            }
+            Err(_) => FollowOutcome::Stop,
+        };
+        if outcome == FollowOutcome::Stop {
+            mover.0 = Movement::Idle;
+            commands.entity(entity).remove::<Following>();
         }
     }
 }

@@ -28,15 +28,33 @@ cargo run --release -p venture_server
 ```
 
 This serves the game, the web client and the world on one port (8080 by
-default), and prints the addresses to open. Options:
+default), and prints the addresses to open.
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `--port` | `8080` | Port to listen on |
-| `--bind` | `0.0.0.0` | Address to listen on (the default accepts your local network) |
-| `--world` | `world` | The baked world folder |
-| `--profiles` | `server_data/profiles` | Where player profiles are saved |
-| `--client` | `crates/client/dist` | The built web client |
+### The config file
+
+The server reads its settings from `server.ron` in the current folder (or
+`--config <file>`). Every setting is optional: leave one out, or the whole
+file, and it takes its default. Misspelt settings are reported as errors.
+
+```ron
+(
+    network: (
+        port: 8080,         // for the game, the web client and the world files
+        bind: "0.0.0.0",    // "0.0.0.0": your local network; "127.0.0.1": this computer only
+    ),
+    paths: (
+        world: "world",
+        profiles: "server_data/profiles",
+        client: "crates/client/dist",
+    ),
+    player: (
+        max_move_distance: 150.0,   // metres one click can send a character
+    ),
+)
+```
+
+The `player` block holds the game rules, which are sent to clients when
+they join. The desktop client's `--local` mode reads the same file.
 
 Profiles are saved when players leave, every minute, and when the server
 stops (Ctrl+C).
@@ -114,6 +132,7 @@ VENTURE_CAMERA="480,2640,0.6,0.3,30" VENTURE_SCREENSHOT=shot.png cargo run -p ve
 | `VENTURE_CAMERA=x,y,yaw,pitch,distance` | In `--local` mode, new characters start at `(x, y)` metres. The camera starts at that rotation and tilt (radians) and distance (metres). |
 | `VENTURE_MOVE_TO=x,y` | Once loaded, run to `(x, y)` as if it were clicked. |
 | `VENTURE_SAY=text` | Say this in chat once in the game. |
+| `VENTURE_SELECT_NEAREST=1` | Select the nearest other player once one is in sight (to check the target frame). |
 | `VENTURE_PROFILE=name` | Use a separate login token (so a separate character), for running several clients on one computer. |
 | `VENTURE_AUTOMATED=1` | Take the suggested name without asking (implied by `VENTURE_SCREENSHOT`). |
 

@@ -3,9 +3,9 @@
 use bevy::prelude::*;
 use venture_protocol::{ClientMessage, MAX_NAME_CHARS, ServerMessage, clean_name};
 
-use crate::dev_settings::DevSettings;
+use crate::dev::settings::DevSettings;
 use crate::network::{ClientState, FromServer, ToServer};
-use crate::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
+use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
 
 /// Asks new players for a name.
 pub struct NamePromptPlugin;

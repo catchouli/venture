@@ -6,8 +6,8 @@
 use bevy::math::{Ray3d, Vec3};
 use venture_world::{CHUNK_SIZE, CellPos};
 
-use crate::chunk_streaming::{ChunkStore, ObstacleStore};
-use crate::coords::{from_bevy, to_bevy};
+use crate::common::coords::{from_bevy, to_bevy};
+use crate::world::streaming::{ChunkStore, ObstacleStore};
 
 /// How far a ray is followed looking for the ground, in metres.
 const RAY_MAX_DISTANCE: f32 = 600.0;

@@ -8,9 +8,9 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 use bevy::prelude::*;
 use venture_world::{Biome, CHUNK_SIZE, Chunk, PropKind};
 
-use crate::coords::to_bevy;
-use crate::mesh_data::MeshData;
-use crate::palette::cell_hash;
+use crate::common::coords::to_bevy;
+use crate::common::mesh_data::MeshData;
+use crate::common::palette::cell_hash;
 
 /// Ready-made meshes for every kind of prop.
 pub struct PropTemplates {

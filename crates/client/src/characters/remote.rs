@@ -10,13 +10,14 @@ use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{PlayerId, ServerMessage};
 
-use crate::character::{CharacterAssets, Gait, spawn_character};
-use crate::chunk_streaming::ChunkStore;
-use crate::coords::{from_bevy, to_bevy};
-use crate::nameplates::Nameplate;
+use crate::characters::model::{CharacterAssets, Gait, spawn_character};
+use crate::characters::nameplates::Nameplate;
+use crate::characters::player::LocalPlayer;
+use crate::common::coords::{from_bevy, to_bevy};
+use crate::interaction::targeting::{TargetKind, Targetable};
 use crate::network::{ClientState, FromServer};
-use crate::player::LocalPlayer;
-use crate::terrain_query::ground_height;
+use crate::world::query::ground_height;
+use crate::world::streaming::ChunkStore;
 
 /// How far in the past other players are shown, in seconds (two server ticks).
 const INTERPOLATION_DELAY: f32 = 0.1;
@@ -71,6 +72,7 @@ fn follow_server_events(
                     Name::new(format!("Player {name}")),
                     RemotePlayer { samples: VecDeque::from([(now, (*x, *y))]) },
                     Nameplate(name.clone()),
+                    Targetable(TargetKind::Player(*id)),
                 ));
                 remotes.0.insert(*id, entity);
             }

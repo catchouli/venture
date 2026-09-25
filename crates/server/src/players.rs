@@ -6,7 +6,7 @@
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::PlayerId;
-use venture_simulation::Movement;
+use venture_simulation::{Follow, Movement};
 
 use crate::link::ConnectionId;
 use crate::profiles::ProfileKey;
@@ -31,3 +31,12 @@ pub struct Position(pub Point);
 /// How a player is moving.
 #[derive(Component, Default)]
 pub struct Mover(pub Movement);
+
+/// A player following another player.
+#[derive(Component)]
+pub struct Following {
+    /// The player entity being followed.
+    pub target: Entity,
+    /// The state of the chase.
+    pub follow: Follow,
+}

@@ -1,0 +1,20 @@
+// Settings for the Venture server (`cargo run --release -p venture_server`).
+// Every setting is optional: leave one out to use its default.
+(
+    network: (
+        // The port for the game, the web client and the world files.
+        port: 8080,
+        // "0.0.0.0" accepts players from your local network; "127.0.0.1" only this computer.
+        bind: "0.0.0.0",
+    ),
+    paths: (
+        world: "world",
+        profiles: "server_data/profiles",
+        client: "crates/client/dist",
+    ),
+    player: (
+        // The furthest (in a straight line, in metres) one click can send a character,
+        // and the furthest a character keeps following someone.
+        max_move_distance: 150.0,
+    ),
+)

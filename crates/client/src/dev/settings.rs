@@ -5,12 +5,13 @@
 //!   metres (in `--local` mode), with the camera at that rotation, tilt
 //!   (radians) and distance (metres).
 //! - `VENTURE_MOVE_TO=x,y`: once loaded, run to `(x, y)` as if it were clicked.
-//! - `VENTURE_SCREENSHOT=path`: see [`crate::screenshot`].
+//! - `VENTURE_SCREENSHOT=path`: see [`crate::dev::screenshot`].
 //! - `VENTURE_PROFILE=name`: use a separate login token (so a separate
 //!   character), for running several clients on one computer.
 //! - `VENTURE_AUTOMATED=1`: nobody is at the keyboard, so take the suggested
 //!   name without asking (implied by `VENTURE_SCREENSHOT`).
 //! - `VENTURE_SAY=text`: say this in chat once in the game.
+//! - `VENTURE_SELECT_NEAREST=1`: select the nearest other player once one is in sight.
 //!
 //! Environment variables don't exist on the web, so there these are all unset.
 
@@ -34,6 +35,8 @@ pub struct DevSettings {
     pub automated: bool,
     /// Something to say in chat once in the game.
     pub say: Option<String>,
+    /// Whether to select the nearest other player once one is in sight.
+    pub select_nearest: bool,
 }
 
 impl DevSettings {
@@ -49,6 +52,7 @@ impl DevSettings {
             automated: std::env::var_os("VENTURE_SCREENSHOT").is_some()
                 || std::env::var_os("VENTURE_AUTOMATED").is_some(),
             say: std::env::var("VENTURE_SAY").ok(),
+            select_nearest: std::env::var_os("VENTURE_SELECT_NEAREST").is_some(),
         }
     }
 }

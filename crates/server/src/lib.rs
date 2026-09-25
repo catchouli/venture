@@ -22,6 +22,7 @@
 //!
 //! The game runs at a fixed tick rate in Bevy's `FixedUpdate` schedule.
 
+pub mod config;
 pub mod gameplay;
 #[cfg(feature = "http")]
 pub mod http;
@@ -36,8 +37,9 @@ pub mod world;
 use std::time::Duration;
 
 use bevy::prelude::*;
-use venture_simulation::TICK_RATE;
+use venture_simulation::{Rules, TICK_RATE};
 
+pub use config::ServerConfig;
 pub use link::{ConnectionId, Link, LinkEvent, LinkSender};
 pub use profiles::ProfileStore;
 pub use world::ServerWorld;
@@ -50,9 +52,15 @@ pub struct GameServer {
     pub profiles: ProfileStore,
     /// Connections to clients.
     pub link: Link,
+    /// The game rules (from the config file).
+    pub rules: Rules,
     /// Where new characters start, if not the world's spawn point (for development).
     pub spawn_override: Option<(f32, f32)>,
 }
+
+/// The game rules this server plays by.
+#[derive(Resource, Clone, Copy)]
+pub struct GameRules(pub Rules);
 
 /// The order the server's systems run in, each tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -73,6 +81,7 @@ impl GameServer {
             .insert_resource(self.world)
             .insert_resource(self.profiles)
             .insert_resource(self.link)
+            .insert_resource(GameRules(self.rules))
             .insert_resource(sessions::SpawnPoint(self.spawn_override))
             .configure_sets(
                 FixedUpdate,

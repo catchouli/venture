@@ -3,7 +3,7 @@
 //! - **Web:** the server that served the page.
 //! - **Desktop:** `--connect http://host:port` (default `http://127.0.0.1:8080`),
 //!   or `--local` to run a server inside the client for development (see
-//!   `crate::local_server`), optionally with `--world <folder>`.
+//!   `crate::network::local_server`), optionally with `--world <folder>`.
 
 use bevy::prelude::*;
 

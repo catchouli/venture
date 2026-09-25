@@ -3,12 +3,12 @@
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 
-use crate::palette;
+use crate::common::palette;
 
 /// Lights the scene.
-pub struct WorldPlugin;
+pub struct LightingPlugin;
 
-impl Plugin for WorldPlugin {
+impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ClearColor(palette::HAZE))
             // Soft, warm fill light, so shadowed slopes aren't black.

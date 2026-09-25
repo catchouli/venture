@@ -10,9 +10,9 @@ use bevy::asset::RenderAssetUsages;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
-use crate::coords::from_bevy;
-use crate::player::LocalPlayer;
-use crate::procedural_image::{distance_to_segment, paint_image};
+use crate::characters::player::LocalPlayer;
+use crate::common::coords::from_bevy;
+use crate::common::procedural_image::{distance_to_segment, paint_image};
 
 /// Width of the crest, in metres.
 const CREST_SIZE: f32 = 1.0;

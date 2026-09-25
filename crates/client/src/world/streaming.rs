@@ -17,12 +17,12 @@ use bevy::tasks::{AsyncComputeTaskPool, IoTaskPool, Task, futures::check_ready};
 use venture_navigation::{ChunkObstacles, WalkingLimits};
 use venture_world::{Chunk, ChunkPos, FluidKind, decode_chunk};
 
-use crate::coords::to_bevy;
-use crate::palette;
-use crate::prop_mesh::{PropTemplates, props_mesh};
-use crate::terrain_material::{TerrainExtension, TerrainMaterial};
-use crate::terrain_mesh::{Neighbourhood, fluid_mesh, terrain_mesh};
-use crate::world_source::{WorldInfo, WorldSource};
+use crate::common::coords::to_bevy;
+use crate::common::palette;
+use crate::world::props::{PropTemplates, props_mesh};
+use crate::world::source::{WorldInfo, WorldSource};
+use crate::world::terrain_material::{TerrainExtension, TerrainMaterial};
+use crate::world::terrain_mesh::{Neighbourhood, fluid_mesh, terrain_mesh};
 
 /// Chunks within this many chunks of the anchor are shown.
 const VIEW_RADIUS: i32 = 4;
