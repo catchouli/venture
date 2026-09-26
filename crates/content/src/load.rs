@@ -12,6 +12,7 @@ use crate::definitions::{
     MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef,
     RespawnPoint, ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
 };
+use crate::layout::{UiNode, UiStyles, check_layout, check_styles, parse_layout, parse_styles};
 use venture_protocol::EquipSlot;
 use venture_rpg::MAX_LEVEL;
 
@@ -25,6 +26,8 @@ const SOUNDS_FILE: &str = "sounds.ron";
 const MAX_SOUND_BYTES: usize = 512 * 1024;
 /// The interface's theme, in `ui/`.
 const THEME_FILE: &str = "ui/theme.ron";
+/// The interface's text styles and colours.
+const STYLES_FILE: &str = "ui/styles.ron";
 /// The largest an interface image may be, in bytes.
 const MAX_UI_IMAGE_BYTES: usize = 1024 * 1024;
 /// The largest a font may be, in bytes.
@@ -70,6 +73,10 @@ pub struct ContentPack {
     pub skills: Vec<SkillDef>,
     /// The interface's look.
     pub theme: ThemeDef,
+    /// The interface's text styles, colours and bar colours.
+    pub ui_styles: UiStyles,
+    /// The interface's layouts, by name (the file name without `.ron`).
+    pub layouts: BTreeMap<String, UiNode>,
     /// Creatures, by id.
     pub creatures: BTreeMap<String, CreatureDef>,
     /// Spawners, in file order.
@@ -181,6 +188,33 @@ impl ContentPack {
                     client_files.push((THEME_FILE.to_string(), text.into_bytes()));
                 }
                 Err(message) => errors.push(error(file, message)),
+            }
+        }
+
+        let ui_file_names: Vec<String> = ui_files.iter().cloned().collect();
+        if let Ok(text) = std::fs::read_to_string(folder.join(STYLES_FILE)) {
+            let file = Path::new(STYLES_FILE);
+            match parse_styles(&text) {
+                Ok(styles) => {
+                    errors
+                        .extend(check_styles(&styles, &ui_file_names).into_iter().map(|message| error(file, message)));
+                    pack.ui_styles = styles;
+                    client_files.push((STYLES_FILE.to_string(), text.into_bytes()));
+                }
+                Err(message) => errors.push(error(file, message)),
+            }
+        }
+        let piece_names: Vec<&str> = THEME_PIECES.iter().map(|(name, _)| *name).collect();
+        for (relative, text) in read_files(folder, "ui/layouts", "ron", &mut errors) {
+            let name = file_name(&relative).trim_end_matches(".ron").to_string();
+            match parse_layout(&text) {
+                Ok(root) => {
+                    let problems = check_layout(&name, &root, &pack.ui_styles, &piece_names, &ui_file_names);
+                    errors.extend(problems.into_iter().map(|message| error(&relative, message)));
+                    pack.layouts.insert(name, root);
+                    client_files.push((to_slashes(&relative), text.into_bytes()));
+                }
+                Err(message) => errors.push(error(&relative, message)),
             }
         }
 

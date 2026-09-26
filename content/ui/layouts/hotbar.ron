@@ -1,0 +1,34 @@
+// The hotbar, along the bottom: ten slots for abilities and actions (keys 1
+// to 0). The game copies the "slot" template once per slot, and fills in
+// each one's "icon", "label" (for things without an icon), "key", and
+// cooldown ("cooldown_shade" grows up from the bottom, "cooldown_text" shows
+// the seconds left). See docs/ui-layouts.md.
+(
+    id: "hotbar",
+    position: Absolute, bottom: 10, width: "100%", justify: Center,
+    layer: 5, hidden: true,
+    children: [
+        (
+            padding: 7,
+            piece: "panel", colour: "window", border: 1, border_colour: "border", corners: 4,
+            children: [
+                (id: "slots", gap: 4, children: [
+                    (
+                        id: "slot", template: true, button: true,
+                        width: 44, height: 44, justify: Center, align: Center, corners: 3,
+                        piece: "slot", colour: "slot",
+                        children: [
+                            (id: "icon", icon: true, width: 36, height: 36),
+                            (id: "label", style: "slot_label", position: Absolute),
+                            (id: "cooldown_shade", position: Absolute, left: 0, right: 0, bottom: 0, height: "0%",
+                             colour: "cooldown"),
+                            (position: Absolute, left: 0, right: 0, top: 0, bottom: 0, justify: Center, align: Center,
+                             children: [(id: "cooldown_text", style: "cooldown")]),
+                            (id: "key", style: "slot_key", position: Absolute, left: 3, top: 1),
+                        ],
+                    ),
+                ]),
+            ],
+        ),
+    ],
+)

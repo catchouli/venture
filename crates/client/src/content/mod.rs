@@ -13,6 +13,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
+use venture_content::layout::{UiNode, UiStyles, parse_layout, parse_styles};
 use venture_content::{
     AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, SkillDef, ThemeDef,
     parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
@@ -65,6 +66,10 @@ pub struct ContentStore {
     pub ui_images: HashMap<String, Handle<Image>>,
     /// The theme's fonts, by file name within `ui/`.
     pub fonts: HashMap<String, Font>,
+    /// The interface's layouts, by name.
+    pub layouts: HashMap<String, UiNode>,
+    /// The interface's text styles, colours and bar colours, if the content has them.
+    pub ui_styles: Option<UiStyles>,
     /// The files held, by path, with their hashes (to skip unchanged files).
     files: HashMap<String, ContentFile>,
 }
@@ -96,6 +101,8 @@ enum FileData {
     GameSounds(GameSounds),
     Skills(Vec<SkillDef>),
     Theme(ThemeDef),
+    Layout(Box<UiNode>),
+    Styles(UiStyles),
     /// A PNG of the theme's, turned into an image once the download is finished.
     UiImage(Vec<u8>),
     /// A font of the theme's.
@@ -216,6 +223,8 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
         Some("sounds") => FileData::Sound(bytes.to_vec()),
         Some("sounds.ron") => FileData::GameSounds(parse_game_sounds(&text())?),
         Some("skills") => FileData::Skills(parse_skills(&text())?),
+        Some("ui") if path.starts_with("ui/layouts/") => FileData::Layout(Box::new(parse_layout(&text())?)),
+        Some("ui") if path == "ui/styles.ron" => FileData::Styles(parse_styles(&text())?),
         Some("ui") if path.ends_with(".ron") => FileData::Theme(parse_theme(&text())?),
         Some("ui") if path.ends_with(".png") => FileData::UiImage(bytes.to_vec()),
         Some("ui") => FileData::Font(bytes.to_vec()),
@@ -246,6 +255,8 @@ fn finish_download(
             store.theme = ThemeDef::default();
             store.ui_images.clear();
             store.fonts.clear();
+            store.layouts.clear();
+            store.ui_styles = None;
             for (path, file) in &downloaded.files {
                 match &file.data {
                     FileData::Appearances(appearances) => {
@@ -271,6 +282,11 @@ fn finish_download(
                         store.skills.extend(skills.iter().map(|skill| (skill.id.clone(), skill.clone())));
                     }
                     FileData::Theme(theme) => store.theme = theme.clone(),
+                    FileData::Layout(root) => {
+                        let name = path.rsplit('/').next().unwrap_or(path).trim_end_matches(".ron").to_string();
+                        store.layouts.insert(name, (**root).clone());
+                    }
+                    FileData::Styles(styles) => store.ui_styles = Some(styles.clone()),
                     FileData::UiImage(png) => match decode_ui_image(png) {
                         Ok(image) => {
                             let name = path.rsplit('/').next().unwrap_or(path).to_string();

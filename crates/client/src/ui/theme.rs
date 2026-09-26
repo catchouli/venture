@@ -72,6 +72,31 @@ pub enum Piece {
 }
 
 impl Piece {
+    /// Every piece.
+    pub const ALL: [Piece; 16] = [
+        Piece::Window,
+        Piece::Header,
+        Piece::Panel,
+        Piece::Chat,
+        Piece::Tooltip,
+        Piece::Button,
+        Piece::ButtonChosen,
+        Piece::Slot,
+        Piece::BarBack,
+        Piece::BarFill,
+        Piece::BarFrame,
+        Piece::Close,
+        Piece::Divider,
+        Piece::TextField,
+        Piece::ToolbarButton,
+        Piece::ToolbarButtonOpen,
+    ];
+
+    /// The piece with this name in the theme (such as `"panel"`), if there is one.
+    pub fn named(name: &str) -> Option<Piece> {
+        Piece::ALL.into_iter().find(|piece| piece.name() == name)
+    }
+
     /// Its name in the theme.
     pub fn name(self) -> &'static str {
         match self {

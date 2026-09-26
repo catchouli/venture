@@ -1,0 +1,24 @@
+// The player frame, top left: name, level, and health, mana and experience
+// bars. The game shows it while playing. See docs/ui-layouts.md.
+(
+    id: "player_frame",
+    position: Absolute, left: 10, top: 10, width: 220,
+    direction: Column, gap: 5, padding: (7, 10),
+    piece: "panel", colour: "window", border: 1, border_colour: "border", corners: 4,
+    layer: 5, hidden: true,
+    children: [
+        (text: "{name}  Level {level}", style: "frame_name"),
+        (bar: "health", height: 14, children: [
+            // The numbers, centred over the bar.
+            (position: Absolute, left: 0, right: 0, top: 0, bottom: 0, justify: Center, align: Center, children: [
+                (text: "{health} / {health_max}", style: "bar_numbers"),
+            ]),
+        ]),
+        (bar: "mana", height: 12, children: [
+            (position: Absolute, left: 0, right: 0, top: 0, bottom: 0, justify: Center, align: Center, children: [
+                (text: "{mana} / {mana_max}", style: "bar_numbers_small"),
+            ]),
+        ]),
+        (bar: "experience", height: 8, tooltip: "Experience\nTowards your next level."),
+    ],
+)
