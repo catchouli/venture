@@ -332,7 +332,7 @@ fn run_command(text: &str, state: &mut PlayerState, pack: &ContentPack, effects:
             let given = describe_items(&item, count, items);
             match state.inventory.apply(&Change::give(&item, count), items) {
                 Ok(()) => effects.notices.push(format!("You receive: {given}.")),
-                Err(_) => effects.notices.push(format!("You have no room in your bag for {given}.")),
+                Err(_) => effects.notices.push(format!("You have no room in your inventory for {given}.")),
             }
         }
         DialogueCommand::TakeItem { item, count } => match state.inventory.apply(&Change::take(&item, count), items) {

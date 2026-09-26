@@ -408,6 +408,7 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
     let leg_plates = look.wearing(LookStyle::LegPlates);
     let weapon =
         look.worn.iter().find(|item| matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club));
+    let shield = look.wearing(LookStyle::Buckler);
     let joint = |kind| Joint { owner, kind };
 
     // A mesh part, placed relative to its parent.
@@ -509,9 +510,12 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
                     .with_children(|elbow| {
                         elbow.spawn(part(&m.forearm, sleeves, Transform::from_xyz(0.0, -0.13, 0.0)));
                         elbow.spawn(sphere(&look.skin, Vec3::new(0.0, -0.28, 0.0), Vec3::new(0.04, 0.055, 0.03)));
-                        // The weapon, in the right hand.
+                        // The weapon, in the right hand; a shield on the left forearm.
                         if let (Some(weapon), Side::Right) = (weapon, side) {
                             spawn_weapon(elbow, m, weapon);
+                        }
+                        if let (Some(shield), Side::Left) = (shield, side) {
+                            spawn_buckler(elbow, m, shield, x);
                         }
                     });
             })
@@ -544,6 +548,31 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
             .id();
         commands.entity(owner).add_child(hip);
     }
+}
+
+/// Straps a small round shield to the outside of a forearm (the elbow's
+/// space; `outward` is +1 or -1, the side the arm is on).
+fn spawn_buckler(elbow: &mut ChildSpawnerCommands, m: &CharacterMeshes, shield: &Worn, outward: f32) {
+    // A flat disc facing out to the side, with a boss in the middle.
+    let face = Quat::from_rotation_z(FRAC_PI_2);
+    let centre = Vec3::new(0.075 * outward, -0.16, 0.0);
+    elbow.spawn((
+        Mesh3d(m.unit_cylinder.clone()),
+        MeshMaterial3d(shield.main.clone()),
+        Transform::from_translation(centre).with_rotation(face).with_scale(Vec3::new(0.17, 0.03, 0.17)),
+    ));
+    elbow.spawn((
+        Mesh3d(m.unit_cylinder.clone()),
+        MeshMaterial3d(shield.trim.clone()),
+        Transform::from_translation(centre - Vec3::X * 0.004 * outward)
+            .with_rotation(face)
+            .with_scale(Vec3::new(0.18, 0.02, 0.18)),
+    ));
+    elbow.spawn((
+        Mesh3d(m.unit_sphere.clone()),
+        MeshMaterial3d(shield.trim.clone()),
+        Transform::from_translation(centre + Vec3::X * 0.02 * outward).with_scale(Vec3::new(0.02, 0.04, 0.04)),
+    ));
 }
 
 /// Puts a weapon in the hand at the end of a forearm (the elbow's space).

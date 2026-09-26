@@ -436,13 +436,15 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
         if equip.slots.is_empty() {
             problem("it must fill at least one equipment slot".to_string());
         }
-        let wielded = equip.slots.contains(&EquipSlot::Weapon);
+        let wielded = equip.slots.contains(&EquipSlot::DominantHand);
         match &equip.weapon {
-            Some(weapon) if !wielded => problem("only items in the Weapon slot can have weapon stats".to_string()),
+            Some(weapon) if !wielded => {
+                problem("only items in the DominantHand slot can have weapon stats".to_string());
+            }
             Some(weapon) if !(weapon.speed > 0.0 && weapon.speed.is_finite()) => {
                 problem("its weapon speed must be more than 0".to_string());
             }
-            None if wielded => problem("items in the Weapon slot need weapon stats".to_string()),
+            None if wielded => problem("items in the DominantHand slot need weapon stats".to_string()),
             _ => {}
         }
     }

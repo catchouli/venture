@@ -257,9 +257,9 @@ pub struct ThemeDef {
 }
 
 /// The piece names a theme can give images to, with what each is.
-pub const THEME_PIECES: [(&str, &str); 22] = [
+pub const THEME_PIECES: [(&str, &str); 21] = [
     ("window", "the frame of a window (character window, shop, dialogue)"),
-    ("header", "the strip across the top of a window, behind its title or tabs"),
+    ("header", "the strip across the top of a window, behind its title"),
     ("panel", "a smaller frame (player and target frames, chat, hotbar, toolbar)"),
     ("chat", "the chat log's backing (usually see-through)"),
     ("tooltip", "a tooltip's frame"),
@@ -269,17 +269,16 @@ pub const THEME_PIECES: [(&str, &str); 22] = [
     ("button_chosen", "the button for the chosen option (a class or body type when making a character)"),
     ("slot", "a box holding an icon (bag, gear, abilities, hotbar)"),
     ("slot_hover", "a slot under the mouse"),
-    ("tab", "a tab of the character window"),
-    ("tab_hover", "a tab under the mouse"),
-    ("tab_open", "the open tab"),
-    ("bar_back", "the empty part of a bar (health, mana, experience)"),
-    ("bar_fill", "the full part of a bar: drawn white, and tinted each bar's colour"),
+    ("bar_back", "the empty part of a bar: drawn light, and tinted a darker shade of each bar's colour"),
+    ("bar_fill", "the full part of a bar: drawn light, and tinted each bar's colour"),
+    ("bar_frame", "drawn over a whole bar, not tinted: its rim, or a shine"),
     ("close", "a window's close button"),
     ("close_hover", "a close button under the mouse"),
     ("divider", "a line under headings"),
     ("text_field", "a box to type in (chat, names)"),
     ("toolbar_button", "a toolbar button, behind its icon"),
     ("toolbar_button_hover", "a toolbar button under the mouse"),
+    ("toolbar_button_open", "the toolbar button for the tab that's open"),
 ];
 
 /// One piece's image, drawn as a nine-slice: the corners stay as they are,

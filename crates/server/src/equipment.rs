@@ -76,7 +76,7 @@ impl Equipment {
     pub fn gear(&self, items: &BTreeMap<String, ItemDef>) -> Gear {
         let armour =
             self.items().iter().filter_map(|item| items.get(*item)?.equip.as_ref()).map(|equip| equip.armour).sum();
-        let weapon = self.slots.get(&EquipSlot::Weapon).and_then(|item| items.get(item)?.equip.as_ref()?.weapon);
+        let weapon = self.slots.get(&EquipSlot::DominantHand).and_then(|item| items.get(item)?.equip.as_ref()?.weapon);
         match weapon {
             Some(weapon) => {
                 Gear { armour, weapon_stat: weapon.stat, weapon_speed: weapon.speed, weapon_damage: weapon.damage }
@@ -116,7 +116,7 @@ impl Equipment {
         change.give = replaced.iter().map(|worn| (worn.clone(), 1)).collect();
         if let Err(problem) = inventory.apply(&change, items) {
             return Some(Err(match problem {
-                InventoryProblem::Full => "You have no room in your bag for what you'd take off.".to_string(),
+                InventoryProblem::Full => "You have no room in your inventory for what you'd take off.".to_string(),
                 _ => "You can't equip that.".to_string(),
             }));
         }
@@ -136,7 +136,7 @@ impl Equipment {
     ) -> Option<Result<String, String>> {
         let item = self.slots.get(&slot)?.clone();
         if inventory.apply(&Change::give(&item, 1), items).is_err() {
-            return Some(Err("You have no room in your bag to take that off.".to_string()));
+            return Some(Err("You have no room in your inventory to take that off.".to_string()));
         }
         self.slots.retain(|_, worn| *worn != item);
         Some(Ok(format!("You take off: {}.", describe_items(&item, 1, items))))
@@ -203,7 +203,7 @@ mod tests {
         };
         let sword = WeaponDef { damage: Dice::new(1, 6), speed: 1.0, stat: Stat::Strength };
         [
-            item("sword", vec![EquipSlot::Weapon], 0, Some(sword), LookStyle::Sword),
+            item("sword", vec![EquipSlot::DominantHand], 0, Some(sword), LookStyle::Sword),
             item("chestguard", vec![EquipSlot::Body], 2, None, LookStyle::Plates),
             item("legguards", vec![EquipSlot::Legs], 1, None, LookStyle::LegPlates),
             item("robe", vec![EquipSlot::Body, EquipSlot::Legs], 0, None, LookStyle::Robe),
@@ -262,7 +262,7 @@ mod tests {
         let mut inventory = bag(&[]);
         let mut equipment = Equipment::default();
         assert_eq!(equipment.equip(&mut inventory, 3, &items()), None, "an empty slot");
-        assert_eq!(equipment.unequip(&mut inventory, EquipSlot::Weapon, &items()), None, "nothing worn");
+        assert_eq!(equipment.unequip(&mut inventory, EquipSlot::DominantHand, &items()), None, "nothing worn");
         assert_eq!(equipment.gear(&items()).weapon_damage, UNARMED_DAMAGE);
     }
 }

@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use crate::characters::nameplates::Nameplate;
 use crate::interaction::targeting::{Health, Level, Target, TargetKind, Targetable};
 use crate::ui::theme::{Piece, Themed};
-use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, spawn_close_button};
+use crate::ui::widgets::{BORDER_COLOUR, HEALTH_BAR, WINDOW_BACKGROUND, bar, spawn_close_button};
 
 /// Width of the frame, in pixels.
 const WIDTH: f32 = 240.0;
@@ -89,19 +89,7 @@ fn spawn_frame(mut commands: Commands) {
                     TextColor(Color::srgb(0.8, 0.78, 0.7)),
                     Node { margin: UiRect::top(px(-4)), ..default() },
                 ));
-                frame
-                    .spawn((
-                        HealthBar,
-                        Node { width: percent(100), height: px(10), ..default() },
-                        BackgroundColor(Color::srgb(0.2, 0.05, 0.05)),
-                        Themed(Piece::BarBack),
-                    ))
-                    .with_child((
-                        HealthFill,
-                        Node { width: percent(100), height: percent(100), ..default() },
-                        BackgroundColor(Color::srgb(0.75, 0.12, 0.1)),
-                        Themed(Piece::BarFill),
-                    ));
+                frame.spawn(bar(10.0, HEALTH_BAR, 1.0, HealthBar, HealthFill));
                 spawn_close_button(frame, CloseButton);
             });
         });

@@ -6,10 +6,9 @@
 use bevy::prelude::*;
 
 use crate::content::ContentStore;
-use crate::ui::character_window::{
-    EXPERIENCE_COLOUR, HEADING_COLOUR, Pages, QUIET_COLOUR, Sheet, Tab, bar, heading, icon_box, text,
-};
+use crate::ui::character_window::{HEADING_COLOUR, Pages, QUIET_COLOUR, Sheet, Tab, heading, icon_box, text};
 use crate::ui::tooltip::Tooltip;
+use crate::ui::widgets::{EXPERIENCE_BAR, bar};
 
 /// Size of a skill's box, in pixels.
 const BOX_SIZE: f32 = 40.0;
@@ -83,7 +82,7 @@ fn show_skills(
                                 line.spawn(text(format!("Level {}", progress.level), 13.0, HEADING_COLOUR));
                             },
                         );
-                        words.spawn(bar(8.0, EXPERIENCE_COLOUR, fraction, SkillFill));
+                        words.spawn(bar(8.0, EXPERIENCE_BAR, fraction, (), SkillFill));
                         words.spawn(text(experience, 11.0, QUIET_COLOUR));
                     });
                 },

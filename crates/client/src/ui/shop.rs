@@ -1,9 +1,9 @@
-//! The shop window: what an NPC's shop sells, beside the bag.
+//! The shop window: what an NPC's shop sells, beside the inventory.
 //!
 //! The server opens it ([`ServerMessage::ShopOpened`], after the NPC's
 //! dialogue offers to trade) and closes it ([`ServerMessage::ShopClosed`],
 //! when the player walks away). Clicking an item asks to buy one (five with
-//! Shift); while it's open, clicking an item in the bag asks to sell one (see
+//! Shift); while it's open, clicking an item in the inventory asks to sell one (see
 //! [`crate::ui::character_window::bag`]). The server decides, and says how it went in chat.
 
 use bevy::prelude::*;
@@ -125,7 +125,7 @@ fn spawn_window(mut commands: Commands) {
                 Node { flex_wrap: FlexWrap::Wrap, column_gap: px(GAP), row_gap: px(GAP), ..default() },
             ));
             window.spawn((
-                Text::new("Click to buy (Shift: 5). Click things in your bag to sell them."),
+                Text::new("Click to buy (Shift: 5). Click things in your inventory to sell them."),
                 TextFont { font_size: FontSize::Px(12.0), ..default() },
                 TextColor(HINT_COLOUR),
             ));

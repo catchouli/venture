@@ -146,6 +146,10 @@ for checking changes (and for scripts or AI assistants):
 VENTURE_CAMERA="480,2640,0.6,0.3,30" VENTURE_SCREENSHOT=shot.png cargo run -p venture_client -- --local
 ```
 
+In the game, **F3** shows debug information (position, biome, chunks, frame
+rate), and while it's showing **F1** switches to a free camera. Screenshot
+runs start with it hidden.
+
 | Variable | Meaning |
 | --- | --- |
 | `VENTURE_SCREENSHOT=path` | Wait until the world around the player has loaded, save a screenshot there, and exit. Renders offscreen, so it works even when the window isn't visible. |
@@ -155,7 +159,7 @@ VENTURE_CAMERA="480,2640,0.6,0.3,30" VENTURE_SCREENSHOT=shot.png cargo run -p ve
 | `VENTURE_SAY=text` | Say this in chat once in the game (separate several messages with `\|`). Chat commands work too, such as `/talk`. |
 | `VENTURE_USE=air_blast` | Use these abilities (ids, separated with `\|`) once in the game, on the selected target (after `VENTURE_SELECT_NEAREST` has picked one). Automated runs are silent. |
 | `VENTURE_SELECT_NEAREST=1` | Select the character (player or NPC) nearest yours once one is in sight (to check the target frame, or with `VENTURE_SAY=/talk`). |
-| `VENTURE_OPEN=stats` | Open the character window on a tab once in the game (`stats`, `skills`, `abilities`, `bag`, `gear`, `quests` or `emotes`). |
+| `VENTURE_OPEN=stats` | Open the character window on a tab once in the game (`stats`, `skills`, `abilities`, `inventory`, `gear`, `quests` or `emotes`). |
 | `VENTURE_NAME=name`, `VENTURE_CLASS=mage`, `VENTURE_BODY=feminine` | The name, class and body type automated runs make new characters with. `VENTURE_NAME=cat` makes an admin (with the default `server.ron`), to try admin commands with `VENTURE_SAY=/setlevel 5`. |
 | `VENTURE_SHOW_CREATION=1` | Show character creation even in an automated run, and take the screenshot there (with `VENTURE_CLASS` and `VENTURE_BODY` choosing what the preview shows). |
 | `VENTURE_CHOOSE=1,2` | Pick these dialogue replies (numbered from 1), one per page, as conversations offer them. |

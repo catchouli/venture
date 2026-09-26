@@ -169,7 +169,7 @@ picture from `ui/`, named in `ui/theme.ron`:
 (
     pieces: {
         "window": (image: "window.png", border: 12),
-        "tab": (image: "tab.png", border: (6, 6, 6, 0)),   // (left, right, top, bottom)
+        "divider": (image: "divider.png", border: (20, 20, 0, 0)),   // (left, right, top, bottom)
         // ...
     },
     tab_icons: { "stats": "tab_stats.png", /* ... */ },
@@ -188,11 +188,11 @@ Things to know when painting:
 - **Nearly opaque:** the game blends in linear colour, so a dark frame that's
   even a little see-through shows a lot of the bright world behind it. Only
   the `chat` backing is meant to be see-through.
-- **Bar fills are white:** `bar_fill` is tinted each bar's colour (health red,
-  mana blue, experience gold), so paint it in white and greys.
-- **Tabs:** `tab`, `tab_hover` and `tab_open` sit along the top of the
-  window's page, so they have no bottom edge (their bottom border is 0).
-- **States:** `_hover` and `_pressed` pictures are optional. Without them, the
+- **Bars are tinted:** `bar_fill` is tinted each bar's colour (health red,
+  mana blue, experience gold) and `bar_back` a darker shade of it (dark red
+  behind health), so paint both in white and greys. `bar_frame` is drawn
+  over the whole bar as painted, for a rim or a shine; leave its middle
+  clear.
   plain one is used.
 - **Plain look:** a piece left out keeps the plain flat look, as does
   everything before the theme has downloaded.
@@ -205,7 +205,7 @@ The pieces (the placeholders are made by `python3 tools/placeholder_ui.py`):
 | Piece | What it is | Placeholder size | Border |
 | --- | --- | --- | --- |
 | `window` | the frame of a window (character window, shop, dialogue) | 64×64 | 12 |
-| `header` | the strip across the top of a window, behind its title or tabs | 64×24 | 4 |
+| `header` | the strip across the top of a window, behind its title | 64×24 | 4 |
 | `panel` | a smaller frame (player and target frames, chat, hotbar, toolbar) | 32×32 | 6 |
 | `chat` | the chat log's backing (usually see-through) | 32×32 | 5 |
 | `tooltip` | a tooltip's frame | 32×32 | 5 |
@@ -213,22 +213,21 @@ The pieces (the placeholders are made by `python3 tools/placeholder_ui.py`):
 | `button_hover` | a button under the mouse | 48×24 | 6 |
 | `button_pressed` | a button being pressed | 48×24 | 6 |
 | `button_chosen` | the button for the chosen option (a class or body type when making a character) | 48×24 | 6 |
-| `slot` | a box holding an icon (bag, gear, abilities, hotbar) | 40×40 | 8 |
+| `slot` | a box holding an icon (inventory, gear, abilities, hotbar) | 40×40 | 8 |
 | `slot_hover` | a slot under the mouse | 40×40 | 8 |
-| `tab` | a tab of the character window | 40×24 | (6, 6, 6, 0) |
-| `tab_hover` | a tab under the mouse | 40×24 | (6, 6, 6, 0) |
-| `tab_open` | the open tab | 40×24 | (6, 6, 6, 0) |
-| `bar_back` | the empty part of a bar (health, mana, experience) | 24×12 | 4 |
-| `bar_fill` | the full part of a bar: drawn white, and tinted each bar's colour | 24×12 | 3 |
+| `bar_back` | the empty part of a bar: drawn light, and tinted a darker shade of each bar's colour | 24×12 | 4 |
+| `bar_fill` | the full part of a bar: drawn light, and tinted each bar's colour | 24×12 | 3 |
+| `bar_frame` | drawn over a whole bar, not tinted: its rim, or a shine | 24×12 | 4 |
 | `close` | a window's close button | 18×18 | 0 |
 | `close_hover` | a close button under the mouse | 18×18 | 0 |
 | `divider` | a line under headings | 64×6 | (20, 20, 0, 0) |
 | `text_field` | a box to type in (chat, names) | 32×24 | 5 |
 | `toolbar_button` | a toolbar button, behind its icon | 40×40 | 8 |
 | `toolbar_button_hover` | a toolbar button under the mouse | 40×40 | 8 |
+| `toolbar_button_open` | the toolbar button for the tab that's open | 40×40 | 8 |
 
-`tab_icons` are the toolbar's (and the window's tab row's) icons, one for each
-tab: `stats`, `skills`, `abilities`, `bag`, `gear`, `quests` and `emotes`
+`tab_icons` are the toolbar's icons, one for each
+tab: `stats`, `skills`, `abilities`, `inventory`, `gear`, `quests` and `emotes`
 (about 32×32, drawn at 26×26).
 
 ### Sounds
@@ -277,8 +276,9 @@ Colours are sRGB red, green and blue, each from 0 to 1. `body` (`Masculine`,
         icon: "training_sword.png",
         value: 8,
         equip: Some((                   // optional: makes the item wearable
-            slots: [Weapon],            // Weapon, Body and/or Legs (a robe fills [Body, Legs])
-            weapon: Some((damage: "1d6", speed: 1.0, stat: Strength)),   // for Weapon items
+            slots: [DominantHand],      // Head, DominantHand, NonDominantHand, Body and/or Legs
+                                        // (a robe fills [Body, Legs])
+            weapon: Some((damage: "1d6", speed: 1.0, stat: Strength)),   // for DominantHand items
             armour: 0,                  // optional: armour class it adds
             look: (style: Sword, main: (0.72, 0.74, 0.78), trim: (0.36, 0.23, 0.13)),
         )),
@@ -292,7 +292,7 @@ hand), in a main and a trim colour. They're placeholder shapes until real
 models. A weapon's `speed` is attacks per second before Dexterity, and its
 `stat` is the one it attacks and does damage with.
 
-Money is **Miasma**, kept on the character rather than in the bag. Icons are small PNGs
+Money is **Miasma**, kept on the character rather than in the inventory. Icons are small PNGs
 (32 × 32 works well, at most 64 KB). The current ones are placeholders drawn
 by `tools/placeholder_icons.py`; replace them with painted icons of the same
 name whenever they're ready.
@@ -470,11 +470,11 @@ Guard Aldren: Halt! Oh, a new face. Welcome to town, {player_name()}.
   - `miasma()`: how much Miasma they have.
   - `item_count("bread")`: how many of an item they carry
     (`-> Here's your pie. <<if item_count("meat_pie") > 0>>`).
-  - `has_room_for("old_pipe")`: whether their bag has room for one more.
+  - `has_room_for("old_pipe")`: whether their inventory has room for one more.
   - `quest_stage("tomas_pipe")`: the stage they've reached in a quest, or `""`.
 - **Commands** make things happen:
-  - `<<give_item bread 2>>` puts items in the player's bag (the count is
-    optional). If the bag is full, the player is told and gets nothing.
+  - `<<give_item bread 2>>` puts items in the player's inventory (the count is
+    optional). If the inventory is full, the player is told and gets nothing.
   - `<<take_item old_pipe>>` takes items. Check they have them first with
     `item_count`.
   - `<<give_miasma 30>>` pays the player, and `<<take_miasma 10>>` takes their

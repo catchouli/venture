@@ -22,7 +22,8 @@ pub struct ToolbarPlugin;
 
 impl Plugin for ToolbarPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_toolbar).add_systems(Update, (open_tabs, show_icons, show_only_while_playing));
+        app.add_systems(Startup, spawn_toolbar)
+            .add_systems(Update, (open_tabs, show_open_tab, show_icons, show_only_while_playing));
     }
 }
 
@@ -94,6 +95,16 @@ fn open_tabs(buttons: Query<(&Interaction, &TabButton), Changed<Interaction>>, m
         if *interaction == Interaction::Pressed {
             open.toggle(button.0);
         }
+    }
+}
+
+/// Lights up the button for the tab that's open.
+fn show_open_tab(open: Res<OpenTab>, mut buttons: Query<(&TabButton, &mut Themed)>) {
+    if !open.is_changed() {
+        return;
+    }
+    for (button, mut themed) in &mut buttons {
+        themed.0 = if open.0 == Some(button.0) { Piece::ToolbarButtonOpen } else { Piece::ToolbarButton };
     }
 }
 

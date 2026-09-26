@@ -1,4 +1,4 @@
-//! The bag tab: the player's inventory, as a grid of slots. The slots scroll
+//! The inventory tab: the player's inventory, as a grid of slots. The slots scroll
 //! (with the mouse wheel) when there are more than fit, and the bottom shows
 //! how full it is and the player's Miasma. Pointing at an item shows what it
 //! is. Clicking an item equips it, if it can be equipped; while a shop is
@@ -30,7 +30,7 @@ const GAP: f32 = 3.0;
 const VISIBLE_ROWS: usize = 7;
 /// Width of the scrollbar, in pixels.
 const SCROLLBAR_WIDTH: f32 = 5.0;
-/// Colour of the bag's fullness.
+/// Colour of the inventory's fullness.
 const FOOTER_COLOUR: Color = Color::srgb(0.75, 0.75, 0.7);
 /// Colour of the Miasma amount.
 const MIASMA_COLOUR: Color = Color::srgb(0.8, 0.65, 0.95);
@@ -43,13 +43,13 @@ const SLOT_COLOUR: Color = Color::srgba(1.0, 1.0, 1.0, 0.05);
 /// Colour of a slot under the mouse.
 const SLOT_HOVER_COLOUR: Color = Color::srgba(1.0, 1.0, 1.0, 0.14);
 
-/// Shows the bag tab.
-pub struct BagPlugin;
+/// Shows the inventory tab.
+pub struct InventoryPlugin;
 
-impl Plugin for BagPlugin {
+impl Plugin for InventoryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PlayerInventory>()
-            .add_systems(Startup, spawn_bag.after(super::spawn_window))
+            .add_systems(Startup, spawn_inventory.after(super::spawn_window))
             .add_systems(
                 Update,
                 (
@@ -112,11 +112,11 @@ struct SlotIcon;
 #[derive(Component)]
 struct SlotCount;
 
-fn spawn_bag(mut commands: Commands, pages: Res<Pages>) {
+fn spawn_inventory(mut commands: Commands, pages: Res<Pages>) {
     let grid_width = COLUMNS as f32 * SLOT_SIZE + (COLUMNS - 1) as f32 * GAP;
     let view_height = VISIBLE_ROWS as f32 * SLOT_SIZE + (VISIBLE_ROWS - 1) as f32 * GAP;
     let font = TextFont { font_size: FontSize::Px(13.0), ..default() };
-    commands.entity(pages.of(Tab::Bag)).with_children(|bag| {
+    commands.entity(pages.of(Tab::Inventory)).with_children(|bag| {
         bag.spawn(Node { column_gap: px(5), ..default() }).with_children(|row| {
             // The slots scroll within a view a few rows tall.
             row.spawn((
@@ -159,7 +159,7 @@ fn spawn_bag(mut commands: Commands, pages: Res<Pages>) {
                 BackgroundColor(Color::srgba(0.85, 0.7, 0.4, 0.6)),
             ));
         });
-        // How full the bag is, and the player's money.
+        // How full the inventory is, and the player's money.
         bag.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, ..default() })
             .with_children(|footer| {
                 footer.spawn((FullnessText, Text::default(), font.clone(), TextColor(FOOTER_COLOUR)));
@@ -196,14 +196,14 @@ fn show_footer(
     }
 }
 
-/// The mouse wheel over the bag scrolls its slots.
+/// The mouse wheel over the inventory scrolls its slots.
 fn scroll_slots(
     mouse_scroll: Res<AccumulatedMouseScroll>,
     open: Res<OpenTab>,
     window: Single<&Interaction, With<CharacterWindow>>,
     mut view: Single<(&mut ScrollPosition, &ComputedNode), With<SlotView>>,
 ) {
-    if open.0 != Some(Tab::Bag) || **window == Interaction::None || mouse_scroll.delta.y == 0.0 {
+    if open.0 != Some(Tab::Inventory) || **window == Interaction::None || mouse_scroll.delta.y == 0.0 {
         return;
     }
     let lines = match mouse_scroll.unit {

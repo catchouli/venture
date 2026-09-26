@@ -1,6 +1,7 @@
 //! The abilities tab: the **actions** every character has (attacking, talking,
-//! following), the **abilities** the character knows, and the class abilities they
-//! can learn with ability points (from a level, for a cost).
+//! following), the **abilities** the character knows, and the class's
+//! **unlearned** abilities: faded icons, learned by clicking them (with
+//! ability points, from a level; their tooltips say what they cost).
 //!
 //! Clicking an action does it, just like typing its chat command, and
 //! clicking an ability uses it on the selected target. Both can be dragged onto
@@ -12,9 +13,7 @@ use venture_protocol::{ClientMessage, HotbarEntry};
 use crate::content::ContentStore;
 use crate::interaction::actions::Action;
 use crate::network::ToServer;
-use crate::ui::character_window::{
-    Pages, QUIET_COLOUR, Sheet, TEXT_COLOUR, Tab, heading, icon_box, small_button, text,
-};
+use crate::ui::character_window::{Pages, Sheet, Tab, heading, icon_box, text};
 use crate::ui::hotbar::Draggable;
 use crate::ui::tooltip::Tooltip;
 
@@ -24,8 +23,10 @@ const BOX_SIZE: f32 = 40.0;
 const ICON_SIZE: f32 = 32.0;
 /// Colour of unspent ability points.
 const POINTS_COLOUR: Color = Color::srgb(0.6, 0.9, 0.55);
-/// How faded an ability not yet learned looks.
-const LOCKED_TINT: Color = Color::srgba(1.0, 1.0, 1.0, 0.35);
+/// How faded an unlearned ability looks when it can't be learned yet.
+const LOCKED_TINT: Color = Color::srgba(1.0, 1.0, 1.0, 0.3);
+/// How faded an unlearned ability looks when it can be learned now.
+const LEARNABLE_TINT: Color = Color::srgba(1.0, 1.0, 1.0, 0.6);
 /// The actions shown, in order.
 const ACTIONS: [Action; 4] = [Action::Attack, Action::Talk, Action::Follow, Action::Town];
 
@@ -43,7 +44,7 @@ impl Plugin for AbilitiesPlugin {
 #[derive(Component)]
 struct ActionButton(Action);
 
-/// The button learning an ability.
+/// An unlearned ability's icon, which learns it when clicked.
 #[derive(Component)]
 struct LearnButton(String);
 
@@ -174,31 +175,37 @@ fn show_abilities(
         if unlearned.is_empty() {
             return;
         }
-        list.spawn(heading("To learn"));
-        for offer in unlearned {
-            let name = content.abilities.get(&offer.ability).map_or(offer.ability.as_str(), |def| def.name.as_str());
-            let points = if offer.cost == 1 { "1 point".to_string() } else { format!("{} points", offer.cost) };
-            let can_learn = sheet.level >= offer.level && sheet.ability_points >= offer.cost;
-            list.spawn(Node { align_items: AlignItems::Center, column_gap: px(8), ..default() }).with_children(|row| {
-                row.spawn(icon_box(BOX_SIZE)).insert(details(&offer.ability)).with_child((
-                    ImageNode::new(icon(&offer.ability).unwrap_or_default()).with_color(LOCKED_TINT),
-                    Node { width: px(ICON_SIZE), height: px(ICON_SIZE), ..default() },
-                ));
-                row.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, ..default() }).with_children(
-                    |words| {
-                        words.spawn(text(name, 13.0, TEXT_COLOUR));
-                        words.spawn(text(format!("Level {}, {points}", offer.level), 12.0, QUIET_COLOUR));
-                    },
-                );
-                if can_learn {
-                    row.spawn((LearnButton(offer.ability.clone()), small_button("Learn")));
+        list.spawn(heading("Unlearned"));
+        list.spawn(Node { flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(6), ..default() }).with_children(
+            |row| {
+                for offer in unlearned {
+                    let points = if offer.cost == 1 {
+                        "1 ability point".to_string()
+                    } else {
+                        format!("{} ability points", offer.cost)
+                    };
+                    let mut tooltip = details(&offer.ability);
+                    let (tint, how) = if sheet.level < offer.level {
+                        (LOCKED_TINT, format!("Learn it from level {} for {points}.", offer.level))
+                    } else if sheet.ability_points < offer.cost {
+                        let have = sheet.ability_points;
+                        (LOCKED_TINT, format!("Costs {points} to learn (you have {have})."))
+                    } else {
+                        (LEARNABLE_TINT, format!("Costs {points} to learn. Click to learn it."))
+                    };
+                    tooltip.body.push_str(&format!("\n{how}"));
+                    row.spawn((LearnButton(offer.ability.clone()), icon_box(BOX_SIZE))).insert(tooltip).with_child((
+                        ImageNode::new(icon(&offer.ability).unwrap_or_default()).with_color(tint),
+                        Node { width: px(ICON_SIZE), height: px(ICON_SIZE), ..default() },
+                    ));
                 }
-            });
-        }
+            },
+        );
     });
 }
 
-/// Clicking **Learn** asks to learn the ability.
+/// Clicking an unlearned ability asks to learn it (the server checks the
+/// level and points, and says why not if it can't).
 fn learn_on_click(
     buttons: Query<(&Interaction, &LearnButton), Changed<Interaction>>,
     mut to_server: MessageWriter<ToServer>,

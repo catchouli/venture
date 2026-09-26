@@ -398,6 +398,7 @@ fn content_with_files(npcs: &str, script: &str, dialogue: Option<&str>, extra: &
     pack
 }
 
+// (The sword uses `Weapon`, the dominant hand's old name, which still works.)
 const ITEMS: &str = r#"[
     (id: "bread", name: "Bread", description: "A loaf.", icon: "thing.png", value: 4),
     (id: "sword", name: "Sword", description: "Sharp.", icon: "thing.png", value: 10,
@@ -961,7 +962,7 @@ fn classes_start_with_their_gear_and_abilities() {
     assert_eq!(sheet.abilities, ["rest", "whack"]);
     assert_eq!(
         sheet.equipment,
-        [(EquipSlot::Weapon, "sword".to_string()), (EquipSlot::Body, "chestguard".to_string())]
+        [(EquipSlot::DominantHand, "sword".to_string()), (EquipSlot::Body, "chestguard".to_string())]
     );
     assert_eq!(sheet.damage.to_string(), "1d6+2", "the sword, plus STR 15's +2");
     assert_eq!(sheet.armour_class, 13, "10, +1 DEX, +2 chestguard");
@@ -986,7 +987,7 @@ fn classes_start_with_their_gear_and_abilities() {
 fn gear_comes_off_into_the_bag_and_goes_back_on() {
     let mut server = TestServer::with_content("gear", content_with("[]", ""));
     let (client, _) = create(&mut server, TOKEN_A, "Aldric", "fighter");
-    client.send(&ClientMessage::Unequip { slot: EquipSlot::Weapon });
+    client.send(&ClientMessage::Unequip { slot: EquipSlot::DominantHand });
     server.run(2);
     let messages = client.receive();
     assert_eq!(notices(&messages), ["You take off: Sword."]);

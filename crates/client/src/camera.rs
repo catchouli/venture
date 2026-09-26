@@ -22,6 +22,7 @@ use bevy::prelude::*;
 use crate::characters::player::{LocalPlayer, PlayerSystems};
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::common::palette;
+use crate::dev::debug_hud::DebugOverlay;
 use crate::dev::settings::DevSettings;
 use crate::ui::text_input::KeyboardFocus;
 use crate::world::query::ground_height;
@@ -197,16 +198,19 @@ fn spawn_camera(
     ));
 }
 
-/// F1 switches between following the character and the free camera.
+/// F1 switches between following the character and the free camera, while
+/// the debug text is showing (F3); hiding it goes back to following.
 fn toggle_mode(
     keys: Res<ButtonInput<KeyCode>>,
     focus: Res<KeyboardFocus>,
+    overlay: Res<DebugOverlay>,
     mut mode: ResMut<CameraMode>,
     camera: Single<&Transform, (With<Orbit>, Without<FreeCameraSphere>)>,
     sphere: Single<(&mut Transform, &mut Visibility), With<FreeCameraSphere>>,
     orbit: Single<&Orbit>,
 ) {
-    if !keys.just_pressed(KeyCode::F1) || focus.is_typing() {
+    let leave_free = !overlay.0 && *mode == CameraMode::Free;
+    if !leave_free && (!overlay.0 || !keys.just_pressed(KeyCode::F1) || focus.is_typing()) {
         return;
     }
     let (mut sphere_transform, mut visibility) = sphere.into_inner();
@@ -293,7 +297,7 @@ fn zoom_controls(
     ui: Query<&Interaction>,
     mut orbit: Single<&mut Orbit>,
 ) {
-    // The wheel over a window (such as the bag) scrolls the window instead.
+    // The wheel over a window (such as the inventory) scrolls the window instead.
     if ui.iter().any(|interaction| *interaction != Interaction::None) {
         return;
     }

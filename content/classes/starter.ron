@@ -15,7 +15,7 @@
         description: "Tough and strong, at home in the thick of a fight. Starts with a sword, wooden armour, and Whack.",
         rules: (hit_die: 10, mana_per_level: 3, casting_stat: Wisdom),
         stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
-        starting_equipment: ["training_sword", "wooden_chestguard", "wooden_legguards"],
+        starting_equipment: ["training_sword", "wooden_buckler", "wooden_chestguard", "wooden_legguards"],
         starting_abilities: ["whack"],
         abilities: [
             (ability: "cleave", level: 3, cost: 1),
@@ -28,7 +28,7 @@
         description: "Frail but clever, striking from afar with spells. Starts with a staff, plain robes, and Air Blast.",
         rules: (hit_die: 6, mana_per_level: 8, casting_stat: Intelligence),
         stats: (strength: 8, dexterity: 12, constitution: 12, intelligence: 15, wisdom: 13),
-        starting_equipment: ["wooden_staff", "plain_robes"],
+        starting_equipment: ["wooden_staff", "wooden_buckler", "plain_robes"],
         starting_abilities: ["air_blast"],
         abilities: [
             (ability: "frost_shard", level: 3, cost: 1),

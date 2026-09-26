@@ -212,27 +212,48 @@ def tab(state):
 
 
 def bar_back():
-    w, h = 24, 12
-
-    def fill(x, y):
-        colour = mix((4, 3, 3), (20, 17, 15), y / h)
-        return colour + (235,)
-
-    return w, h, framed(w, h, 3, 1, fill, rim_light=GOLD_DARK, rim_dark=BRONZE, inset=True)
-
-
-def bar_fill():
+    """Light, so the game can tint it a dark shade of each bar's colour."""
     w, h = 24, 12
 
     def colour_at(x, y):
-        d = round_box(x, y, w, h, 2.5)
+        if round_box(x, y, w, h, 3) > 0:
+            return (0, 0, 0, 0)
+        # Shadowed along the top, as if sunk in.
+        level = 150 + 70 * min(1.0, (y - 1) / 5)
+        return (level, level, level, 255)
+
+    return w, h, colour_at
+
+
+def bar_fill():
+    """Light, so the game can tint it each bar's colour."""
+    w, h = 24, 12
+
+    def colour_at(x, y):
+        if round_box(x, y, w, h, 2.5) > 0:
+            return (0, 0, 0, 0)
+        level = 255 - 95 * (y / h)
+        return (level, level, level, 255)
+
+    return w, h, colour_at
+
+
+def bar_frame():
+    """Drawn over the whole bar: a dark outline, a thin gold rim and a shine."""
+    w, h = 24, 12
+
+    def colour_at(x, y):
+        d = round_box(x, y, w, h, 3)
         if d > 0:
             return (0, 0, 0, 0)
-        t = y / h
-        level = 255 - 110 * t
-        if 1.5 < y < 3.5:
-            level = 255  # the shine
-        return (level, level, level, 255)
+        depth = -d
+        if depth < 1:
+            return OUTLINE + (255,)
+        if depth < 2:
+            return (GOLD if y < h / 2 else GOLD_DARK) + (255,)
+        if 2 <= y < 3.5:
+            return (255, 255, 255, 70)  # the shine
+        return (0, 0, 0, 0)
 
     return w, h, colour_at
 
@@ -281,15 +302,16 @@ def text_field():
     return w, h, framed(w, h, 3, 1, fill, rim_light=GOLD_DARK, rim_dark=BRONZE, inset=True)
 
 
-def toolbar_button(hover):
+def toolbar_button(state):
     w = h = 40
+    middle = {"normal": (44, 36, 28), "hover": (58, 46, 34), "open": (96, 70, 36)}[state]
 
     def fill(x, y):
         centre = math.hypot(x - w / 2, y - h / 2) / (w / 2)
-        colour = mix((58, 46, 34) if hover else (44, 36, 28), (16, 13, 11), centre)
+        colour = mix(middle, (16, 13, 11), centre)
         return tuple(c + noise(x, y) * 3 for c in colour) + (252,)
 
-    return w, h, framed(w, h, 6, 3, fill, rim_light=GOLD_LIGHT if hover else GOLD)
+    return w, h, framed(w, h, 6, 3, fill, rim_light=GOLD if state == "normal" else GOLD_LIGHT)
 
 
 PIECES = {
@@ -304,17 +326,16 @@ PIECES = {
     "button_chosen.png": lambda: button("chosen"),
     "slot.png": lambda: slot(False),
     "slot_hover.png": lambda: slot(True),
-    "tab.png": lambda: tab("normal"),
-    "tab_hover.png": lambda: tab("hover"),
-    "tab_open.png": lambda: tab("open"),
     "bar_back.png": bar_back,
     "bar_fill.png": bar_fill,
+    "bar_frame.png": bar_frame,
     "close.png": lambda: close(False),
     "close_hover.png": lambda: close(True),
     "divider.png": divider,
     "text_field.png": text_field,
-    "toolbar_button.png": lambda: toolbar_button(False),
-    "toolbar_button_hover.png": lambda: toolbar_button(True),
+    "toolbar_button.png": lambda: toolbar_button("normal"),
+    "toolbar_button_hover.png": lambda: toolbar_button("hover"),
+    "toolbar_button_open.png": lambda: toolbar_button("open"),
 }
 
 
@@ -378,7 +399,7 @@ TAB_ICONS = {
     "tab_stats.png": tab_stats,
     "tab_skills.png": tab_skills,
     "tab_abilities.png": tab_abilities,
-    "tab_bag.png": tab_bag,
+    "tab_inventory.png": tab_bag,
     "tab_gear.png": tab_gear,
     "tab_quests.png": tab_quests,
     "tab_emotes.png": tab_emotes,

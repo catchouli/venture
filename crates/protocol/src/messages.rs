@@ -531,8 +531,14 @@ impl BodyType {
 /// A place on a character that equipment goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum EquipSlot {
-    /// What they fight with.
-    Weapon,
+    /// Their head (helmets).
+    Head,
+    /// The hand they fight with: their weapon. (Called the weapon slot in
+    /// older profiles and content.)
+    #[serde(alias = "Weapon")]
+    DominantHand,
+    /// Their other hand: a shield, say.
+    NonDominantHand,
     /// Their chest and arms.
     Body,
     /// Their legs.
@@ -540,13 +546,16 @@ pub enum EquipSlot {
 }
 
 impl EquipSlot {
-    /// Every slot, in the order they're shown.
-    pub const ALL: [EquipSlot; 3] = [EquipSlot::Weapon, EquipSlot::Body, EquipSlot::Legs];
+    /// Every slot.
+    pub const ALL: [EquipSlot; 5] =
+        [EquipSlot::Head, EquipSlot::DominantHand, EquipSlot::NonDominantHand, EquipSlot::Body, EquipSlot::Legs];
 
     /// Its name, as shown to players.
     pub fn name(self) -> &'static str {
         match self {
-            EquipSlot::Weapon => "Weapon",
+            EquipSlot::Head => "Head",
+            EquipSlot::DominantHand => "Dominant hand",
+            EquipSlot::NonDominantHand => "Non-dominant hand",
             EquipSlot::Body => "Body",
             EquipSlot::Legs => "Legs",
         }
@@ -568,6 +577,8 @@ pub enum LookStyle {
     Staff,
     /// A crude club, held in the right hand.
     Club,
+    /// A small round shield, strapped to the left forearm.
+    Buckler,
 }
 
 /// How a worn item looks: its shape and colours (sRGB, each 0 to 1).

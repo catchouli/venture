@@ -3,7 +3,8 @@
 //! [`Piece`] it is ([`Themed`]), and drawn with that piece's picture as a
 //! nine-slice (see [`ThemeDef`]). Buttons, slots, tabs and close buttons
 //! change picture under the mouse (`_hover`) and when pressed (`_pressed`),
-//! if the theme has those pictures. Bar fills are tinted their bar's colour.
+//! if the theme has those pictures. Bars' backs and fills are tinted their
+//! bar's colours.
 //!
 //! A piece the theme has no picture for (or everything, before the content
 //! has arrived) keeps its plain look: the flat colours it was made with.
@@ -51,14 +52,12 @@ pub enum Piece {
     ButtonChosen,
     /// A box holding an icon.
     Slot,
-    /// A tab of the character window.
-    Tab,
-    /// The open tab.
-    TabOpen,
     /// The empty part of a bar.
     BarBack,
     /// The full part of a bar (tinted the bar's colour).
     BarFill,
+    /// Drawn over a whole bar (its rim, or a shine), not tinted.
+    BarFrame,
     /// A close button.
     Close,
     /// A line under headings.
@@ -67,6 +66,9 @@ pub enum Piece {
     TextField,
     /// A toolbar button.
     ToolbarButton,
+    /// The toolbar button for the tab that's open. Drawn as a toolbar button
+    /// under the mouse if the theme has no picture for it.
+    ToolbarButtonOpen,
 }
 
 impl Piece {
@@ -81,14 +83,14 @@ impl Piece {
             Piece::Button => "button",
             Piece::ButtonChosen => "button_chosen",
             Piece::Slot => "slot",
-            Piece::Tab => "tab",
-            Piece::TabOpen => "tab_open",
             Piece::BarBack => "bar_back",
             Piece::BarFill => "bar_fill",
+            Piece::BarFrame => "bar_frame",
             Piece::Close => "close",
             Piece::Divider => "divider",
             Piece::TextField => "text_field",
             Piece::ToolbarButton => "toolbar_button",
+            Piece::ToolbarButtonOpen => "toolbar_button_open",
         }
     }
 }
@@ -144,6 +146,9 @@ impl Theme {
     fn picture(&self, piece: Piece, state: &str) -> Option<&(Handle<Image>, TextureSlicer)> {
         if piece == Piece::ButtonChosen && !self.pieces.contains_key("button_chosen") {
             return self.picture(Piece::Button, "_pressed");
+        }
+        if piece == Piece::ToolbarButtonOpen && !self.pieces.contains_key("toolbar_button_open") {
+            return self.picture(Piece::ToolbarButton, "_hover");
         }
         let name = piece.name();
         let fallbacks: &[&str] = match state {
@@ -220,8 +225,8 @@ fn skin(
             continue;
         };
         let plain = skinned.map_or(background.0, |skinned| skinned.background);
-        // Bar fills are drawn white and tinted the bar's colour; the rest as painted.
-        let tint = if themed.0 == Piece::BarFill { plain } else { Color::WHITE };
+        // Bars' backs and fills are drawn light and tinted the bar's colours; the rest as painted.
+        let tint = if matches!(themed.0, Piece::BarBack | Piece::BarFill) { plain } else { Color::WHITE };
         let image = ImageNode {
             image: picture.clone(),
             image_mode: NodeImageMode::Sliced(slicer.clone()),

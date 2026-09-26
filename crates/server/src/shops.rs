@@ -116,7 +116,7 @@ fn buy(
         Err(InventoryProblem::NotEnoughMiasma | InventoryProblem::NotEnough(_)) => {
             "You don't have enough Miasma for that.".to_string()
         }
-        Err(InventoryProblem::Full) => "You have no room in your bag for that.".to_string(),
+        Err(InventoryProblem::Full) => "You have no room in your inventory for that.".to_string(),
     })
 }
 
