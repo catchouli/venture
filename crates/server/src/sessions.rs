@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 use venture_navigation::Point;
-use venture_protocol::{BodyType, ClassChoice, EntityKind, ServerMessage};
+use venture_protocol::{BodyType, ClassChoice, EntityKind, Features, ServerMessage};
 
 use crate::abilities::Cooldowns;
 use crate::character::{Admin, Character, class_or_default};
@@ -93,8 +93,8 @@ fn handle_session_requests(mut requests: MessageReader<SessionRequest>, mut sess
     for request in requests.read() {
         match request {
             SessionRequest::Hello { connection, profile } => sessions.log_in(*connection, profile),
-            SessionRequest::CreateCharacter { connection, profile, name, class, body } => {
-                sessions.create_character(*connection, profile, name, class, *body);
+            SessionRequest::CreateCharacter { connection, profile, name, class, body, features } => {
+                sessions.create_character(*connection, profile, name, class, *body, features);
             }
             SessionRequest::Leave { connection } => sessions.leave(*connection),
         }
@@ -145,6 +145,7 @@ impl Sessions<'_, '_> {
         name: &str,
         class_id: &str,
         body: BodyType,
+        features: &Features,
     ) {
         let pack = &self.content.pack;
         let class_exists = pack.classes.iter().any(|class| class.id == class_id) || pack.classes.is_empty();
@@ -164,7 +165,8 @@ impl Sessions<'_, '_> {
         let class = class_or_default(pack, Some(class_id));
         let position = self.spawn_point.0.unwrap_or(self.world.manifest.spawn_point);
         let mut new_profile = Profile::new(name.to_string(), position);
-        let character = Character::new(&class, body, &pack.new_characters.abilities);
+        let mut character = Character::new(&class, body, &pack.new_characters.abilities);
+        character.features = allowed_features(pack, features.clone());
         write_character(&mut new_profile, &character);
         new_profile.equipment = Some(Equipment::starting(&class, &pack.items).saved());
         let inventory = self.starting_inventory();
@@ -294,12 +296,23 @@ fn read_character(saved: &Profile, pack: &venture_content::ContentPack) -> Chara
         character.abilities.clone_from(abilities);
     }
     character.skills.clone_from(&saved.skill_progress);
+    // (Checked again, as the content may have changed since.)
+    character.features = allowed_features(pack, saved.features.clone());
     character
+}
+
+/// Features with anything the content doesn't offer put back to the usual.
+fn allowed_features(pack: &venture_content::ContentPack, features: Features) -> Features {
+    match &pack.character_models {
+        Some(models) => models.allowed(features),
+        None => venture_content::characters::CharacterModels::default().allowed(features),
+    }
 }
 
 fn write_character(profile: &mut Profile, character: &Character) {
     profile.class = Some(character.class.clone());
     profile.body = character.body;
+    profile.features = character.features.clone();
     profile.level = character.progress.level;
     profile.experience = character.progress.experience;
     profile.stats = Some(character.stats);

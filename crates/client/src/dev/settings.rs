@@ -16,6 +16,9 @@
 //!   (the server's suggestion if not set).
 //! - `VENTURE_BODY=feminine`: the body type automated runs make new
 //!   characters with (androgynous if not set).
+//! - `VENTURE_LOOK=height=5,build=-3,head=2,hair=long,beard=beard,hair_colour=3,skin=5`:
+//!   the features automated runs make new characters with (any left out are
+//!   the usual), and the character creation screen starts with.
 //! - `VENTURE_SHOW_CREATION=1`: show the character creation screen even in an
 //!   automated run (and take the screenshot there).
 //! - `VENTURE_SAY=text`: say this in chat once in the game (several messages
@@ -64,6 +67,8 @@ pub struct DevSettings {
     pub name: Option<String>,
     /// The body type automated runs make new characters with.
     pub body: Option<venture_protocol::BodyType>,
+    /// The features automated runs make new characters with.
+    pub features: venture_protocol::Features,
     /// Whether to show character creation even in an automated run.
     pub show_creation: bool,
 }
@@ -95,10 +100,31 @@ impl DevSettings {
             body: std::env::var("VENTURE_BODY").ok().and_then(|wanted| {
                 venture_protocol::BodyType::ALL.into_iter().find(|body| body.name().eq_ignore_ascii_case(&wanted))
             }),
+            features: std::env::var("VENTURE_LOOK").map(|look| features(&look)).unwrap_or_default(),
             show_creation: std::env::var_os("VENTURE_SHOW_CREATION").is_some(),
             choose: numbers("VENTURE_CHOOSE").unwrap_or_default().into_iter().map(|n| n as u32).collect(),
         }
     }
+}
+
+/// Features from `name=value` pairs, separated with commas.
+fn features(text: &str) -> venture_protocol::Features {
+    let mut features = venture_protocol::Features::default();
+    for (name, value) in text.split(',').filter_map(|pair| pair.split_once('=')) {
+        let (name, value) = (name.trim(), value.trim());
+        let number = value.parse().unwrap_or(0);
+        match name {
+            "height" => features.height = number,
+            "build" => features.build = number,
+            "head" => features.head = number,
+            "hair" => features.hair = Some(value.to_string()),
+            "beard" => features.beard = Some(value.to_string()),
+            "hair_colour" => features.hair_colour = number.max(0) as u8,
+            "skin" => features.skin = number.max(0) as u8,
+            _ => {}
+        }
+    }
+    features.clamped()
 }
 
 /// A comma-separated list of numbers from an environment variable.

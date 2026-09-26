@@ -24,22 +24,33 @@
         "death": "Death01",
     },
     // Which parts fit each body (made for masculine or feminine bodies), its
-    // hairstyle unless one's chosen, and a paler skin for lighter characters.
+    // hairstyle unless one's chosen, and the colour of the skin in its
+    // texture (tinted to make the other skin tones; sRGB, 0 to 1).
     bodies: (
-        masculine: (model: "body_male.gltf", fits: Masculine, hair: "hair_simpleparted",
-                    light_skin: "t_superhero_male_ligh.png"),
-        feminine: (model: "body_female.gltf", fits: Feminine, hair: "hair_long",
-                   light_skin: "t_superhero_female_light_basecolor.png"),
-        androgynous: (model: "body_female.gltf", fits: Feminine, hair: "hair_buzzedfemale",
-                      light_skin: "t_superhero_female_light_basecolor.png"),
+        masculine: (model: "body_male.gltf", fits: Masculine, hair: "parted", skin_colour: (0.66, 0.47, 0.33)),
+        feminine: (model: "body_female.gltf", fits: Feminine, hair: "long", skin_colour: (0.66, 0.47, 0.33)),
+        androgynous: (model: "body_female.gltf", fits: Feminine, hair: "cropped", skin_colour: (0.66, 0.47, 0.33)),
     ),
+    // What players can choose in the character creator, in order: hairstyles
+    // and beards (names from hair, below), hair colours and skin tones (sRGB,
+    // 0 to 1).
+    hairstyles: ["parted", "long", "buns", "buzzed", "cropped"],
+    beards: ["beard"],
+    hair_colours: [
+        (0.32, 0.21, 0.12), (0.10, 0.07, 0.05), (0.55, 0.38, 0.20), (0.78, 0.62, 0.36),
+        (0.52, 0.20, 0.08), (0.62, 0.60, 0.58), (0.92, 0.90, 0.86),
+    ],
+    skin_tones: [
+        (0.93, 0.80, 0.72), (0.88, 0.70, 0.58), (0.76, 0.56, 0.42), (0.66, 0.47, 0.33),
+        (0.48, 0.32, 0.22), (0.32, 0.21, 0.15), (0.22, 0.14, 0.10),
+    ],
     hair: {
-        "hair_simpleparted": "hair_simpleparted.gltf",
-        "hair_long": "hair_long.gltf",
-        "hair_buns": "hair_buns.gltf",
-        "hair_buzzed": "hair_buzzed.gltf",
-        "hair_buzzedfemale": "hair_buzzedfemale.gltf",
-        "hair_beard": "hair_beard.gltf",
+        "parted": "hair_simpleparted.gltf",
+        "long": "hair_long.gltf",
+        "buns": "hair_buns.gltf",
+        "buzzed": "hair_buzzed.gltf",
+        "cropped": "hair_buzzedfemale.gltf",
+        "beard": "hair_beard.gltf",
     },
     // Outfit parts: a model for each kind of body (either is used for both if
     // only one's given), and the parts of the body they cover (hidden under

@@ -11,7 +11,9 @@ use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
-use venture_protocol::{BodyType, ClassChoice, ClientMessage, MAX_NAME_CHARS, PlayerLook, ServerMessage, clean_name};
+use venture_protocol::{
+    BodyType, ClassChoice, ClientMessage, Features, MAX_NAME_CHARS, PlayerLook, ServerMessage, clean_name,
+};
 
 use crate::characters::humans::HumanLook;
 use crate::characters::model::{CharacterAssets, Gait, rebuild_body, spawn_character};
@@ -73,6 +75,8 @@ struct Offer {
     class: usize,
     /// The chosen body type.
     body: BodyType,
+    /// The chosen features.
+    features: Features,
 }
 
 impl Offer {
@@ -81,7 +85,7 @@ impl Offer {
         let class = self.classes.get(self.class);
         let worn = class.map(|class| class.worn.clone()).unwrap_or_default();
         let outfit = class.map(|class| class.outfit.clone()).unwrap_or_default();
-        PlayerLook { body: self.body, worn, outfit }
+        PlayerLook { body: self.body, features: self.features.clone(), worn, outfit }
     }
 }
 
@@ -181,13 +185,15 @@ fn open_prompt(
         let class = offer.classes.iter().find(|class| Some(class.id.as_str()) == wanted).or(offer.classes.first());
         let class = class.map(|class| class.id.clone()).unwrap_or_default();
         let name = dev.name.clone().unwrap_or_else(|| offer.suggestion.clone());
-        to_server.write(ToServer(ClientMessage::CreateCharacter { name, class, body: dev.body.unwrap_or_default() }));
+        let (body, features) = (dev.body.unwrap_or_default(), dev.features.clone());
+        to_server.write(ToServer(ClientMessage::CreateCharacter { name, class, body, features }));
         return;
     }
     // Development runs can ask for a class and body type to show.
     let wanted = dev.class.as_deref();
     offer.class = offer.classes.iter().position(|class| Some(class.id.as_str()) == wanted).unwrap_or(0);
     offer.body = dev.body.unwrap_or_default();
+    offer.features = dev.features.clone();
     let title = TextFont { font_size: FontSize::Px(26.0), ..default() };
     let body = TextFont { font_size: FontSize::Px(16.0), ..default() };
     let small = TextFont { font_size: FontSize::Px(14.0), ..default() };
@@ -413,7 +419,8 @@ fn submit(
             Ok(name) => {
                 error.0.clear();
                 let class = class.id.clone();
-                to_server.write(ToServer(ClientMessage::CreateCharacter { name, class, body: offer.body }));
+                let (body, features) = (offer.body, offer.features.clone());
+                to_server.write(ToServer(ClientMessage::CreateCharacter { name, class, body, features }));
             }
             Err(reason) => error.0 = reason,
         }

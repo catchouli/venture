@@ -114,6 +114,8 @@ pub enum ClientMessage {
         class: String,
         /// The chosen body type.
         body: BodyType,
+        /// The chosen looks.
+        features: Features,
     },
     /// Run to a point, finding a way around obstacles.
     MoveTo {
@@ -537,6 +539,41 @@ impl BodyType {
     }
 }
 
+/// How a character looks, beyond their body type and what they wear:
+/// chosen in the character creator. Hairstyles and palettes come from the
+/// content's `characters/characters.ron`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Features {
+    /// Height, from `-FEATURE_RANGE` (shortest) to `FEATURE_RANGE` (tallest).
+    pub height: i8,
+    /// Build: from slight to broad.
+    pub build: i8,
+    /// The size of the head.
+    pub head: i8,
+    /// Their hairstyle, if not their body's usual one.
+    pub hair: Option<String>,
+    /// Their beard, if they have one.
+    pub beard: Option<String>,
+    /// Their hair colour (from the content's palette, numbered from 0).
+    pub hair_colour: u8,
+    /// Their skin tone (from the content's palette, numbered from 0).
+    pub skin: u8,
+}
+
+/// How far each of [`Features`]' sliders goes either way.
+pub const FEATURE_RANGE: i8 = 10;
+
+impl Features {
+    /// These features with the sliders brought within range.
+    pub fn clamped(mut self) -> Self {
+        for slider in [&mut self.height, &mut self.build, &mut self.head] {
+            *slider = (*slider).clamp(-FEATURE_RANGE, FEATURE_RANGE);
+        }
+        self
+    }
+}
+
 /// A place on a character that equipment goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum EquipSlot {
@@ -611,6 +648,8 @@ pub struct ItemLook {
 pub struct PlayerLook {
     /// Their build.
     pub body: BodyType,
+    /// Their looks.
+    pub features: Features,
     /// How each item they wear looks (as simple shapes).
     pub worn: Vec<ItemLook>,
     /// The outfit parts what they wear puts on them (names from the

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use bevy::prelude::*;
 use venture_content::{ClassDef, ContentPack};
-use venture_protocol::{AbilityOffer, BodyType, CharacterSheet, ServerMessage, SkillProgress};
+use venture_protocol::{AbilityOffer, BodyType, CharacterSheet, Features, ServerMessage, SkillProgress};
 use venture_rpg::progression::{experience_to_next_level, total_ability_points, total_stat_points};
 use venture_rpg::stats::MAX_SCORE;
 use venture_rpg::{ClassRules, DerivedStats, Gear, LevelUp, MAX_LEVEL, Progress, Stat, Stats};
@@ -41,6 +41,8 @@ pub struct Character {
     pub class: String,
     /// Their build (only how they look).
     pub body: BodyType,
+    /// Their looks (from the character creator).
+    pub features: Features,
     /// Their level and experience.
     pub progress: Progress,
     /// Their stats (their class's starting scores plus stat points spent).
@@ -67,6 +69,7 @@ impl Character {
         Self {
             class: class.id.clone(),
             body,
+            features: Features::default(),
             progress: Progress::default(),
             stats: class.stats,
             stat_points: 0,
@@ -108,7 +111,9 @@ impl Character {
 
     /// Starts over: level 1 of their class, with its starting stats and abilities.
     pub fn reset(&mut self, class: &ClassDef, common_abilities: &[String]) {
+        let features = std::mem::take(&mut self.features);
         *self = Self::new(class, self.body, common_abilities);
+        self.features = features;
     }
 
     /// Changes class, keeping their level: stats and abilities start over at the

@@ -159,7 +159,12 @@ impl Equipment {
 
 /// How a player looks: their build, and what they wear.
 pub fn player_look(character: &Character, equipment: &Equipment, items: &BTreeMap<String, ItemDef>) -> PlayerLook {
-    PlayerLook { body: character.body, worn: equipment.looks(items), outfit: equipment.outfit(items) }
+    PlayerLook {
+        body: character.body,
+        features: character.features.clone(),
+        worn: equipment.looks(items),
+        outfit: equipment.outfit(items),
+    }
 }
 
 /// Carries out equip and unequip requests, and shows everyone the new look.
