@@ -1,7 +1,3 @@
-// Creatures around the starting town. Numbers follow the RPG rules (see
-// crates/rpg): attacks hit if d20 + bonus reaches the target's armour class.
-// speed is attacks per second. Aggressive creatures attack players who come
-// within aggro_radius metres; the rest only fight back.
 [
     (
         id: "rabbit",

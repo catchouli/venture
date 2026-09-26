@@ -63,6 +63,19 @@ content/
   dialogue/*.yarn      conversations with NPCs
 ```
 
+**Notes, not comments.** The game's data files (classes, abilities,
+appearances, items, skills, creatures, spawners, respawn points, new
+characters, NPCs, shops and quests) are written by the editor (see
+[plan-editor.md](plan-editor.md)), which rewrites a whole file when it saves.
+So they hold no comments: what the fields mean is explained here, and
+anything worth saying about a particular entry goes in its `notes` field,
+which every entry has and the game ignores:
+
+```ron
+(id: "goblin_east", creature: "goblin", at: StartingSettlement(offset: (80.0, -40.0)),
+ radius: 10.0, respawn_seconds: 45.0, notes: "A little way out, on open ground."),
+```
+
 Check it for mistakes (every problem is reported with its file, and line
 where there is one):
 

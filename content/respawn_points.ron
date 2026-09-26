@@ -1,6 +1,3 @@
-// Where players wake up after being knocked out: the nearest of these. Each
-// town should have at least one. Offsets are metres from a settlement's
-// centre: (east, south).
 [
     (name: "the town square", at: StartingSettlement(offset: (0.0, 0.0))),
 ]

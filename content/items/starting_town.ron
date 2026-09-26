@@ -1,5 +1,3 @@
-// Things players can carry. Icons are PNGs in icons/ (placeholders for now:
-// see tools/placeholder_icons.py).
 [
     (
         id: "bread",
@@ -29,11 +27,6 @@
         icon: "old_pipe.png",
     ),
 
-    // Starting equipment. `equip` says which slots an item fills, what it
-    // adds (armour, or weapon stats), and how it looks on the character:
-    // `parts` are outfit parts from characters/characters.ron (clothes,
-    // armour, or something held), and `look` is a simple shape drawn when
-    // there are no character models.
     (
         id: "training_sword",
         name: "Training sword",

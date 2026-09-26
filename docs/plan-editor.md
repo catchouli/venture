@@ -169,15 +169,19 @@ The rest of [world-authoring.md](world-authoring.md), each as a plug-in:
 Shops, quests and dialogue can get tabs too (Yarn has its own editors, so
 dialogue may just open the file).
 
+## Decided
+
+- **Comments in content files:** gone from the files the editor writes.
+  What the fields mean is explained in
+  [content-authoring.md](content-authoring.md), and every entry has a
+  `notes` field for authors that the game ignores.
+- **Props block movement from the start**, unless that turns out to add a
+  lot of complexity (to be checked at milestone 5).
+- **Grips are per item** (each held part has its own bone and placement,
+  so a staff is held differently from a sword), tuned in milestone 4.
+
 ## Open questions
 
-- **Comments in content files.** Saving from the editor rewrites a file,
-  so hand-written comments in it would be lost. The suggestion: explanations
-  of the format move into the docs (most are there already), and notes
-  about particular entries become a `notes` field that the game ignores.
-  Keeping comments in place is possible, by editing only the changed
-  entries' text, but much more work.
-- **Props:** only for looks at first, or blocking from the start?
 - **Where the editor runs:** desktop only (like `--local`). Editing a
   shared server's content remotely can come much later, if ever; content
   goes through git.

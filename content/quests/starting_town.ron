@@ -1,6 +1,3 @@
-// Quests in the starting town. Dialogue moves them on with
-// <<set_quest QUEST STAGE>>; the last stage completes the quest. Each stage's
-// journal text is what the player's quest journal says while they're there.
 [
     (
         id: "tomas_pipe",

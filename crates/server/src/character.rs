@@ -252,6 +252,7 @@ pub fn class_or_default(pack: &ContentPack, id: Option<&str>) -> ClassDef {
             starting_equipment: Vec::new(),
             starting_abilities: Vec::new(),
             abilities: Vec::new(),
+            notes: String::new(),
         })
 }
 
@@ -314,6 +315,7 @@ mod tests {
             starting_equipment: Vec::new(),
             starting_abilities: vec!["whack".to_string()],
             abilities: vec![ClassAbility { ability: "bash".to_string(), level: 3, cost: 2 }],
+            notes: String::new(),
         }
     }
 

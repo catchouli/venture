@@ -1,6 +1,3 @@
-// The people of the town new characters start in. Offsets are in metres from
-// the town square's centre: (east, south). Their conversations are in
-// dialogue/starting_town.yarn.
 [
     (
         id: "town_guard",

@@ -1,5 +1,3 @@
-// How the townsfolk look. Colours are sRGB red, green, blue, each from 0 to 1.
-// body: Masculine, Feminine or Androgynous. outfit: Tunic, Armour or Robe.
 [
     (
         id: "guard",

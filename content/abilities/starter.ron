@@ -1,15 +1,3 @@
-// Abilities: what characters can do beyond attacking. Classes list which of
-// these they start with and which they can learn (content/classes/), and
-// everyone starts with the ones in new_characters.ron.
-//
-// effect: Rest (sit and recover), Strike(damage) (a weapon blow, with these
-// dice instead of the weapon's, plus the weapon's stat), Bolt(damage, speed)
-// (a spell that flies to the target at speed metres per second, 12 if not
-// given; the casting stat adds to its damage), or Heal(amount). mana is what
-// it costs, cooldown (seconds) how long before it can be used again, range
-// (metres) how far away a bolt's target can be (blows always reach as far as a
-// melee attack). sound is a file in sounds/; visual is the colour and size of
-// its flash, bolt or glow.
 [
     (
         id: "rest",
