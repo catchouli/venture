@@ -18,6 +18,7 @@ use venture_client::world::source::WorldInfo;
 use crate::camera::EditorCamera;
 use crate::document::Document;
 use crate::fields::{Choices, Fields, referred_as, rename_everywhere, users};
+use crate::grips::grip_panel;
 use crate::places::{
     EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, add_place, copy_place, delete_place, make_absolute,
     marker_heights, settlements,
@@ -136,6 +137,12 @@ fn shell_ui(world: &mut World) {
                 Tab::World => world_tab(ui, world, &mut shell, &mut document, now),
                 Tab::Content(collection) => {
                     entries_panel(ui, &mut shell, &mut document, collection, now);
+                    if document.collections[collection].title() == "Items" && !shell.table {
+                        let (file, entry) = shell.chosen.get(&collection).copied().unwrap_or((0, 0));
+                        if let Some(key) = document.collections[collection].keys(file).get(entry).cloned() {
+                            grip_panel(ui, world, &mut document, &key, now);
+                        }
+                    }
                     if shell.table && !document.collections[collection].is_single() {
                         table_panel(ui, world, &mut shell, &mut document, collection, now);
                     } else {

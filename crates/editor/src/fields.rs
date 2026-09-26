@@ -94,6 +94,18 @@ impl Fields<'_> {
                 changed
             }
             ReflectMut::List(list) => self.list(ui, list, refers, name),
+            ReflectMut::Map(map) => {
+                let mut changed = false;
+                let keys: Vec<Box<dyn PartialReflect>> = map.iter().map(|(key, _)| key.to_dynamic()).collect();
+                for (index, key) in keys.iter().enumerate() {
+                    let label = key.try_downcast_ref::<String>().cloned().unwrap_or_else(|| format!("{key:?}"));
+                    let Some(value) = map.get_mut(key.as_ref()) else { continue };
+                    egui::CollapsingHeader::new(&label).id_salt(index).show(ui, |ui| {
+                        changed |= self.value(ui, value, refers, name);
+                    });
+                }
+                changed
+            }
             ReflectMut::Enum(choice) => self.choice(ui, choice, refers, name),
             ReflectMut::Opaque(value) => opaque(ui, value.as_partial_reflect_mut(), name),
             _ => {
@@ -111,7 +123,10 @@ impl Fields<'_> {
         refers: Option<Refers>,
         name: &str,
     ) -> Option<bool> {
-        if let Some(colour) = value.try_downcast_mut::<(f32, f32, f32)>() {
+        // (Three numbers are a colour, unless they're a place or a turn.)
+        if !matches!(name, "position" | "rotation" | "offset")
+            && let Some(colour) = value.try_downcast_mut::<(f32, f32, f32)>()
+        {
             return Some(colour_edit(ui, colour));
         }
         if let Some(dice) = value.try_downcast_mut::<Dice>() {
@@ -129,7 +144,6 @@ impl Fields<'_> {
             }
             return Some(changed);
         }
-        let _ = name;
         None
     }
 
@@ -272,7 +286,13 @@ fn opaque(ui: &mut egui::Ui, value: &mut dyn PartialReflect, name: &str) -> bool
         return ui.checkbox(tick, "").changed();
     }
     if let Some(number) = value.try_downcast_mut::<f32>() {
-        return ui.add(egui::DragValue::new(number).speed(0.05).max_decimals(2)).changed();
+        // (Turns in whole degrees; places to the millimetre.)
+        let (speed, decimals) = match name {
+            "rotation" => (1.0, 1),
+            "position" => (0.005, 3),
+            _ => (0.05, 2),
+        };
+        return ui.add(egui::DragValue::new(number).speed(speed).max_decimals(decimals)).changed();
     }
     number!(f64, i8, i16, i32, i64, u8, u16, u32, u64, usize);
     ui.weak(format!("{value:?}"));
@@ -587,6 +607,7 @@ fn update_choices(
     map.insert(Refers::Script, files("scripts", ".rhai"));
     map.insert(Refers::Part, models.map(|models| models.parts.keys().cloned().collect()).unwrap_or_default());
     map.insert(Refers::Hair, models.map(|models| models.hair.keys().cloned().collect()).unwrap_or_default());
+    map.insert(Refers::Bone, venture_content::characters::BONES.iter().map(|bone| bone.to_string()).collect());
     choices.0 = map;
 }
 

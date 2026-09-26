@@ -12,6 +12,7 @@ use bevy::prelude::*;
 use bevy::reflect::{GetTypeRegistration, PartialReflect};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use venture_content::characters::CharacterModels;
 use venture_content::{
     AbilityDef, AppearanceDef, ClassDef, ContentError, ContentPack, CreatureDef, ItemDef, NewCharacterDef, NpcDef,
     QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef,
@@ -61,6 +62,13 @@ impl Entry for RespawnPoint {
     fn set_key(&mut self, key: String) {
         self.name = key;
     }
+}
+
+impl Entry for CharacterModels {
+    fn key(&self) -> String {
+        "Character models".to_string()
+    }
+    fn set_key(&mut self, _key: String) {}
 }
 
 impl Entry for NewCharacterDef {
@@ -182,10 +190,12 @@ impl<T: Entry> Collection<T> {
 
 /// Reads a file: a list, or a single thing.
 fn parse<T: Entry>(text: &str, single: bool) -> Result<Vec<T>, String> {
+    // (As the game reads them: optional values may leave out `Some`.)
+    let options = ron::Options::default().with_default_extension(ron::extensions::Extensions::IMPLICIT_SOME);
     if single {
-        ron::from_str::<T>(text).map(|entry| vec![entry]).map_err(|error| error.to_string())
+        options.from_str::<T>(text).map(|entry| vec![entry]).map_err(|error| error.to_string())
     } else {
-        ron::from_str::<Vec<T>>(text).map_err(|error| error.to_string())
+        options.from_str::<Vec<T>>(text).map_err(|error| error.to_string())
     }
 }
 
@@ -345,6 +355,11 @@ impl Document {
             Box::new(Collection::<QuestDef>::load(root, "Quests", Place::Folder("quests"))?),
             Box::new(Collection::<RespawnPoint>::load(root, "Respawn points", Place::List("respawn_points.ron"))?),
             Box::new(Collection::<NewCharacterDef>::load(root, "New characters", Place::Single("new_characters.ron"))?),
+            Box::new(Collection::<CharacterModels>::load(
+                root,
+                "Character models",
+                Place::Single("characters/characters.ron"),
+            )?),
         ];
         let mut document = Self {
             root: root.to_path_buf(),
@@ -558,6 +573,7 @@ mod tests {
         assert_eq!(before.quests, after.quests);
         assert_eq!(before.respawn_points, after.respawn_points);
         assert_eq!(before.new_characters, after.new_characters);
+        assert_eq!(before.character_models, after.character_models);
         // Saved files read back the same.
         let again = Document::load(&folder).unwrap();
         for (c, collection) in again.collections.iter().enumerate() {

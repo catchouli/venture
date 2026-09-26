@@ -42,6 +42,8 @@ pub enum Refers {
     Part,
     /// A hairstyle or beard from `characters/characters.ron`.
     Hair,
+    /// A bone of the characters' skeleton (see [`crate::characters::BONES`]).
+    Bone,
 }
 
 /// A colour as sRGB red, green and blue, each from 0 to 1.
