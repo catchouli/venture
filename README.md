@@ -68,6 +68,7 @@ move, **Shift** to go faster).
 | [World authoring](docs/world-authoring.md) | The plan for authoring the world: a world edit app, drawn roads, forests, and standalone tree and building generators |
 | [Client and server](docs/client-server.md) | Server authority, movement prediction, streaming, profiles, LAN hosting |
 | [Plan: client/server](docs/plan-client-server.md) | Milestones 1 to 3, step by step |
+| [Plan: characters](docs/plan-characters.md) | Real character models with free animations, then a character creator for players and NPCs |
 | [Plan: combat](docs/plan-combat.md) | Milestone 4: classes, levels, stats, abilities, equipment and fighting |
 | [Content authoring](docs/content-authoring.md) | Writing classes, NPCs, items, shops, quests, scripts and dialogue |
 | [Building and running](docs/building-and-running.md) | Desktop, web and dev tools in detail |
