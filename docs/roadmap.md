@@ -30,8 +30,10 @@ like the finished game, with a character walking around it.
 ## Next: the world
 
 - Cave entrances and a first generated cave (see [world-model.md](world-model.md)).
-- Overlay content from data files, and a first hand-made town on a settlement site.
-- Structures: buildings and bridges placed by overlays.
+- World authoring (see [world-authoring.md](world-authoring.md)): authored roads,
+  forests and clearings baked into the world; standalone tree and building
+  generators; a world edit app for placing content, drawing roads and
+  blocking out buildings; a first hand-made town on a settlement site.
 - Multi-layer navigation grid, once there are structures to walk on and under.
 
 - Playing together (milestone 1 of [plan-client-server.md](plan-client-server.md)):
@@ -41,7 +43,7 @@ like the finished game, with a character walking around it.
 
 ## Housekeeping
 
-- Trim Bevy features the client doesn't use (audio, glTF and so on) to shrink
+- Trim Bevy features the client doesn't use (glTF and so on) to shrink
   the web download (about 31 MB, or roughly a third of that compressed).
 
 ## Content

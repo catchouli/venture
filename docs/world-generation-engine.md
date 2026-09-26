@@ -128,6 +128,8 @@ The overlay system is the groundwork for towns and hand-made places. Planned sta
 
 Designers would work on a generated world: place stamps in an editor (or data
 files), regenerate the affected chunks, and see the result straight away.
+The full plan (the world edit app, drawn roads, forests, and standalone tree
+and building generators) is in [world-authoring.md](world-authoring.md).
 Because generation is deterministic, only the stamps need to be stored. The
 rest of the world is always regenerated identically.
 
