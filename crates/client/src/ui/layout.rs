@@ -48,7 +48,7 @@ impl Plugin for LayoutPlugin {
             .add_message::<LayoutBuilt>()
             .add_systems(Startup, use_built_in_layouts)
             .add_systems(PreUpdate, use_content_layouts)
-            .add_systems(Update, (build_layouts, fill_texts, fill_bars).chain().in_set(LayoutSystems));
+            .add_systems(Update, (build_layouts, fill_texts, fill_tooltips, fill_bars).chain().in_set(LayoutSystems));
     }
 }
 
@@ -108,6 +108,10 @@ pub struct UiCopy {
 /// Text that shows data: its text with `{names}`.
 #[derive(Component)]
 struct UiText(String);
+
+/// A tooltip that shows data: its text with `{names}` (the first line is the title).
+#[derive(Component)]
+struct UiTooltip(String);
 
 /// A bar's fill, showing the data called this (out of `<this>_max`).
 #[derive(Component)]
@@ -201,6 +205,22 @@ fn fill_texts(data: Res<UiData>, mut texts: Query<(&UiText, &mut Text)>) {
             text.0 = wanted;
         }
     }
+}
+
+/// Keeps data-showing tooltips up to date.
+fn fill_tooltips(data: Res<UiData>, mut tooltips: Query<(&UiTooltip, &mut Tooltip)>) {
+    for (UiTooltip(template), mut tooltip) in &mut tooltips {
+        let wanted = tooltip_of(&fill_in(template, |name| data.get(name).map(str::to_string)));
+        if *tooltip != wanted {
+            *tooltip = wanted;
+        }
+    }
+}
+
+/// A tooltip from its text: the first line is the title, the rest its body.
+fn tooltip_of(text: &str) -> Tooltip {
+    let (title, body) = text.split_once('\n').unwrap_or((text, ""));
+    Tooltip { title: title.to_string(), body: body.to_string() }
 }
 
 /// Keeps bars filled to their data.
@@ -298,8 +318,8 @@ impl Builder<'_> {
             element.insert(Button);
         }
         if let Some(tooltip) = &node.tooltip {
-            let (title, body) = tooltip.split_once('\n').unwrap_or((tooltip, ""));
-            element.insert(Tooltip { title: title.to_string(), body: body.to_string() });
+            let shown = fill_in(tooltip, |name| self.data.get(name).map(str::to_string));
+            element.insert((tooltip_of(&shown), UiTooltip(tooltip.clone())));
         }
         if let Some(layer) = node.layer {
             element.insert(GlobalZIndex(layer));
