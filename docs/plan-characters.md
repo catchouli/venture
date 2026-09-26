@@ -6,8 +6,7 @@ Library and Fantasy Props (all CC0). People are a body, hair and outfit
 parts on one skeleton, dressed by what they wear, holding their sword and
 shield; see "Character models" in [content-authoring.md](content-authoring.md)
 and `crates/client/src/characters/humans.rs`. Still to do: the creator
-(steps 5 and 6), creatures (step 7), upper-body masks (attacking while
-running plays the attack on the whole body), a sit-on-the-ground animation
+(steps 5 and 6), creatures (step 7), a sit-on-the-ground animation
 (resting kneels for now), grips for staffs and clubs (placeholder shapes for
 now), and a check of the download size and frame rate on the web.
 

@@ -45,6 +45,18 @@ const WALK_BELOW: f32 = 2.5;
 /// to play them faster or slower to match.
 const WALK_ANIMATION_SPEED: f32 = 1.6;
 const RUN_ANIMATION_SPEED: f32 = 4.2;
+/// The one-off animations that play on the upper body alone while moving,
+/// so the legs keep walking or running.
+const UPPER_BODY_CLIPS: [&str; 3] = ["attack", "punch", "cast"];
+/// The mask group of the legs and hips (which upper-body animations leave
+/// alone), and the bones in it (by name, or the start of the name).
+const LOWER_BODY: u32 = 0;
+const LOWER_BODY_BONES: [&str; 6] = ["root", "pelvis", "thigh", "calf", "foot", "ball"];
+/// How much an upper-body animation outweighs the walk or run beneath it
+/// (animations blend as a weighted average), and how long it takes to fade
+/// in and out, in seconds.
+const UPPER_BODY_WEIGHT: f32 = 12.0;
+const UPPER_BODY_FADE: f32 = 0.12;
 
 /// Dresses and animates people.
 pub struct HumansPlugin;
@@ -158,6 +170,9 @@ pub struct HumanRig {
     armed: bool,
     /// What's playing, and since when (seconds of game time).
     playing: Option<(&'static str, f32)>,
+    /// An upper-body animation playing over it (while moving): its node,
+    /// when it started, and its length.
+    upper: Option<(AnimationNodeIndex, f32, f32)>,
     /// The swing (or wave) already started, so it isn't started again.
     started_swing: bool,
     started_wave: bool,
@@ -174,11 +189,23 @@ pub struct HumanModels {
     files: HashMap<String, Handle<Gltf>>,
     /// Textures used as they are (paler skins), by name.
     textures: HashMap<String, Handle<Image>>,
-    /// The animations, once loaded: the graph, and each animation's node
-    /// and length (seconds) by the game's name for it.
-    animations: Option<(Handle<AnimationGraph>, HashMap<String, (AnimationNodeIndex, f32)>)>,
+    /// The animations, once loaded.
+    animations: Option<Animations>,
     /// The content version these are for.
     version: Option<String>,
+}
+
+/// The animation graph everyone shares.
+struct Animations {
+    graph: Handle<AnimationGraph>,
+    /// Each animation's node and length (seconds), by the game's name for it.
+    clips: HashMap<String, (AnimationNodeIndex, f32)>,
+    /// The upper-body versions of [`UPPER_BODY_CLIPS`].
+    upper: HashMap<String, AnimationNodeIndex>,
+    /// Whether the lower body's bones are in their mask group yet (done
+    /// when the first person is put together, as the bones' paths are only
+    /// known then; everyone shares the skeleton).
+    lower_body_known: bool,
 }
 
 impl HumanModels {
@@ -246,13 +273,18 @@ fn load_models(
     if named.iter().any(|(_, clip)| clips.get(clip).is_none()) {
         return;
     }
-    let (graph, nodes) = AnimationGraph::from_clips(named.iter().map(|(_, clip)| clip.clone()));
-    let by_name = named
-        .iter()
-        .zip(nodes)
-        .map(|((name, clip), node)| (name.clone(), (node, clips.get(clip).map_or(1.0, AnimationClip::duration))))
-        .collect();
-    models.animations = Some((graphs.add(graph), by_name));
+    let mut graph = AnimationGraph::new();
+    let mut by_name = HashMap::new();
+    let mut upper = HashMap::new();
+    for (name, clip) in &named {
+        let length = clips.get(clip).map_or(1.0, AnimationClip::duration);
+        by_name.insert(name.clone(), (graph.add_clip(clip.clone(), 1.0, graph.root), length));
+        if UPPER_BODY_CLIPS.contains(&name.as_str()) {
+            let node = graph.add_clip_with_mask(clip.clone(), 1 << LOWER_BODY, 1.0, graph.root);
+            upper.insert(name.clone(), node);
+        }
+    }
+    models.animations = Some(Animations { graph: graphs.add(graph), clips: by_name, upper, lower_body_known: false });
 }
 
 /// Whether everything a look needs has loaded.
@@ -331,7 +363,8 @@ fn dress_humans(
 #[derive(bevy::ecs::system::SystemParam)]
 struct Assembly<'w, 's> {
     commands: Commands<'w, 's>,
-    models: Res<'w, HumanModels>,
+    models: ResMut<'w, HumanModels>,
+    graphs: ResMut<'w, Assets<AnimationGraph>>,
     spawner: Res<'w, WorldInstanceSpawner>,
     meshes: ResMut<'w, Assets<Mesh>>,
     materials: ResMut<'w, Assets<StandardMaterial>>,
@@ -455,14 +488,28 @@ impl Assembly<'_, '_> {
         // The skeleton plays the animations.
         let armature_names = self.named_descendants(armature);
         let paths = paths_from(armature, &armature_names, &self.children, &self.names);
+        let mut lower_body = Vec::new();
         for (entity, path) in paths {
+            let lower = path.last().is_some_and(|bone| LOWER_BODY_BONES.iter().any(|name| bone.starts_with(name)));
             let names: Vec<Name> = path.into_iter().map(Name::new).collect();
-            self.commands.entity(entity).insert((AnimationTargetId::from_names(names.iter()), AnimatedBy(armature)));
+            let target = AnimationTargetId::from_names(names.iter());
+            if lower {
+                lower_body.push(target);
+            }
+            self.commands.entity(entity).insert((target, AnimatedBy(armature)));
         }
-        if let Some((graph, _)) = &self.models.animations {
+        if let Some(animations) = &mut self.models.animations {
+            if !animations.lower_body_known
+                && let Some(mut graph) = self.graphs.get_mut(&animations.graph)
+            {
+                for target in lower_body {
+                    graph.add_target_to_mask_group(target, LOWER_BODY);
+                }
+                animations.lower_body_known = true;
+            }
             self.commands.entity(armature).insert((
                 AnimationPlayer::default(),
-                AnimationGraphHandle(graph.clone()),
+                AnimationGraphHandle(animations.graph.clone()),
                 AnimationTransitions::new(),
             ));
         }
@@ -481,6 +528,7 @@ impl Assembly<'_, '_> {
             body_root,
             armed,
             playing: None,
+            upper: None,
             started_swing: false,
             started_wave: false,
             was_resting: false,
@@ -644,7 +692,8 @@ fn animate_humans(
     mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
     mut transforms: Query<&mut Transform>,
 ) {
-    let Some((_, clips)) = &models.animations else { return };
+    let Some(animations) = &models.animations else { return };
+    let clips = &animations.clips;
     let now = time.elapsed_secs();
     for (gait, mut rig) in &mut people {
         let Ok((mut player, mut transitions)) = players.get_mut(rig.armature) else { continue };
@@ -678,20 +727,44 @@ fn animate_humans(
         rig.started_wave = waving;
         rig.was_resting = gait.resting;
         let (moving, speed) = (gait.speed > 0.2, gait.speed);
-        if let Some(name) = one_off
-            && let Some(&(node, _)) = clips.get(name)
-        {
-            transitions.play(&mut player, node, Duration::from_secs_f32(BLEND_SECONDS * 0.5));
-            rig.playing = Some((name, now));
-            continue;
+        // An upper-body animation fades in, plays through, and fades out.
+        if let Some((node, since, length)) = rig.upper {
+            let time = now - since;
+            if time >= length {
+                player.stop(node);
+                rig.upper = None;
+            } else if let Some(active) = player.animation_mut(node) {
+                let fade = (time / UPPER_BODY_FADE).min((length - time) / UPPER_BODY_FADE).clamp(0.0, 1.0);
+                active.set_weight(UPPER_BODY_WEIGHT * fade);
+            }
         }
-        // Let a one-off finish (unless the character starts moving).
+        if let Some(name) = one_off
+            && let Some(&(node, length)) = clips.get(name)
+        {
+            // Moving, swings are for the upper body only, and the legs keep going.
+            if let Some(&upper) = animations.upper.get(name).filter(|_| moving) {
+                player.start(upper).set_weight(0.0);
+                rig.upper = Some((upper, now, length));
+            } else {
+                transitions.play(&mut player, node, Duration::from_secs_f32(BLEND_SECONDS * 0.5));
+                rig.playing = Some((name, now));
+                continue;
+            }
+        }
+        // Let a one-off finish. If the character starts moving, a swing
+        // carries on with the upper body alone, and anything else stops.
         if let Some((name, since)) = rig.playing
             && matches!(name, "attack" | "punch" | "cast" | "wave" | "sit_down" | "stand_up")
-            && clips.get(name).is_some_and(|&(_, length)| now - since < length)
-            && !(moving && matches!(name, "wave" | "sit_down" | "stand_up"))
+            && let Some(&(_, length)) = clips.get(name)
+            && now - since < length
         {
-            continue;
+            if !moving {
+                continue;
+            }
+            if let Some(&upper) = animations.upper.get(name) {
+                player.start(upper).seek_to(now - since).set_weight(UPPER_BODY_WEIGHT);
+                rig.upper = Some((upper, since, length));
+            }
         }
         let (name, rate) = if gait.jump_amount().0 > 0.0 {
             ("jump", 1.0)
