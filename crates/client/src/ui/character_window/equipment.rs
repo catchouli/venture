@@ -111,7 +111,9 @@ fn show_equipment(
         let mut any = false;
         for (index, item) in equippable {
             any = true;
-            list.spawn((BagItem(index), icon_box(BOX_SIZE), tooltip(&item, "Click to equip it.")))
+            // (The tooltip replaces the icon box's empty one.)
+            list.spawn((BagItem(index), icon_box(BOX_SIZE)))
+                .insert(tooltip(&item, "Click to equip it."))
                 .with_child(icon(&item));
         }
         if !any {
