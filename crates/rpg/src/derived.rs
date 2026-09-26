@@ -69,10 +69,19 @@ impl DerivedStats {
             armour_class: BASE_ARMOUR_CLASS + abilities.modifier(Ability::Dexterity) + gear.armour,
             attack_bonus: proficiency_bonus(level) + weapon_modifier,
             damage_bonus: weapon_modifier,
-            damage: Dice { bonus: gear.weapon_damage.bonus + weapon_modifier, ..gear.weapon_damage },
+            damage: weapon_damage(gear.weapon_damage, weapon_modifier),
             attacks_per_second: attacks_per_second(gear.weapon_speed, abilities.modifier(Ability::Dexterity)),
         }
     }
+}
+
+/// A weapon's damage with the ability's bonus added. Flat damage (such as
+/// fists') never shows as less than 1, since every hit does at least 1 (see
+/// [`crate::combat::resolve_attack`]).
+pub fn weapon_damage(dice: Dice, ability_modifier: i32) -> Dice {
+    let bonus = dice.bonus + ability_modifier;
+    let bonus = if dice.count == 0 { bonus.max(1) } else { bonus };
+    Dice { bonus, ..dice }
 }
 
 /// Most health (SRD 5.1): the whole hit die plus the Constitution modifier at
@@ -142,5 +151,6 @@ mod tests {
         assert_eq!(stats.damage.to_string(), "1d6+2");
         let unarmed = DerivedStats::of(&fighter(), 1, &abilities, &Gear::default());
         assert_eq!(unarmed.damage.to_string(), "3", "1 plus Strength's +2");
+        assert_eq!(weapon_damage(UNARMED_DAMAGE, -1).to_string(), "1", "weak fists still do 1");
     }
 }
