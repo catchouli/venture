@@ -62,6 +62,14 @@ impl Orders<'_, '_> {
         player.1.following = Some(Following { target, follow: Follow::default(), talk_on_arrival: true });
     }
 
+    /// Asks the server to attack a creature (running into reach first), and
+    /// predicts the run.
+    pub fn attack(&mut self, target: Entity, id: EntityId) {
+        let Some(player) = self.player.as_mut() else { return };
+        self.to_server.write(ToServer(ClientMessage::Attack { target: id }));
+        player.1.following = Some(Following { target, follow: Follow::default(), talk_on_arrival: false });
+    }
+
     /// Whether the player is an admin.
     pub fn is_admin(&self) -> bool {
         self.player.as_ref().is_some_and(|player| player.1.admin)

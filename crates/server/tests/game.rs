@@ -352,6 +352,11 @@ fn content_with(npcs: &str, script: &str) -> ContentPack {
 /// and new characters start with 25 Miasma and a loaf. There are two
 /// classes, Fighter and Mage.
 fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> ContentPack {
+    content_with_files(npcs, script, dialogue, &[])
+}
+
+/// Like [`content_with_dialogue`], plus more files: (path, contents).
+fn content_with_files(npcs: &str, script: &str, dialogue: Option<&str>, extra: &[(&str, &str)]) -> ContentPack {
     let folder =
         std::env::temp_dir().join(format!("venture-test-content-{}-{}", std::process::id(), fastrand_suffix()));
     let write = |path: &str, contents: &[u8]| {
@@ -378,6 +383,9 @@ fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> Co
     write("icons/thing.png", b"\x89PNG\r\n\x1a\n");
     if let Some(dialogue) = dialogue {
         write("dialogue/town.yarn", dialogue.as_bytes());
+    }
+    for (path, contents) in extra {
+        write(path, contents.as_bytes());
     }
     let pack = ContentPack::load(&folder).unwrap();
     std::fs::remove_dir_all(&folder).unwrap();
@@ -1009,4 +1017,92 @@ fn points_are_spent_on_stats_and_skills() {
     let sheet = latest_sheet(&messages).unwrap();
     assert_eq!((sheet.stats.constitution, sheet.stat_points, sheet.skill_points), (15, 1, 0));
     assert_eq!(sheet.skills, ["rest", "whack", "bash"]);
+}
+
+/// A pack with one creature near the spawn point (at (103, 100)) and a
+/// respawn point at a camp.
+fn creature_pack(creature: &str) -> ContentPack {
+    let spawner = r#"[(id: "one", creature: "beast", at: Position((103.0, 100.0)), respawn_seconds: 1.0)]"#;
+    let respawn = r#"[(name: "the camp", at: Position((80.0, 80.0))), (name: "far away", at: Position((10.0, 10.0)))]"#;
+    let extra = [("creatures/beast.ron", creature), ("spawners/one.ron", spawner), ("respawn_points.ron", respawn)];
+    content_with_files("[]", "", None, &extra)
+}
+
+/// The (first) creature's id.
+fn creature_id(server: &mut TestServer) -> EntityId {
+    let world = server.app.world_mut();
+    let mut creatures = world.query_filtered::<&NetworkId, With<venture_server::creatures::Creature>>();
+    creatures.iter(world).next().expect("a creature").0
+}
+
+#[test]
+fn killing_a_creature_gives_experience_and_it_comes_back() {
+    // Easy to hit (armour class 0), and worth a level.
+    let rabbit = r#"[(id: "beast", name: "Rabbit", level: 1, health: 4, armour_class: 0,
+        attack: (damage: "1", bonus: 0, speed: 0.5), experience: 150,
+        look: (shape: Rabbit, main: (0.5, 0.4, 0.3), trim: (0.9, 0.9, 0.9)))]"#;
+    let mut server = TestServer::with_content("hunt", creature_pack(rabbit));
+    server.run(2);
+    let (hunter, messages) = create(&mut server, TOKEN_A, "Hunter", "fighter");
+    let me = welcome_id(&messages);
+    let rabbit = creature_id(&mut server);
+
+    hunter.send(&ClientMessage::Attack { target: rabbit });
+    server.run(200);
+    let messages = hunter.receive();
+    assert!(messages.iter().any(
+        |m| matches!(m, ServerMessage::Attacked { attacker, target, .. } if *attacker == me && *target == rabbit)
+    ));
+    assert!(messages.contains(&ServerMessage::Died { id: rabbit }));
+    let notices = notices(&messages);
+    assert!(notices.contains(&"You defeat the Rabbit. (+150 experience)".to_string()), "{notices:?}");
+    assert!(notices.contains(&"You reached level 2!".to_string()));
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::PlayerChanged { level: 2, celebrate: true, .. })));
+    assert!(messages.contains(&ServerMessage::EntityLeft { id: rabbit }), "the body goes");
+    let back = messages.iter().any(
+        |m| matches!(m, ServerMessage::EntityAppeared { id, kind: EntityKind::Creature { .. }, .. } if *id != rabbit),
+    );
+    assert!(back, "and a new rabbit comes");
+}
+
+#[test]
+fn aggressive_creatures_attack_and_knocked_out_players_wake_at_the_nearest_respawn_point() {
+    // It always hits, for far more than anyone's health.
+    let goblin = r#"[(id: "beast", name: "Goblin", level: 2, health: 50, armour_class: 12,
+        attack: (damage: "100", bonus: 50, speed: 2.0), aggressive: true, experience: 30,
+        look: (shape: Goblin, main: (0.3, 0.5, 0.2), trim: (0.4, 0.3, 0.2)))]"#;
+    let mut server = TestServer::with_content("ambush", creature_pack(goblin));
+    server.run(2);
+    let (victim, messages) = create(&mut server, TOKEN_A, "Victim", "fighter");
+    let me = welcome_id(&messages);
+    assert!(latest_vitals(&messages).is_some_and(|(health, max)| health == max), "full health to start");
+
+    server.run(60);
+    let messages = victim.receive();
+    assert!(messages.contains(&ServerMessage::Died { id: me }));
+    assert!(notices(&messages).contains(&"You were knocked out by the Goblin. You wake up at the camp.".to_string()));
+    let position = messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Snapshot { entities, .. } => entities.iter().find(|e| e.id == me).map(|e| (e.x, e.y)),
+        _ => None,
+    });
+    assert_eq!(position, Some((80.0, 80.0)), "at the camp, the nearer of the two");
+    // (One blow took them from full health to none, and they woke at full
+    // health in the same tick, so their vitals may not have visibly changed.)
+    assert!(latest_vitals(&messages).is_none_or(|(health, max)| health == max), "with full health again");
+}
+
+/// The latest vitals in a batch of messages: (health, most health).
+fn latest_vitals(messages: &[ServerMessage]) -> Option<(u32, u32)> {
+    messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Vitals { health, max_health } => Some((*health, *max_health)),
+        _ => None,
+    })
+}
+
+/// The player's own id, from the welcome in a batch of messages.
+fn welcome_id(messages: &[ServerMessage]) -> EntityId {
+    messages
+        .iter()
+        .find_map(|m| if let ServerMessage::Welcome { you, .. } = m { Some(*you) } else { None })
+        .expect("a welcome")
 }

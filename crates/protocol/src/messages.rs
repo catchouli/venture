@@ -24,6 +24,48 @@ pub enum EntityKind {
         /// Its appearance (an id from the content pack's appearances).
         appearance: String,
     },
+    /// A creature that can be fought.
+    Creature {
+        /// Its level.
+        level: u32,
+        /// How it looks.
+        look: CreatureLook,
+    },
+}
+
+/// The kind of body a creature has (placeholder models, until real ones).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CreatureShape {
+    /// A rabbit: small, with long ears.
+    Rabbit,
+    /// A goblin: a short, green-skinned person with big ears and a club.
+    Goblin,
+}
+
+/// How a creature looks: its shape and colours (sRGB, each 0 to 1).
+///
+/// ```ron
+/// (shape: Rabbit, main: (0.6, 0.5, 0.4), trim: (0.9, 0.88, 0.85))
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CreatureLook {
+    /// Its shape.
+    pub shape: CreatureShape,
+    /// Its main colour (fur, or skin).
+    pub main: (f32, f32, f32),
+    /// Its second colour (a rabbit's tail and belly, a goblin's clothes).
+    pub trim: (f32, f32, f32),
+}
+
+/// How an attack went, in a [`ServerMessage::Attacked`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AttackResult {
+    /// It missed.
+    Miss,
+    /// It hit, for this much damage.
+    Hit(u32),
+    /// A critical hit, for this much damage.
+    Critical(u32),
 }
 
 /// Commands from a client. Each is a *request*; the server decides what happens.
@@ -101,6 +143,12 @@ pub enum ClientMessage {
     },
     /// Close the open shop.
     CloseShop,
+    /// Attack a creature, running into reach first and then attacking until
+    /// it dies or the player does something else.
+    Attack {
+        /// What to attack.
+        target: EntityId,
+    },
     /// An admin command (refused unless the player is an admin).
     Admin(AdminCommand),
     /// Do an emote (such as waving), for everyone nearby to see.
@@ -187,6 +235,28 @@ pub enum ServerMessage {
         admin: bool,
         /// How the player's character looks.
         look: PlayerLook,
+    },
+    /// Someone attacked something (sent to everyone nearby).
+    Attacked {
+        /// Who attacked.
+        attacker: EntityId,
+        /// What they attacked.
+        target: EntityId,
+        /// How it went.
+        result: AttackResult,
+    },
+    /// Something died (sent to everyone nearby). A creature is removed a
+    /// moment later; a player wakes up at a respawn point.
+    Died {
+        /// What died.
+        id: EntityId,
+    },
+    /// The player's own health, sent whenever it changes.
+    Vitals {
+        /// Health left.
+        health: u32,
+        /// Most health.
+        max_health: u32,
     },
     /// Someone nearby did an emote (sent to them too).
     Emoted {
@@ -306,6 +376,8 @@ pub struct EntityState {
     pub y: f32,
     /// Whether it is moving.
     pub moving: bool,
+    /// How healthy it is, from 0 to 1 (creatures only; players' health is private).
+    pub health: Option<f32>,
 }
 
 /// One line of a conversation in a [`ServerMessage::Dialogue`].
@@ -423,6 +495,8 @@ pub enum LookStyle {
     Sword,
     /// A staff, held in the right hand.
     Staff,
+    /// A crude club, held in the right hand.
+    Club,
 }
 
 /// How a worn item looks: its shape and colours (sRGB, each 0 to 1).

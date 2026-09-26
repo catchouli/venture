@@ -10,6 +10,10 @@ pub const FOLLOW_DISTANCE: f32 = 2.0;
 
 /// How close (in metres) a player must be to an NPC to talk to them.
 pub const INTERACT_DISTANCE: f32 = 3.0;
+/// How close (in metres) a character must be to hit something with a weapon.
+/// A little more than [`FOLLOW_DISTANCE`], so chasing something keeps it in reach.
+pub const MELEE_RANGE: f32 = 2.6;
+
 /// Once talking or trading with an NPC, the player may walk this far from
 /// them (in metres) before the conversation or shop closes.
 pub const TALK_RANGE: f32 = 6.0;

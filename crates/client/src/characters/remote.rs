@@ -7,7 +7,8 @@
 //!
 //! NPCs are drawn in their content appearance. When the content changes,
 //! their bodies are rebuilt in the new colours. Players are drawn in their
-//! build and their class's outfit, rebuilt if that changes (such as a new class).
+//! build and what they wear, rebuilt if that changes. Creatures are drawn as
+//! their creature, with their health (from snapshots) for the target frame.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -15,12 +16,14 @@ use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{EntityId, EntityKind, PlayerLook, ServerMessage};
 
+use crate::characters::creatures::{name_height, spawn_creature};
 use crate::characters::model::{CharacterAssets, Gait, Look, appearance_look, rebuild_body, spawn_character};
 use crate::characters::nameplates::Nameplate;
+use crate::characters::nameplates::NameplateHeight;
 use crate::characters::player::LocalPlayer;
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::content::ContentStore;
-use crate::interaction::targeting::{Level, TargetKind, Targetable};
+use crate::interaction::targeting::{Health, Level, TargetKind, Targetable};
 use crate::network::{ClientState, FromServer};
 use crate::world::query::ground_height;
 use crate::world::streaming::ChunkStore;
@@ -79,6 +82,7 @@ fn follow_server_events(
     me: Option<Single<&LocalPlayer>>,
     mut others: Query<&mut RemoteEntity>,
     mut players: Query<(&mut Level, &mut PlayerAppearance)>,
+    mut healths: Query<&mut Health>,
 ) {
     let now = time.elapsed_secs();
     let my_id = me.map(|me| me.id);
@@ -88,17 +92,28 @@ fn follow_server_events(
                 if remotes.0.contains_key(id) || Some(*id) == my_id {
                     continue;
                 }
-                let (look, target_kind, appearance) = match kind {
+                let translation = to_bevy(*x, *y, ground_height(&store, *x, *y).unwrap_or(0.0));
+                let transform = Transform::from_translation(translation);
+                let (entity, target_kind, appearance) = match kind {
                     EntityKind::Player { look, .. } => {
-                        (assets.player_look(id.0, look, &mut materials), TargetKind::Player, None)
+                        let look = assets.player_look(id.0, look, &mut materials);
+                        (spawn_character(&mut commands, &assets, transform, &look), TargetKind::Player, None)
                     }
                     EntityKind::Npc { appearance } => {
                         let look = npc_look(appearance, &content, &mut looks, &mut materials, &assets);
-                        (look, TargetKind::Npc, Some(appearance.clone()))
+                        let entity = spawn_character(&mut commands, &assets, transform, &look);
+                        (entity, TargetKind::Npc, Some(appearance.clone()))
+                    }
+                    EntityKind::Creature { look, level } => {
+                        let entity = spawn_creature(&mut commands, &assets, &mut materials, transform, look);
+                        commands.entity(entity).insert((
+                            Level(*level),
+                            Health { current: 1.0, max: 1.0 },
+                            NameplateHeight(name_height(look)),
+                        ));
+                        (entity, TargetKind::Enemy, None)
                     }
                 };
-                let translation = to_bevy(*x, *y, ground_height(&store, *x, *y).unwrap_or(0.0));
-                let entity = spawn_character(&mut commands, &assets, Transform::from_translation(translation), &look);
                 commands.entity(entity).insert((
                     Name::new(name.clone()),
                     RemoteEntity { samples: VecDeque::from([(now, (*x, *y))]), appearance },
@@ -126,9 +141,11 @@ fn follow_server_events(
             }
             ServerMessage::Snapshot { entities, .. } => {
                 for state in entities {
-                    let Some(mut other) = remotes.0.get(&state.id).and_then(|&e| others.get_mut(e).ok()) else {
-                        continue;
-                    };
+                    let Some(&entity) = remotes.0.get(&state.id) else { continue };
+                    if let (Some(fraction), Ok(mut health)) = (state.health, healths.get_mut(entity)) {
+                        health.current = fraction;
+                    }
+                    let Ok(mut other) = others.get_mut(entity) else { continue };
                     other.samples.push_back((now, (state.x, state.y)));
                     if other.samples.len() > MAX_SAMPLES {
                         other.samples.pop_front();

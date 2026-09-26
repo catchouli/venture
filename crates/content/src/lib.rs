@@ -10,6 +10,9 @@
 //!   icons/*.png         item pictures (sent to clients)
 //!   new_characters.ron  what new characters start with (server only)
 //!   classes/*.ron       the classes players choose from (server only)
+//!   creatures/*.ron     creatures that can be fought (server only)
+//!   spawners/*.ron      where creatures live (server only)
+//!   respawn_points.ron  where players wake up after dying (server only)
 //!   skills/*.ron        what skills do (sent to clients)
 //!   npcs/*.ron          who lives where (server only)
 //!   shops/*.ron         what shops sell (server only)
@@ -37,7 +40,8 @@ pub use client::{
     CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_appearances, parse_items, parse_skills,
 };
 pub use definitions::{
-    AppearanceDef, ClassDef, ClassSkill, Colour, Equippable, ItemCount, ItemDef, NewCharacterDef, NpcDef, OutfitStyle,
-    Placement, QuestDef, QuestStage, ShopDef, ShopItem, SkillDef, SkillEffect, WeaponDef,
+    AppearanceDef, ClassDef, ClassSkill, Colour, CreatureAttack, CreatureDef, Equippable, ItemCount, ItemDef,
+    NewCharacterDef, NpcDef, OutfitStyle, Placement, QuestDef, QuestStage, RespawnPoint, ShopDef, ShopItem, SkillDef,
+    SkillEffect, SpawnerDef, WeaponDef,
 };
 pub use load::{ContentError, ContentPack};

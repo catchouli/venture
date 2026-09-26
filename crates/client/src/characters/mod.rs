@@ -1,6 +1,8 @@
 //! Characters: the placeholder character model, the player's own character,
-//! other players, the names and speech bubbles above them, the level-up effect and emotes.
+//! other players, the names and speech bubbles above them, the level-up effect, emotes, creatures, and what fights look like.
 
+pub mod combat_effects;
+pub mod creatures;
 pub mod emotes;
 pub mod level_up;
 pub mod model;
@@ -24,6 +26,8 @@ impl Plugin for CharactersPlugin {
             speech::SpeechPlugin,
             level_up::LevelUpPlugin,
             emotes::EmotesPlugin,
+            creatures::CreaturesPlugin,
+            combat_effects::CombatEffectsPlugin,
         ));
     }
 }

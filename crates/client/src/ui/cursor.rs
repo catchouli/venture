@@ -31,7 +31,6 @@ impl Plugin for CursorPlugin {
 
 /// Which cursor to show.
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
-#[allow(dead_code)] // `Attack` is waiting for creatures.
 pub enum CursorStyle {
     /// The normal pointer.
     #[default]
@@ -73,6 +72,7 @@ fn choose_cursor_style(
     let wanted = match over_selected.and_then(|entity| targetables.get(entity).ok()) {
         Some(Targetable { kind: TargetKind::Player, .. }) => CursorStyle::Follow,
         Some(Targetable { kind: TargetKind::Npc, .. }) => CursorStyle::Talk,
+        Some(Targetable { kind: TargetKind::Enemy, .. }) => CursorStyle::Attack,
         _ => CursorStyle::Pointer,
     };
     if *style != wanted {

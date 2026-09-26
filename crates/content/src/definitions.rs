@@ -1,7 +1,7 @@
 //! The kinds of things a content pack defines.
 
 use serde::{Deserialize, Serialize};
-use venture_protocol::{BodyType, EquipSlot, ItemLook};
+use venture_protocol::{BodyType, CreatureLook, EquipSlot, ItemLook};
 use venture_rpg::{Abilities, Ability, ClassRules, Dice};
 
 /// The cut of an NPC's clothes.
@@ -369,6 +369,96 @@ pub(crate) const MAX_ITEM_DESCRIPTION_CHARS: usize = 200;
 
 /// The largest a class's hit die may be.
 pub(crate) const MAX_HIT_DIE: u32 = 20;
+
+/// A creature that can be fought.
+///
+/// ```ron
+/// (id: "rabbit", name: "Rabbit", level: 1, health: 4, armour_class: 8,
+///  attack: (damage: "1d2", bonus: 0, speed: 0.6), experience: 10, wander_radius: 6.0,
+///  look: (shape: Rabbit, main: (0.55, 0.45, 0.35), trim: (0.92, 0.9, 0.86)))
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreatureDef {
+    /// Unique name, used by spawners.
+    pub id: String,
+    /// The name shown to players.
+    pub name: String,
+    /// Its level, shown to players.
+    pub level: u32,
+    /// Its most health.
+    pub health: u32,
+    /// How hard it is to hit (SRD 5.1: attacks hit if d20 + bonus reaches it).
+    pub armour_class: i32,
+    /// How it fights back.
+    pub attack: CreatureAttack,
+    /// Whether it attacks players who come near, rather than only fighting back.
+    #[serde(default)]
+    pub aggressive: bool,
+    /// How near (in metres) a player must come for an aggressive creature to notice them.
+    #[serde(default = "default_aggro_radius")]
+    pub aggro_radius: f32,
+    /// How far from home (in metres) it wanders when it isn't fighting.
+    #[serde(default)]
+    pub wander_radius: f32,
+    /// Experience for killing it.
+    pub experience: u64,
+    /// How it looks.
+    pub look: CreatureLook,
+}
+
+fn default_aggro_radius() -> f32 {
+    10.0
+}
+
+/// How a creature attacks.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreatureAttack {
+    /// Its damage dice (such as `"1d4+1"`).
+    pub damage: Dice,
+    /// Added to its attack rolls.
+    pub bonus: i32,
+    /// Attacks per second.
+    pub speed: f32,
+}
+
+/// A spawner: keeps one creature alive somewhere, bringing a new one a while
+/// after it dies.
+///
+/// ```ron
+/// (id: "rabbit_east", creature: "rabbit", at: StartingSettlement(offset: (35.0, 5.0)),
+///  radius: 8.0, respawn_seconds: 20.0)
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpawnerDef {
+    /// Unique name.
+    pub id: String,
+    /// Which creature (a [`CreatureDef`] id).
+    pub creature: String,
+    /// Where: creatures appear within `radius` of here.
+    pub at: Placement,
+    /// How far from `at` (in metres) a creature may appear.
+    #[serde(default)]
+    pub radius: f32,
+    /// How long after one dies the next appears, in seconds.
+    pub respawn_seconds: f32,
+}
+
+/// A place players wake up after dying. They wake at the nearest one.
+///
+/// ```ron
+/// (name: "the town square", at: StartingSettlement(offset: (0.0, 0.0)))
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RespawnPoint {
+    /// Its name, as in "You wake up in {name}."
+    pub name: String,
+    /// Where it is.
+    pub at: Placement,
+}
 
 /// The most characters in an NPC's name.
 pub(crate) const MAX_NPC_NAME_CHARS: usize = 32;

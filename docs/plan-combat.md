@@ -95,7 +95,7 @@ One window with tabs, each with its own key:
 - **Every character starts with Rest** (sit down and recover faster). The
   Fighter also starts with **Whack**, the Mage with **Air Blast**.
 
-## Step 3: creatures and spawners
+## Step 3: creatures and spawners (done)
 
 - **Creatures** in the content pack (`creatures/*.ron`):
   - Name, level, appearance, stats, health, armour class and attack.
@@ -113,7 +113,13 @@ One window with tabs, each with its own key:
   Selecting one shows its health bar in the target frame, which already exists
   for this.
 
-## Step 4: fighting
+## Step 4: fighting (done)
+
+As built: auto-attack chases into melee range (2.6 m) and swings at the
+character's attack speed. Health comes back out of combat (after 6 seconds,
+1/20 of the maximum every 3 seconds). Resting comes with step 5. Floating
+numbers show every hit and miss, and the dead fall over. Players can't fight
+each other.
 
 - **The Attack action** (click a selected creature again, `/attack`, or the
   skills tab). It works like following: the character runs into range, then

@@ -46,7 +46,6 @@ pub struct Targetable {
 /// What kind of thing a target is, which decides what the target frame shows
 /// and what clicking it again does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // Creatures are coming later.
 pub enum TargetKind {
     /// Another player: clicking again follows them. Their health isn't shown.
     Player,
@@ -59,7 +58,6 @@ pub enum TargetKind {
 
 /// How healthy a creature is, shown in the target frame.
 #[derive(Component, Clone, Copy, Debug)]
-#[allow(dead_code)] // Creatures are coming later.
 pub struct Health {
     /// Current health.
     pub current: f32,

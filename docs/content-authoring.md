@@ -44,6 +44,9 @@ content/
   appearances/*.ron    how characters look (sent to clients)
   items/*.ron          things players can carry (sent to clients)
   icons/*.png          item pictures (sent to clients)
+  creatures/*.ron      creatures: stats, attack, behaviour and look
+  spawners/*.ron       where creatures live
+  respawn_points.ron   where knocked-out players wake up
   new_characters.ron   what new characters start with
   npcs/*.ron           who lives where
   shops/*.ron          what shops sell
@@ -179,6 +182,58 @@ everyone knows:
 ```ron
 (miasma: 25, items: [(item: "bread", count: 1)], skills: ["rest"])
 ```
+
+### Creatures
+
+```ron
+[
+    (
+        id: "goblin",
+        name: "Goblin",
+        level: 2,
+        health: 9,
+        armour_class: 12,
+        // Hits if d20 + bonus reaches the target's armour class. speed is attacks per second.
+        attack: (damage: "1d4", bonus: 2, speed: 0.7),
+        aggressive: true,      // attacks players within aggro_radius; otherwise only fights back
+        aggro_radius: 9.0,
+        wander_radius: 5.0,    // how far from home it strolls
+        experience: 35,        // given to whoever kills it
+        look: (shape: Goblin, main: (0.42, 0.58, 0.28), trim: (0.40, 0.30, 0.20)),
+    ),
+]
+```
+
+The shapes are placeholder models drawn by the client (`Rabbit` and `Goblin`
+so far), coloured with `main` and `trim`. A creature led more than 30 m from
+home gives up, goes back, and heals.
+
+### Spawners
+
+```ron
+[
+    (id: "goblin_north", creature: "goblin", at: StartingSettlement(offset: (0.0, -85.0)),
+     radius: 10.0, respawn_seconds: 45.0),
+]
+```
+
+Each spawner keeps one creature alive somewhere walkable within `radius`
+metres of `at` (placed like NPCs), and brings a new one `respawn_seconds`
+after it dies. A spawner with no walkable ground in its radius (say, in a
+lake) logs a warning and spawns nothing. Changing spawners or creatures
+restarts all spawners.
+
+### Respawn points
+
+```ron
+[
+    (name: "the town square", at: StartingSettlement(offset: (0.0, 0.0))),
+]
+```
+
+A knocked-out player wakes up at the nearest one ("You wake up at the town
+square.") with full health and nothing lost. With none, they wake at the
+starting spawn point.
 
 ### Shops
 

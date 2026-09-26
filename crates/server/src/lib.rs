@@ -21,6 +21,8 @@
 //!    code that changes players in the game).
 //! 5. [`dialogue`]: runs each player's private conversations with NPCs.
 //! 6. [`shops`]: buying and selling.
+//! 7. [`creatures`] and [`combat`]: creatures and fighting them (combat is the
+//!    only code that damages anything).
 //!
 //! Inventories and quest logs are the exception that proves the rule: several
 //! modules may change them (shops, dialogue), but only through their own
@@ -39,8 +41,10 @@
 
 pub mod admin;
 pub mod character;
+pub mod combat;
 pub mod config;
 pub mod content;
+pub mod creatures;
 pub mod dialogue;
 pub mod entities;
 pub mod equipment;
@@ -107,6 +111,10 @@ pub enum ServerSystems {
     Gameplay,
     /// NPCs: matching the content, running their scripts, applying script commands.
     Npcs,
+    /// Creatures: spawners, and what creatures do.
+    Creatures,
+    /// Fights: attacks, damage, death and health.
+    Combat,
     /// Conversations with NPCs.
     Dialogue,
     /// Shops.
@@ -137,6 +145,8 @@ impl GameServer {
                     ServerSystems::Sessions,
                     ServerSystems::Gameplay,
                     ServerSystems::Npcs,
+                    ServerSystems::Creatures,
+                    ServerSystems::Combat,
                     ServerSystems::Dialogue,
                     ServerSystems::Shops,
                     ServerSystems::Updates,
@@ -155,6 +165,8 @@ impl GameServer {
                 character::CharacterPlugin,
                 admin::AdminPlugin,
                 equipment::EquipmentPlugin,
+                creatures::CreaturesPlugin,
+                combat::CombatPlugin,
                 content::ContentPlugin,
             ));
     }

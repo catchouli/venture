@@ -61,6 +61,9 @@ fn handle_click(
             Ok(TargetKind::Npc) if already_selected => {
                 actions.write(PerformAction(Action::Talk));
             }
+            Ok(TargetKind::Enemy) if already_selected => {
+                actions.write(PerformAction(Action::Attack));
+            }
             _ => target.0 = Some(clicked),
         }
         return;
