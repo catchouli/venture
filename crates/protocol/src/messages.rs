@@ -148,6 +148,8 @@ pub enum ClientMessage {
     },
     /// Go back to the starting town's square.
     ReturnToTown,
+    /// Jump (for show: it doesn't change where the character can go).
+    Jump,
     /// Pick one of the options in the open conversation ([`ServerMessage::Dialogue`]).
     ChooseDialogueOption {
         /// The option's position in the list, from 0.
@@ -326,6 +328,11 @@ pub enum ServerMessage {
         mana: u32,
         /// Most mana.
         max_mana: u32,
+    },
+    /// Someone nearby jumped (sent to everyone nearby but them).
+    Jumped {
+        /// Who.
+        id: EntityId,
     },
     /// Someone nearby did an emote (sent to them too).
     Emoted {

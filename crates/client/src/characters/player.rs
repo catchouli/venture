@@ -44,6 +44,7 @@ impl Plugin for PlayerPlugin {
                 place_on_welcome,
                 restyle_when_changed,
                 steer_with_keyboard.run_if(in_state(ClientState::Playing)),
+                jump_with_space.run_if(in_state(ClientState::Playing)),
                 stop_following_when_deselected,
                 predict_following,
                 predict_movement,
@@ -164,6 +165,20 @@ fn restyle_when_changed(
             player.look = look.clone();
             rebuild_body(&mut commands, entity, &assets, &assets.player_look(id.0, look, &mut materials));
         }
+    }
+}
+
+/// The spacebar jumps (unless typing, or flying the free camera): at once,
+/// and the server tells everyone nearby.
+fn jump_with_space(
+    keys: Res<ButtonInput<KeyCode>>,
+    mode: Res<CameraMode>,
+    focus: Res<KeyboardFocus>,
+    mut to_server: MessageWriter<ToServer>,
+    mut gait: Single<&mut Gait, With<LocalPlayer>>,
+) {
+    if keys.just_pressed(KeyCode::Space) && *mode == CameraMode::Follow && !focus.is_typing() && gait.jump() {
+        to_server.write(ToServer(ClientMessage::Jump));
     }
 }
 

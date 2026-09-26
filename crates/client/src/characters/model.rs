@@ -11,6 +11,7 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use bevy::prelude::*;
 use venture_content::{AppearanceDef, Colour, OutfitStyle};
 use venture_protocol::{BodyType, ItemLook, LookStyle, PlayerLook};
+use venture_simulation::JUMP_SECONDS;
 
 /// Distance covered by one full running cycle (two steps), in metres.
 const STRIDE_LENGTH: f32 = 2.6;
@@ -22,6 +23,8 @@ const BLEND_RATE: f32 = 8.0;
 const SWING_SECONDS: f32 = 0.45;
 /// How long a wave lasts, in seconds.
 const WAVE_SECONDS: f32 = 1.8;
+/// How high a jump goes, in metres.
+const JUMP_HEIGHT: f32 = 0.45;
 /// How quickly characters sit down and stand up (higher is quicker).
 const SIT_RATE: f32 = 6.0;
 /// How far the hips drop when sitting, in metres.
@@ -55,6 +58,8 @@ pub struct Gait {
     swinging: Option<f32>,
     /// Whether the character is sitting down to rest. Set from snapshots.
     pub resting: bool,
+    /// Seconds into a jump, if the character is in the air.
+    jumping: Option<f32>,
     /// How far down they are, from `0.0` (standing) to `1.0` (sitting).
     sitting: f32,
 }
@@ -63,6 +68,28 @@ impl Gait {
     /// Starts a friendly wave of the right hand (or starts it over).
     pub fn wave(&mut self) {
         self.waving = Some(0.0);
+    }
+
+    /// Jumps, unless already in the air. Returns whether it did.
+    pub fn jump(&mut self) -> bool {
+        let ready = self.jumping.is_none();
+        if ready {
+            self.jumping = Some(0.0);
+        }
+        ready
+    }
+
+    /// How high the jump has lifted the character (metres), and how far
+    /// through it they are (0 to 1), while in the air.
+    fn jump_amount(&self) -> (f32, f32) {
+        match self.jumping {
+            Some(time) => {
+                let progress = (time / JUMP_SECONDS).clamp(0.0, 1.0);
+                // A parabola: up quickly, a moment at the top, and down.
+                (JUMP_HEIGHT * 4.0 * progress * (1.0 - progress), progress)
+            }
+            None => (0.0, 0.0),
+        }
     }
 
     /// Starts a swing of the weapon (or fist), as in an attack.
@@ -648,6 +675,9 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
         if let Some(time) = gait.swinging {
             gait.swinging = Some(time + dt).filter(|&time| time < SWING_SECONDS);
         }
+        if let Some(time) = gait.jumping {
+            gait.jumping = Some(time + dt).filter(|&time| time < JUMP_SECONDS);
+        }
         let target = if gait.resting { 1.0 } else { 0.0 };
         gait.sitting += (target - gait.sitting) * (SIT_RATE * dt).min(1.0);
     }
@@ -659,7 +689,10 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
         let (wave, wave_time) = gait.wave_amount();
         // Sitting lowers the body to the ground and lays the legs out in front.
         let sit = gait.sitting;
-        let drop = SIT_DROP * sit;
+        // Jumping lifts the whole body, tucking the legs up in the middle of it.
+        let (lift, jump) = gait.jump_amount();
+        let tuck = if jump > 0.0 { (jump * PI).sin() } else { 0.0 };
+        let drop = SIT_DROP * sit - lift;
         transform.rotation = match joint.kind {
             JointKind::Body => {
                 // Bob up at each footfall, lean into the run and twist with the stride.
@@ -669,13 +702,13 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
             JointKind::Hip(side) => {
                 transform.translation.y = HIP_HEIGHT - drop;
                 let leg = phase + side.phase_offset();
-                Quat::from_rotation_x(-0.75 * leg.sin() * run - FRAC_PI_2 * sit)
+                Quat::from_rotation_x(-0.75 * leg.sin() * run - FRAC_PI_2 * sit - 0.5 * tuck)
                     * Quat::from_rotation_z(side.sign() * 0.12 * sit)
             }
             JointKind::Knee(side) => {
                 // Bends most while the leg swings forward, and slightly when standing.
                 let leg = phase + side.phase_offset();
-                Quat::from_rotation_x(run * (0.2 + 1.1 * leg.cos().max(0.0)) + 0.03 + 0.25 * sit)
+                Quat::from_rotation_x(run * (0.2 + 1.1 * leg.cos().max(0.0)) + 0.03 + 0.25 * sit + 0.9 * tuck)
             }
             JointKind::Shoulder(side) => {
                 // Arms swing against the leg on the same side, and hang slightly
