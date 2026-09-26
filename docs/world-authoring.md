@@ -14,6 +14,9 @@ parameterised generators that know nothing about the world, so any of them
 could also be its own little app. Everything that shapes the world
 physically is baked into the world files at bake time.
 
+The app is being built first as a general editor for all content, starting
+with what exists today: see [plan-editor.md](plan-editor.md).
+
 This is the plan; little of it exists yet. Today's pieces are the overlay
 stamps (see [world-generation-engine.md](world-generation-engine.md)), the
 generator's own prop scattering and roads, and content placed relative to
