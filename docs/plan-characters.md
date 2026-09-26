@@ -1,8 +1,18 @@
 # Plan: real character models, and a character creator
 
-The characters are still placeholder shapes (spheres and boxes, animated in
-code). This plan replaces them with real models and animations as cheaply as
-possible, then grows into a **character creator**: sliders and choices
+**Status (September 2026):** steps 1 to 4 are done, with Quaternius's
+Universal Base Characters, Modular Character Outfits, Universal Animation
+Library and Fantasy Props (all CC0). People are a body, hair and outfit
+parts on one skeleton, dressed by what they wear, holding their sword and
+shield; see "Character models" in [content-authoring.md](content-authoring.md)
+and `crates/client/src/characters/humans.rs`. Still to do: the creator
+(steps 5 and 6), creatures (step 7), upper-body masks (attacking while
+running plays the attack on the whole body), a sit-on-the-ground animation
+(resting kneels for now), grips for staffs and clubs (placeholder shapes for
+now), and a check of the download size and frame rate on the web.
+
+This plan replaced the placeholder shapes (spheres and boxes, animated in
+code) with real models and animations as cheaply as possible, then grows into a **character creator**: sliders and choices
 (build, face, hair, colours, outfits) that make every human from the same
 parts. Designers use it to make NPCs, and later players use it too.
 

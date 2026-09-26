@@ -50,6 +50,13 @@ pub struct AppearanceDef {
     /// The cut of their clothes (a tunic if not given).
     #[serde(default)]
     pub outfit: OutfitStyle,
+    /// Their hairstyle (from `characters/characters.ron`), if not their body's usual one.
+    #[serde(default)]
+    pub hairstyle: Option<String>,
+    /// The outfit parts they wear (from `characters/characters.ron`), if not
+    /// the ones for their outfit style.
+    #[serde(default)]
+    pub parts: Vec<String>,
 }
 
 /// A non-player character.
@@ -148,8 +155,13 @@ pub struct Equippable {
     /// What it does as a weapon (for items in the `Weapon` slot).
     #[serde(default)]
     pub weapon: Option<WeaponDef>,
-    /// How it shows on the character.
+    /// How it shows on the character (the simple shapes drawn when the
+    /// character models aren't available).
     pub look: ItemLook,
+    /// The outfit parts it puts on the character (from
+    /// `characters/characters.ron`): clothes, armour, or a weapon in hand.
+    #[serde(default)]
+    pub parts: Vec<String>,
 }
 
 /// A weapon's part in the rules.

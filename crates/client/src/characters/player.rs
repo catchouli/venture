@@ -11,6 +11,7 @@ use venture_protocol::{ClientMessage, EntityId, PlayerLook, ServerMessage};
 use venture_simulation::{Follow, FollowOutcome, Movement, Rules, step};
 
 use crate::camera::{CameraHeading, CameraMode, wasd_direction};
+use crate::characters::humans::HumanLook;
 use crate::characters::model::{CharacterAssets, Gait, rebuild_body, spawn_character};
 use crate::characters::nameplates::Nameplate;
 use crate::common::coords::{from_bevy, to_bevy};
@@ -122,6 +123,7 @@ fn place_on_welcome(
         let translation = to_bevy(*x, *y, ground_height(&store, *x, *y).unwrap_or(0.0));
         if let Ok((entity, mut player, mut transform, mut nameplate)) = players.single_mut() {
             rebuild_body(&mut commands, entity, &assets, &look);
+            commands.entity(entity).insert(HumanLook::of_player(server_look));
             player.id = *you;
             player.movement = Movement::Idle;
             player.following = None;
@@ -133,6 +135,7 @@ fn place_on_welcome(
         }
         let character = spawn_character(&mut commands, &assets, Transform::from_translation(translation), &look);
         commands.entity(character).insert((
+            HumanLook::of_player(server_look),
             Name::new("Player"),
             LocalPlayer {
                 id: *you,
@@ -164,6 +167,7 @@ fn restyle_when_changed(
         {
             player.look = look.clone();
             rebuild_body(&mut commands, entity, &assets, &assets.player_look(id.0, look, &mut materials));
+            commands.entity(entity).insert(HumanLook::of_player(look));
         }
     }
 }

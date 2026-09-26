@@ -117,6 +117,7 @@ fn show_fights(
     others: Query<(Entity, &Targetable)>,
     mut gaits: Query<&mut Gait>,
     places: Query<(&GlobalTransform, Option<&NameplateHeight>)>,
+    mut facings: Query<&mut Transform, With<Gait>>,
 ) {
     let my_id = me.as_ref().map(|me| me.1.id);
     let find = |id: EntityId| match me.as_ref().filter(|me| me.1.id == id) {
@@ -137,6 +138,10 @@ fn show_fights(
                 let swings = def.is_none_or(|def| matches!(def.effect, AbilityEffect::Strike { .. }));
                 if swings && let Some(mut gait) = find(*attacker).and_then(|entity| gaits.get_mut(entity).ok()) {
                     gait.swing();
+                }
+                // Attackers turn to face what they're attacking.
+                if let (Some(from), Some(to)) = (find(*attacker), find(*hit)) {
+                    face(&mut facings, &places, from, to);
                 }
                 let Some((top, chest)) = find(*hit).and_then(spots) else { continue };
                 let (text, colour, size) = match result {
@@ -161,12 +166,15 @@ fn show_fights(
             }
             ServerMessage::AbilityUsed { user, ability, target: aimed } => {
                 let (Some(def), Some(user)) = (content.abilities.get(ability), find(*user)) else { continue };
+                if let Some(aimed_at) = aimed.and_then(find) {
+                    face(&mut facings, &places, user, aimed_at);
+                }
                 let (r, g, b) = def.visual.colour;
                 let colour = Color::srgb(r, g, b);
                 match def.effect {
                     AbilityEffect::Bolt { speed, .. } => {
                         if let Ok(mut gait) = gaits.get_mut(user) {
-                            gait.swing();
+                            gait.cast();
                         }
                         let (Some(target), Some((_, from))) = (aimed.and_then(find), spots(user)) else { continue };
                         let material = materials.add(StandardMaterial {
@@ -231,6 +239,23 @@ fn spawn_glow(
     });
     let transform = Transform::from_translation(at).with_scale(Vec3::splat(0.05 * size));
     commands.spawn((Mesh3d(mesh.0.clone()), MeshMaterial3d(material), transform, NotShadowCaster)).id()
+}
+
+/// Turns a character to face another (about the vertical, as characters face +Z).
+fn face(
+    facings: &mut Query<&mut Transform, With<Gait>>,
+    places: &Query<(&GlobalTransform, Option<&NameplateHeight>)>,
+    from: Entity,
+    to: Entity,
+) {
+    let (Ok((from_place, _)), Ok((to_place, _))) = (places.get(from), places.get(to)) else { return };
+    let direction = to_place.translation() - from_place.translation();
+    if direction.x.abs() + direction.z.abs() < 0.01 {
+        return;
+    }
+    if let Ok(mut transform) = facings.get_mut(from) {
+        transform.rotation = Quat::from_rotation_y(direction.x.atan2(direction.z));
+    }
 }
 
 /// A number (damage, "Miss", healing) floating up from a spot.

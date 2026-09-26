@@ -86,6 +86,10 @@ This work includes material taken from the System Reference Document 5.1
 licensed under the Creative Commons Attribution 4.0 International License
 available at <https://creativecommons.org/licenses/by/4.0/legalcode>.
 
+The character models, outfits, animations, sword and shield are by
+[Quaternius](https://quaternius.com) (CC0). Every outside asset and its
+licence is listed in [licenses/README.md](licenses/README.md).
+
 ## Repository layout
 
 ```

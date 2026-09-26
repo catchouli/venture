@@ -30,28 +30,30 @@ mod world;
 use bevy::prelude::*;
 
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Venture".into(),
-                // On the web, size the game to fill its canvas's parent element.
-                fit_canvas_to_parent: true,
-                ..default()
-            }),
+    let mut app = App::new();
+    // The content's model files are read from memory, once downloaded (before the asset plugin).
+    content::ContentAssets::default().register(&mut app);
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: "Venture".into(),
+            // On the web, size the game to fill its canvas's parent element.
+            fit_canvas_to_parent: true,
             ..default()
-        }))
-        .insert_resource(dev::settings::DevSettings::from_environment())
-        .insert_resource(network::launch::ServerChoice::from_environment())
-        .add_plugins((
-            network::NetworkPlugin,
-            content::ContentPlugin,
-            world::WorldPlugin,
-            characters::CharactersPlugin,
-            camera::CameraPlugin,
-            interaction::InteractionPlugin,
-            ui::UiPlugin,
-            sound::SoundPlugin,
-            dev::DevPlugin,
-        ))
-        .run();
+        }),
+        ..default()
+    }))
+    .insert_resource(dev::settings::DevSettings::from_environment())
+    .insert_resource(network::launch::ServerChoice::from_environment())
+    .add_plugins((
+        network::NetworkPlugin,
+        content::ContentPlugin,
+        world::WorldPlugin,
+        characters::CharactersPlugin,
+        camera::CameraPlugin,
+        interaction::InteractionPlugin,
+        ui::UiPlugin,
+        sound::SoundPlugin,
+        dev::DevPlugin,
+    ))
+    .run();
 }

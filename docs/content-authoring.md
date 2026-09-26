@@ -42,6 +42,8 @@ content/
   classes/*.ron        the classes players choose from
   abilities/*.ron      what abilities do (sent to clients)
   appearances/*.ron    how characters look (sent to clients)
+  characters/          character models: bodies, hair, outfit parts, held things and
+                       animations (glTF), and characters.ron, which names them (sent to clients)
   items/*.ron          things players can carry (sent to clients)
   icons/*.png          item, ability and action pictures (sent to clients)
   skills/*.ron         gathering and making skills (sent to clients)
@@ -257,7 +259,66 @@ Real recordings can replace them file for file.
 
 Colours are sRGB red, green and blue, each from 0 to 1. `body` (`Masculine`,
 `Feminine` or `Androgynous`) sets the build and hair, and `outfit` (`Tunic`,
-`Armour` or `Robe`) the cut of the clothes; both are optional.
+`Armour` or `Robe`) the cut of the clothes; both are optional. With character
+models, `outfit` picks a set of parts from `characters.ron`; `parts: [...]`
+names parts to wear instead, and `hairstyle: "hair_long"` a hairstyle other
+than the body's usual one. The colours still dress the placeholder shapes
+(shown until the models load); on models, so far only the hair colour is
+used, and the skin colour picks the lighter or darker skin texture.
+
+### Character models
+
+People (players and NPCs) are a body, hair, and outfit parts, all glTF models
+on one shared skeleton, animated by one file of animations. They live in
+`characters/`, with `characters.ron` saying what's what:
+
+```ron
+(
+    animations: "animations.glb",
+    clips: { "idle": "Idle_Loop", "run": "Jog_Fwd_Loop", /* ... */ },
+    bodies: (
+        masculine: (model: "body_male.gltf", fits: Masculine, hair: "hair_simpleparted",
+                    light_skin: "t_superhero_male_ligh.png"),
+        feminine: (/* ... */), androgynous: (/* ... */),
+    ),
+    hair: { "hair_long": "hair_long.gltf" },
+    parts: {
+        "ranger_body": (masculine: "male_ranger_body.gltf", feminine: "female_ranger_body.gltf",
+                        covers: [Torso]),
+        "ranger_hood": (masculine: "male_ranger_head_hood.gltf", hides_hair: true),
+        "bronze_sword": (masculine: "sword_bronze.gltf",
+                         held: (bone: "hand_r", position: (0, 0.05, 0), rotation: (0, 0, 0), scale: 1)),
+    },
+    plain_clothes: ["peasant_body", "peasant_arms", "peasant_legs", "peasant_feet"],
+    outfits: { "Tunic": [/* parts */], "Armour": [/* ... */], "Robe": [/* ... */] },
+)
+```
+
+- **clips** maps the game's animation names to names in the animations file.
+  The game needs `idle`, `walk`, `run`, `attack` (with a weapon), `punch`
+  (without), `cast`, `sit_down`, `sitting` and `stand_up` (resting), `jump`,
+  `wave`, `hit` and `death`.
+- **bodies**: each body type's model, which parts fit it (parts are made
+  for masculine or feminine bodies; a part with only one model uses it on
+  both), its usual hairstyle, and a paler skin texture.
+- **parts** are clothes and armour (worn on the skeleton) or, with `held`,
+  things attached to a bone (`hand_r`, `hand_l`, `lowerarm_r`, `lowerarm_l`,
+  `Head`, `spine_03`, `pelvis`, `root`), placed in the bone's own directions
+  (metres, and degrees about X, Y, then Z). `covers` hides the body under the
+  part (`Torso`, `Arms`, `Hands`, `Hips`, `Legs`, `Feet`) so skin doesn't
+  poke through, and `hides_hair` is for hoods and helmets.
+- **plain_clothes** fill in wherever nothing worn covers the body.
+- **outfits** are the parts for each appearance `outfit`.
+
+Items put parts on whoever wears them (`parts` in `equip`, below). A weapon
+without a held part shows as a placeholder shape in the hand. The server
+only sends the ids of what a player wears; the client works out the parts.
+
+The models come from Quaternius's CC0 packs (see `licenses/README.md`).
+`python3 tools/import_characters.py ~/assets` copies them in from the
+downloads: it shrinks textures, drops what Bevy can't use, and keeps only the
+animations in its list (so add a new animation there first). Model files are
+kept in Git LFS.
 
 ### Items
 
@@ -283,6 +344,7 @@ Colours are sRGB red, green and blue, each from 0 to 1. `body` (`Masculine`,
             weapon: Some((damage: "1d6", speed: 1.0, stat: Strength)),   // for DominantHand items
             armour: 0,                  // optional: armour class it adds
             look: (style: Sword, main: (0.72, 0.74, 0.78), trim: (0.36, 0.23, 0.13)),
+            parts: ["bronze_sword"],    // optional: outfit parts it puts on (see Character models)
         )),
     ),
 ]
@@ -290,8 +352,8 @@ Colours are sRGB red, green and blue, each from 0 to 1. `body` (`Masculine`,
 
 An item's `look` is how it shows on the character: `Plates` (chest and back),
 `LegPlates`, `Robe` (shoulders to ankles), `Sword` or `Staff` (in the right
-hand), in a main and a trim colour. They're placeholder shapes until real
-models. A weapon's `speed` is attacks per second before Dexterity, and its
+hand), in a main and a trim colour: the placeholder shapes, shown until the
+character models load, and for weapons with no held part. A weapon's `speed` is attacks per second before Dexterity, and its
 `stat` is the one it attacks and does damage with.
 
 Money is **Miasma**, kept on the character rather than in the inventory. Icons are small PNGs

@@ -507,6 +507,8 @@ pub struct ClassChoice {
     pub description: String,
     /// How its starting equipment looks (for the preview).
     pub worn: Vec<ItemLook>,
+    /// The outfit parts its starting equipment puts on (for the preview).
+    pub outfit: Vec<String>,
 }
 
 /// A character's build. It only changes how they look.
@@ -609,8 +611,11 @@ pub struct ItemLook {
 pub struct PlayerLook {
     /// Their build.
     pub body: BodyType,
-    /// How each item they wear looks.
+    /// How each item they wear looks (as simple shapes).
     pub worn: Vec<ItemLook>,
+    /// The outfit parts what they wear puts on them (names from the
+    /// content's `characters/characters.ron`).
+    pub outfit: Vec<String>,
 }
 
 /// Everything about the player's own character, for the stats tab

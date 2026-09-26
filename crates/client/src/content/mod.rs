@@ -8,11 +8,15 @@
 //! files are read straight from the server running inside the client.
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use bevy::asset::RenderAssetUsages;
+use bevy::asset::io::AssetSourceBuilder;
+use bevy::asset::io::memory::{Dir, MemoryAssetReader};
 use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
+use venture_content::characters::{CharacterModels, parse_character_models};
 use venture_content::layout::{UiNode, UiStyles, parse_layout, parse_styles};
 use venture_content::{
     AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, SkillDef, ThemeDef,
@@ -70,6 +74,11 @@ pub struct ContentStore {
     pub layouts: HashMap<String, UiNode>,
     /// The interface's text styles, colours and bar colours, if the content has them.
     pub ui_styles: Option<UiStyles>,
+    /// Character models, if the content has them. (The model files
+    /// themselves go to the asset server: see [`ContentAssets`].)
+    pub character_models: Option<CharacterModels>,
+    /// Model files that changed in the last download (to reload).
+    pub changed_models: Vec<String>,
     /// The files held, by path, with their hashes (to skip unchanged files).
     files: HashMap<String, ContentFile>,
 }
@@ -80,6 +89,27 @@ impl ContentStore {
         self.icons.get(&self.items.get(item)?.icon).cloned()
     }
 }
+
+/// Content files the asset server loads (character models and their
+/// textures), kept in memory. Loaded as `content://characters/...`.
+#[derive(Resource, Clone, Default)]
+pub struct ContentAssets(pub Dir);
+
+impl ContentAssets {
+    /// Adds the `content://` asset source, reading these files. (Must be
+    /// done before the asset plugin is added.)
+    pub fn register(&self, app: &mut App) {
+        let root = self.0.clone();
+        app.register_asset_source(
+            CONTENT_SOURCE,
+            AssetSourceBuilder::new(move || Box::new(MemoryAssetReader { root: root.clone() })),
+        );
+        app.insert_resource(self.clone());
+    }
+}
+
+/// The asset source name for content files (`content://characters/body_male.gltf`).
+pub const CONTENT_SOURCE: &str = "content";
 
 /// One downloaded, parsed file.
 #[derive(Clone)]
@@ -103,6 +133,9 @@ enum FileData {
     Theme(ThemeDef),
     Layout(Box<UiNode>),
     Styles(UiStyles),
+    /// A model file (glTF, its data, or a texture), handed to the asset server.
+    Model(Vec<u8>),
+    CharacterModels(Box<CharacterModels>),
     /// A PNG of the theme's, turned into an image once the download is finished.
     UiImage(Vec<u8>),
     /// A font of the theme's.
@@ -132,6 +165,8 @@ struct ContentDownload(Option<Task<Result<Downloaded, String>>>);
 struct Downloaded {
     version: String,
     files: HashMap<String, ContentFile>,
+    /// The files that are new or changed since the last download.
+    changed: Vec<String>,
 }
 
 /// Starts downloading when the player joins, and whenever the server says the
@@ -201,6 +236,7 @@ fn assemble(
     new_files: HashMap<String, Vec<u8>>,
 ) -> Result<Downloaded, String> {
     let mut files = HashMap::new();
+    let changed = new_files.keys().cloned().collect();
     for file in &manifest.files {
         let parsed = match (known.remove(&file.path).filter(|kept| kept.hash == file.hash), new_files.get(&file.path)) {
             (Some(kept), _) => kept,
@@ -209,7 +245,7 @@ fn assemble(
         };
         files.insert(file.path.clone(), parsed);
     }
-    Ok(Downloaded { version: manifest.version.clone(), files })
+    Ok(Downloaded { version: manifest.version.clone(), files, changed })
 }
 
 /// Parses a client file, according to the folder it's in.
@@ -221,6 +257,10 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
         Some("abilities") => FileData::Abilities(parse_abilities(&text())?),
         Some("icons") => FileData::Icon(bytes.to_vec()),
         Some("sounds") => FileData::Sound(bytes.to_vec()),
+        Some("characters") if path.ends_with(".ron") => {
+            FileData::CharacterModels(Box::new(parse_character_models(&text())?))
+        }
+        Some("characters") => FileData::Model(bytes.to_vec()),
         Some("sounds.ron") => FileData::GameSounds(parse_game_sounds(&text())?),
         Some("skills") => FileData::Skills(parse_skills(&text())?),
         Some("ui") if path.starts_with("ui/layouts/") => FileData::Layout(Box::new(parse_layout(&text())?)),
@@ -239,6 +279,7 @@ fn finish_download(
     mut store: ResMut<ContentStore>,
     mut images: ResMut<Assets<Image>>,
     mut audio: ResMut<Assets<AudioSource>>,
+    assets: Res<ContentAssets>,
 ) {
     let Some(task) = download.0.as_mut() else { return };
     let Some(result) = check_ready(task) else { return };
@@ -257,6 +298,9 @@ fn finish_download(
             store.fonts.clear();
             store.layouts.clear();
             store.ui_styles = None;
+            store.character_models = None;
+            store.changed_models =
+                downloaded.changed.iter().filter(|path| path.starts_with("characters/")).cloned().collect();
             for (path, file) in &downloaded.files {
                 match &file.data {
                     FileData::Appearances(appearances) => {
@@ -287,6 +331,8 @@ fn finish_download(
                         store.layouts.insert(name, (**root).clone());
                     }
                     FileData::Styles(styles) => store.ui_styles = Some(styles.clone()),
+                    FileData::Model(bytes) => assets.0.insert_asset(Path::new(path), bytes.clone()),
+                    FileData::CharacterModels(models) => store.character_models = Some((**models).clone()),
                     FileData::UiImage(png) => match decode_ui_image(png) {
                         Ok(image) => {
                             let name = path.rsplit('/').next().unwrap_or(path).to_string();

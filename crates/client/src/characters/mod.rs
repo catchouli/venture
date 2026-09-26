@@ -4,6 +4,7 @@
 pub mod combat_effects;
 pub mod creatures;
 pub mod emotes;
+pub mod humans;
 pub mod level_up;
 pub mod model;
 pub mod nameplates;
@@ -28,6 +29,7 @@ impl Plugin for CharactersPlugin {
             emotes::EmotesPlugin,
             creatures::CreaturesPlugin,
             combat_effects::CombatEffectsPlugin,
+            humans::HumansPlugin,
         ));
     }
 }

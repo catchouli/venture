@@ -17,6 +17,7 @@ use venture_navigation::Point;
 use venture_protocol::{EntityId, EntityKind, PlayerLook, ServerMessage};
 
 use crate::characters::creatures::{name_height, spawn_creature};
+use crate::characters::humans::HumanLook;
 use crate::characters::model::{CharacterAssets, Gait, Look, appearance_look, rebuild_body, spawn_character};
 use crate::characters::nameplates::Nameplate;
 use crate::characters::nameplates::NameplateHeight;
@@ -96,13 +97,19 @@ fn follow_server_events(
                 let translation = to_bevy(*x, *y, ground_height(&store, *x, *y).unwrap_or(0.0));
                 let transform = Transform::from_translation(translation);
                 let (entity, target_kind, appearance) = match kind {
-                    EntityKind::Player { look, .. } => {
-                        let look = assets.player_look(id.0, look, &mut materials);
-                        (spawn_character(&mut commands, &assets, transform, &look), TargetKind::Player, None)
+                    EntityKind::Player { look: server_look, .. } => {
+                        let look = assets.player_look(id.0, server_look, &mut materials);
+                        let entity = spawn_character(&mut commands, &assets, transform, &look);
+                        commands.entity(entity).insert(HumanLook::of_player(server_look));
+                        (entity, TargetKind::Player, None)
                     }
                     EntityKind::Npc { appearance } => {
                         let look = npc_look(appearance, &content, &mut looks, &mut materials, &assets);
                         let entity = spawn_character(&mut commands, &assets, transform, &look);
+                        commands.entity(entity).insert(HumanLook::of_appearance(
+                            content.appearances.get(appearance),
+                            content.character_models.as_ref(),
+                        ));
                         (entity, TargetKind::Npc, Some(appearance.clone()))
                     }
                     EntityKind::Creature { look, level } => {
@@ -133,6 +140,7 @@ fn follow_server_events(
                 if appearance.0 != *look {
                     appearance.0 = look.clone();
                     rebuild_body(&mut commands, entity, &assets, &assets.player_look(id.0, look, &mut materials));
+                    commands.entity(entity).insert(HumanLook::of_player(look));
                 }
             }
             ServerMessage::EntityLeft { id } => {
@@ -200,6 +208,8 @@ fn restyle_npcs_when_content_changes(
         let Some(appearance) = &npc.appearance else { continue };
         let look = npc_look(appearance, &content, &mut looks, &mut materials, &assets);
         rebuild_body(&mut commands, entity, &assets, &look);
+        let human = HumanLook::of_appearance(content.appearances.get(appearance), content.character_models.as_ref());
+        commands.entity(entity).insert(human);
     }
 }
 
