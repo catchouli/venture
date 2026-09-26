@@ -3,6 +3,7 @@
 
 use crate::abilities::{Abilities, Ability};
 use crate::class::ClassRules;
+use crate::dice::Dice;
 use crate::progression::proficiency_bonus;
 
 /// Armour class with no armour and an average Dexterity (SRD 5.1).
@@ -28,6 +29,8 @@ pub struct DerivedStats {
     pub attack_bonus: i32,
     /// Added to their weapon's damage.
     pub damage_bonus: i32,
+    /// Their weapon's damage, bonus included (such as `1d6+2`).
+    pub damage: Dice,
     /// Attacks per second with their weapon.
     pub attacks_per_second: f32,
 }
@@ -41,12 +44,17 @@ pub struct Gear {
     pub weapon_ability: Ability,
     /// The weapon's attacks per second, before Dexterity.
     pub weapon_speed: f32,
+    /// The weapon's damage dice, before the ability's bonus.
+    pub weapon_damage: Dice,
 }
+
+/// Damage with bare fists (SRD 5.1: an unarmed strike does 1, plus Strength).
+pub const UNARMED_DAMAGE: Dice = Dice { count: 0, sides: 1, bonus: 1 };
 
 impl Default for Gear {
     /// Nothing worn, fighting with fists.
     fn default() -> Self {
-        Self { armour: 0, weapon_ability: Ability::Strength, weapon_speed: 1.0 }
+        Self { armour: 0, weapon_ability: Ability::Strength, weapon_speed: 1.0, weapon_damage: UNARMED_DAMAGE }
     }
 }
 
@@ -61,6 +69,7 @@ impl DerivedStats {
             armour_class: BASE_ARMOUR_CLASS + abilities.modifier(Ability::Dexterity) + gear.armour,
             attack_bonus: proficiency_bonus(level) + weapon_modifier,
             damage_bonus: weapon_modifier,
+            damage: Dice { bonus: gear.weapon_damage.bonus + weapon_modifier, ..gear.weapon_damage },
             attacks_per_second: attacks_per_second(gear.weapon_speed, abilities.modifier(Ability::Dexterity)),
         }
     }
@@ -123,11 +132,15 @@ mod tests {
     #[test]
     fn a_starting_fighter_adds_up() {
         let abilities = Abilities { strength: 14, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10 };
-        let gear = Gear { armour: 1, weapon_ability: Ability::Strength, weapon_speed: 1.0 };
+        let gear =
+            Gear { armour: 1, weapon_ability: Ability::Strength, weapon_speed: 1.0, weapon_damage: Dice::new(1, 6) };
         let stats = DerivedStats::of(&fighter(), 1, &abilities, &gear);
         assert_eq!(stats.max_health, 12);
         assert_eq!(stats.armour_class, 12, "10 + 1 (DEX) + 1 (armour)");
         assert_eq!(stats.attack_bonus, 4, "+2 proficiency, +2 STR");
         assert_eq!(stats.damage_bonus, 2);
+        assert_eq!(stats.damage.to_string(), "1d6+2");
+        let unarmed = DerivedStats::of(&fighter(), 1, &abilities, &Gear::default());
+        assert_eq!(unarmed.damage.to_string(), "3", "1 plus Strength's +2");
     }
 }

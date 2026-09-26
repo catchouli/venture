@@ -1,9 +1,8 @@
-//! The bag: the player's inventory, as a grid of slots in a window on the
-//! right, opened from the toolbar (see [`crate::ui::toolbar`]). The slots
-//! scroll (with the mouse wheel) when there are more than fit, and the
-//! bottom shows how full it is and the player's Miasma. Pointing at an item
-//! shows what it is. While a shop is open, clicking an item asks to
-//! sell one (see [`crate::ui::shop`]).
+//! The bag tab: the player's inventory, as a grid of slots. The slots scroll
+//! (with the mouse wheel) when there are more than fit, and the bottom shows
+//! how full it is and the player's Miasma. Pointing at an item shows what it
+//! is. Clicking an item equips it, if it can be equipped; while a shop is
+//! open, clicking asks to sell one instead (see [`crate::ui::shop`]).
 //!
 //! The inventory itself belongs to the server, which sends it whenever it
 //! changes ([`ServerMessage::Inventory`]). This is only a view of it.
@@ -14,23 +13,18 @@ use venture_protocol::{ClientMessage, ItemStack, ServerMessage};
 
 use crate::content::ContentStore;
 use crate::network::{ClientState, FromServer, ToServer};
+use crate::ui::character_window::{CharacterWindow, OpenTab, Pages, Tab};
 use crate::ui::shop::OpenShop;
-use crate::ui::toolbar::OpenPanels;
 use crate::ui::tooltip::Tooltip;
-use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND};
 
 /// Slots per row.
-const COLUMNS: usize = 4;
+const COLUMNS: usize = 6;
 /// Size of a slot, in pixels.
 const SLOT_SIZE: f32 = 40.0;
 /// Size of an item's icon in its slot, in pixels.
 const ICON_SIZE: f32 = 32.0;
 /// Space between slots, in pixels.
 const GAP: f32 = 3.0;
-/// Space around the grid, in pixels.
-const PADDING: f32 = 8.0;
-/// How far below the top of the screen the bag sits (under the toolbar), in pixels.
-const TOP: f32 = 44.0;
 /// How many rows of slots are in view at once (the rest scroll).
 const VISIBLE_ROWS: usize = 7;
 /// Width of the scrollbar, in pixels.
@@ -48,13 +42,13 @@ const SLOT_COLOUR: Color = Color::srgba(1.0, 1.0, 1.0, 0.05);
 /// Colour of a slot under the mouse.
 const SLOT_HOVER_COLOUR: Color = Color::srgba(1.0, 1.0, 1.0, 0.14);
 
-/// Shows the bag.
-pub struct InventoryPlugin;
+/// Shows the bag tab.
+pub struct BagPlugin;
 
-impl Plugin for InventoryPlugin {
+impl Plugin for BagPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PlayerInventory>()
-            .add_systems(Startup, spawn_bag)
+            .add_systems(Startup, spawn_bag.after(super::spawn_window))
             .add_systems(
                 Update,
                 (
@@ -62,10 +56,9 @@ impl Plugin for InventoryPlugin {
                     rebuild_slots.run_if(resource_changed::<PlayerInventory>),
                     fill_slots,
                     highlight_slots,
-                    sell_on_click,
+                    use_on_click,
                     show_footer,
                     (scroll_slots, place_scroll_thumb).chain(),
-                    show_when_open,
                 )
                     .chain(),
             )
@@ -81,10 +74,6 @@ pub struct PlayerInventory {
     /// Their money.
     pub miasma: u64,
 }
-
-/// The bag window.
-#[derive(Component)]
-struct BagWindow;
 
 /// The scrolling view of the slots.
 #[derive(Component)]
@@ -122,79 +111,55 @@ struct SlotIcon;
 #[derive(Component)]
 struct SlotCount;
 
-fn spawn_bag(mut commands: Commands) {
+fn spawn_bag(mut commands: Commands, pages: Res<Pages>) {
     let grid_width = COLUMNS as f32 * SLOT_SIZE + (COLUMNS - 1) as f32 * GAP;
     let view_height = VISIBLE_ROWS as f32 * SLOT_SIZE + (VISIBLE_ROWS - 1) as f32 * GAP;
     let font = TextFont { font_size: FontSize::Px(13.0), ..default() };
-    commands
-        .spawn((
-            BagWindow,
-            // Blocks clicks (and the mouse wheel) on the world behind it.
-            Interaction::default(),
-            Node {
-                position_type: PositionType::Absolute,
-                top: px(TOP),
-                right: px(12),
-                flex_direction: FlexDirection::Column,
-                row_gap: px(6),
-                padding: UiRect::all(px(PADDING)),
-                border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(4)),
-                ..default()
-            },
-            BackgroundColor(WINDOW_BACKGROUND),
-            BorderColor::all(BORDER_COLOUR),
-            Visibility::Hidden,
-        ))
-        .with_children(|bag| {
-            bag.spawn(Node { column_gap: px(5), ..default() }).with_children(|row| {
-                // The slots scroll within a view a few rows tall.
-                row.spawn((
-                    SlotView,
-                    ScrollPosition::default(),
-                    Node {
-                        width: px(grid_width),
-                        max_height: px(view_height),
-                        overflow: Overflow::scroll_y(),
-                        ..default()
-                    },
-                ))
-                .with_child((
-                    SlotGrid,
-                    Node {
-                        width: px(grid_width),
-                        flex_wrap: FlexWrap::Wrap,
-                        column_gap: px(GAP),
-                        row_gap: px(GAP),
-                        ..default()
-                    },
-                ));
-                row.spawn((
-                    Node {
-                        width: px(SCROLLBAR_WIDTH),
-                        height: px(view_height),
-                        border_radius: BorderRadius::all(px(2)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.05)),
-                ))
-                .with_child((
-                    ScrollThumb,
-                    Node {
-                        position_type: PositionType::Absolute,
-                        width: percent(100),
-                        border_radius: BorderRadius::all(px(2)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(0.85, 0.7, 0.4, 0.6)),
-                ));
-            });
-            // How full the bag is, and the player's money.
-            bag.spawn(Node {
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                ..default()
-            })
+    commands.entity(pages.of(Tab::Bag)).with_children(|bag| {
+        bag.spawn(Node { column_gap: px(5), ..default() }).with_children(|row| {
+            // The slots scroll within a view a few rows tall.
+            row.spawn((
+                SlotView,
+                ScrollPosition::default(),
+                Node {
+                    width: px(grid_width),
+                    max_height: px(view_height),
+                    overflow: Overflow::scroll_y(),
+                    ..default()
+                },
+            ))
+            .with_child((
+                SlotGrid,
+                Node {
+                    width: px(grid_width),
+                    flex_wrap: FlexWrap::Wrap,
+                    column_gap: px(GAP),
+                    row_gap: px(GAP),
+                    ..default()
+                },
+            ));
+            row.spawn((
+                Node {
+                    width: px(SCROLLBAR_WIDTH),
+                    height: px(view_height),
+                    border_radius: BorderRadius::all(px(2)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.05)),
+            ))
+            .with_child((
+                ScrollThumb,
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: percent(100),
+                    border_radius: BorderRadius::all(px(2)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.85, 0.7, 0.4, 0.6)),
+            ));
+        });
+        // How full the bag is, and the player's money.
+        bag.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, ..default() })
             .with_children(|footer| {
                 footer.spawn((FullnessText, Text::default(), font.clone(), TextColor(FOOTER_COLOUR)));
                 footer.spawn(Node { align_items: AlignItems::Center, column_gap: px(4), ..default() }).with_children(
@@ -208,7 +173,7 @@ fn spawn_bag(mut commands: Commands) {
                     },
                 );
             });
-        });
+    });
 }
 
 /// Shows how many slots are used, and the player's Miasma.
@@ -233,10 +198,11 @@ fn show_footer(
 /// The mouse wheel over the bag scrolls its slots.
 fn scroll_slots(
     mouse_scroll: Res<AccumulatedMouseScroll>,
-    bag: Single<&Interaction, With<BagWindow>>,
+    open: Res<OpenTab>,
+    window: Single<&Interaction, With<CharacterWindow>>,
     mut view: Single<(&mut ScrollPosition, &ComputedNode), With<SlotView>>,
 ) {
-    if **bag == Interaction::None || mouse_scroll.delta.y == 0.0 {
+    if open.0 != Some(Tab::Bag) || **window == Interaction::None || mouse_scroll.delta.y == 0.0 {
         return;
     }
     let lines = match mouse_scroll.unit {
@@ -369,9 +335,11 @@ fn fill_slots(
                 let mut body = item.description.clone();
                 if let Some(shop) = &shop.0 {
                     match item.sell_price() {
-                        Some(price) => body.push_str(&format!("\nSells for {price} coins.")),
+                        Some(price) => body.push_str(&format!("\nSells for {price} Miasma.")),
                         None => body.push_str(&format!("\n{} won't buy this.", shop.name)),
                     }
+                } else if item.equip.is_some() {
+                    body.push_str("\nClick to equip.");
                 }
                 Tooltip { title, body }
             }
@@ -398,26 +366,27 @@ fn highlight_slots(
     }
 }
 
-/// While a shop is open, clicking an item asks to sell one.
-fn sell_on_click(
+/// Clicking an item sells one while a shop is open, and otherwise equips it
+/// (if it can be equipped).
+fn use_on_click(
     shop: Res<OpenShop>,
     inventory: Res<PlayerInventory>,
+    content: Res<ContentStore>,
     slots: Query<(&Interaction, &InventorySlot), Changed<Interaction>>,
     mut to_server: MessageWriter<ToServer>,
 ) {
-    if shop.0.is_none() {
-        return;
-    }
     for (interaction, &InventorySlot(index)) in &slots {
-        let holds_something = inventory.slots.get(index).is_some_and(Option::is_some);
-        if *interaction == Interaction::Pressed && holds_something {
-            to_server.write(ToServer(ClientMessage::Sell { slot: index as u32, count: 1 }));
+        let Some(stack) = inventory.slots.get(index).and_then(Option::as_ref) else { continue };
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let slot = index as u32;
+        if shop.0.is_some() {
+            to_server.write(ToServer(ClientMessage::Sell { slot, count: 1 }));
+        } else if content.items.get(&stack.item).is_some_and(|item| item.equip.is_some()) {
+            to_server.write(ToServer(ClientMessage::Equip { slot }));
         }
     }
-}
-
-fn show_when_open(panels: Res<OpenPanels>, mut bag: Single<&mut Visibility, With<BagWindow>>) {
-    **bag = if panels.bag { Visibility::Inherited } else { Visibility::Hidden };
 }
 
 fn forget_inventory(mut inventory: ResMut<PlayerInventory>) {

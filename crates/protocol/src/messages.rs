@@ -1,7 +1,7 @@
 //! The message types.
 
 use serde::{Deserialize, Serialize};
-use venture_rpg::Abilities;
+use venture_rpg::{Abilities, Ability, Dice};
 use venture_simulation::Rules;
 
 /// Identifies something in the game world (a player or an NPC) for as long
@@ -105,6 +105,26 @@ pub enum ClientMessage {
     Admin(AdminCommand),
     /// Do an emote (such as waving), for everyone nearby to see.
     Emote(Emote),
+    /// Spend a stat point on an ability.
+    SpendStatPoint {
+        /// Which ability.
+        ability: Ability,
+    },
+    /// Learn one of the class's skills with skill points.
+    LearnSkill {
+        /// Which skill (its id).
+        skill: String,
+    },
+    /// Equip the item in an inventory slot (swapping out whatever it replaces).
+    Equip {
+        /// The inventory slot, from 0.
+        slot: u32,
+    },
+    /// Take off what's in an equipment slot, putting it in the bag.
+    Unequip {
+        /// Which slot.
+        slot: EquipSlot,
+    },
 }
 
 /// A gesture a character can make.
@@ -335,8 +355,8 @@ pub struct ClassChoice {
     pub name: String,
     /// What it's like.
     pub description: String,
-    /// What its characters wear (for the preview).
-    pub outfit: Outfit,
+    /// How its starting equipment looks (for the preview).
+    pub worn: Vec<ItemLook>,
 }
 
 /// A character's build. It only changes how they look.
@@ -365,42 +385,69 @@ impl BodyType {
     }
 }
 
-/// The cut of what a character wears (until equipment shows for itself).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum OutfitStyle {
-    /// A plain tunic and trousers.
-    #[default]
-    Tunic,
-    /// A tunic with plates of armour strapped over it.
-    Armour,
-    /// A long robe.
-    Robe,
+/// A place on a character that equipment goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum EquipSlot {
+    /// What they fight with.
+    Weapon,
+    /// Their chest and arms.
+    Body,
+    /// Their legs.
+    Legs,
 }
 
-/// What a character wears: its cut and colours (sRGB, each 0 to 1).
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Outfit {
-    /// The cut.
-    pub style: OutfitStyle,
-    /// The main colour (the tunic or robe).
-    pub main: (f32, f32, f32),
-    /// The second colour (armour plates, trim, trousers).
-    pub trim: (f32, f32, f32),
-}
+impl EquipSlot {
+    /// Every slot, in the order they're shown.
+    pub const ALL: [EquipSlot; 3] = [EquipSlot::Weapon, EquipSlot::Body, EquipSlot::Legs];
 
-impl Default for Outfit {
-    fn default() -> Self {
-        Self { style: OutfitStyle::Tunic, main: (0.46, 0.31, 0.19), trim: (0.30, 0.26, 0.22) }
+    /// Its name, as shown to players.
+    pub fn name(self) -> &'static str {
+        match self {
+            EquipSlot::Weapon => "Weapon",
+            EquipSlot::Body => "Body",
+            EquipSlot::Legs => "Legs",
+        }
     }
 }
 
-/// How a player's character looks.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// How a worn item shows on a character (placeholder shapes, until real models).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum LookStyle {
+    /// Plates strapped over the chest and back, with shoulder guards.
+    Plates,
+    /// Plates strapped over the thighs and shins.
+    LegPlates,
+    /// A long robe, from the shoulders to the ankles.
+    Robe,
+    /// A sword, held in the right hand.
+    Sword,
+    /// A staff, held in the right hand.
+    Staff,
+}
+
+/// How a worn item looks: its shape and colours (sRGB, each 0 to 1).
+///
+/// ```ron
+/// (style: Plates, main: (0.62, 0.46, 0.28), trim: (0.3, 0.2, 0.12))
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ItemLook {
+    /// Its shape.
+    pub style: LookStyle,
+    /// Its main colour.
+    pub main: (f32, f32, f32),
+    /// Its second colour (straps, trim, a hilt).
+    pub trim: (f32, f32, f32),
+}
+
+/// How a player's character looks: their build, and what they wear over
+/// their plain clothes.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PlayerLook {
     /// Their build.
     pub body: BodyType,
-    /// What they wear.
-    pub outfit: Outfit,
+    /// How each item they wear looks.
+    pub worn: Vec<ItemLook>,
 }
 
 /// Everything about the player's own character, for the stats tab
@@ -434,4 +481,24 @@ pub struct CharacterSheet {
     pub damage_bonus: i32,
     /// Attacks per second.
     pub attacks_per_second: f32,
+    /// Weapon damage, bonus included.
+    pub damage: Dice,
+    /// The skills they know (skill ids from the content pack), in the order learned.
+    pub skills: Vec<String>,
+    /// Their class's skills, with the level each unlocks at and its cost.
+    pub class_skills: Vec<SkillOffer>,
+    /// What they have equipped: the item (an id) in each filled slot. An item
+    /// filling several slots is listed for each.
+    pub equipment: Vec<(EquipSlot, String)>,
+}
+
+/// A skill a class can learn, in a [`CharacterSheet`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillOffer {
+    /// The skill (an id from the content pack's skills).
+    pub skill: String,
+    /// The level it can be learned from.
+    pub level: u32,
+    /// What it costs to learn, in skill points.
+    pub cost: u32,
 }

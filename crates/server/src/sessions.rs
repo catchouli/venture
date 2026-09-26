@@ -8,6 +8,7 @@ use venture_protocol::{BodyType, ClassChoice, EntityKind, ServerMessage};
 use crate::character::{Admin, Character, class_or_default};
 use crate::content::LoadedContent;
 use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
+use crate::equipment::{Equipment, player_look};
 use crate::inventory::{Change, Inventory};
 use crate::link::{ConnectionId, Link};
 use crate::names::random_name;
@@ -60,6 +61,7 @@ type SavedParts = (
     &'static Inventory,
     &'static QuestLog,
     &'static Character,
+    &'static Equipment,
 );
 
 /// The resources joining and leaving need.
@@ -118,10 +120,10 @@ impl Sessions<'_, '_> {
         let classes = classes
             .into_iter()
             .map(|class| ClassChoice {
+                worn: Equipment::starting(&class, &self.content.pack.items).looks(&self.content.pack.items),
                 id: class.id,
                 name: class.name,
                 description: class.description,
-                outfit: class.outfit,
             })
             .collect();
         self.link.send(connection, &ServerMessage::CharacterNeeded { suggestion: random_name(), classes });
@@ -154,8 +156,9 @@ impl Sessions<'_, '_> {
         let class = class_or_default(pack, Some(class_id));
         let position = self.spawn_point.0.unwrap_or(self.world.manifest.spawn_point);
         let mut new_profile = Profile::new(name.to_string(), position);
-        let character = Character::new(&class, body);
+        let character = Character::new(&class, body, &pack.new_characters.skills);
         write_character(&mut new_profile, &character);
+        new_profile.equipment = Some(Equipment::starting(&class, &pack.items).saved());
         let inventory = self.starting_inventory();
         new_profile.inventory = inventory.slots().to_vec();
         new_profile.miasma = inventory.miasma();
@@ -173,23 +176,30 @@ impl Sessions<'_, '_> {
             self.world.manifest.spawn_point
         });
         let name = DisplayName(saved.name.clone());
-        let class = class_or_default(&self.content.pack, saved.class.as_deref());
-        let character = read_character(&saved, &self.content.pack);
-        let look = character.look(&class);
+        let pack = &self.content.pack;
+        let class = class_or_default(pack, saved.class.as_deref());
+        let character = read_character(&saved, pack);
+        // Characters made before equipment existed get their class's starting kit.
+        let equipment = match saved.equipment.take() {
+            Some(saved) => Equipment::from_saved(saved),
+            None => Equipment::starting(&class, &pack.items),
+        };
+        let look = player_look(&character, &equipment, &pack.items);
         let inventory = Inventory::from_saved(saved.inventory, saved.miasma);
         let quests = QuestLog::from_saved(saved.quests);
         let admin = self.admins.0.iter().any(|admin| admin.eq_ignore_ascii_case(&name.0));
-        let kind = EntityKind::Player { level: character.level(), look };
+        let kind = EntityKind::Player { level: character.level(), look: look.clone() };
 
         // Tell the newcomer about themselves, and everyone and everything already here.
         let rules = self.rules.0;
         let welcome =
             ServerMessage::Welcome { you: id, name: name.0.clone(), position: position.0, rules, admin, look };
         self.link.send(connection, &welcome);
-        for (_, &NetworkId(other), (_, other_name, &other_position, _, _, other_character)) in &self.players {
-            let other_class = class_or_default(&self.content.pack, Some(&other_character.class));
-            let other_kind =
-                EntityKind::Player { level: other_character.level(), look: other_character.look(&other_class) };
+        for (_, &NetworkId(other), (_, other_name, &other_position, _, _, other_character, other_equipment)) in
+            &self.players
+        {
+            let other_look = player_look(other_character, other_equipment, &self.content.pack.items);
+            let other_kind = EntityKind::Player { level: other_character.level(), look: other_look };
             self.link.send(connection, &appeared(other, other_name, other_kind, other_position));
         }
         for (npc, &NetworkId(npc_id), npc_name, &npc_position) in &self.npcs {
@@ -209,7 +219,7 @@ impl Sessions<'_, '_> {
             name,
             position,
             Mover::default(),
-            (inventory, quests, character),
+            (inventory, quests, character, equipment),
         ));
         if admin {
             player.insert(Admin);
@@ -258,12 +268,15 @@ impl Sessions<'_, '_> {
 /// made before classes existed.
 fn read_character(saved: &Profile, pack: &venture_content::ContentPack) -> Character {
     let class = class_or_default(pack, saved.class.as_deref());
-    let mut character = Character::new(&class, saved.body);
+    let mut character = Character::new(&class, saved.body, &pack.new_characters.skills);
     character.progress =
         venture_rpg::Progress { level: saved.level.clamp(1, venture_rpg::MAX_LEVEL), experience: saved.experience };
     character.stats = saved.stats.filter(venture_rpg::Abilities::is_valid).unwrap_or(class.stats);
     character.stat_points = saved.stat_points;
     character.skill_points = saved.skill_points;
+    if let Some(skills) = &saved.skills {
+        character.skills.clone_from(skills);
+    }
     character
 }
 
@@ -275,6 +288,7 @@ fn write_character(profile: &mut Profile, character: &Character) {
     profile.stats = Some(character.stats);
     profile.stat_points = character.stat_points;
     profile.skill_points = character.skill_points;
+    profile.skills = Some(character.skills.clone());
 }
 
 /// Turns coins (the money before Miasma) in an old profile's bag into Miasma.
@@ -314,17 +328,19 @@ fn save_all(store: &ProfileStore, players: &Query<SavedParts>) {
 
 /// What to save about a player.
 fn profile_of(
-    (_, name, &Position(position), inventory, quests, character): (
+    (_, name, &Position(position), inventory, quests, character, equipment): (
         &Player,
         &DisplayName,
         &Position,
         &Inventory,
         &QuestLog,
         &Character,
+        &Equipment,
     ),
 ) -> Profile {
     let mut profile = Profile::new(name.0.clone(), position);
     write_character(&mut profile, character);
+    profile.equipment = Some(equipment.saved());
     profile.inventory = inventory.slots().to_vec();
     profile.miasma = inventory.miasma();
     profile.quests = quests.saved();

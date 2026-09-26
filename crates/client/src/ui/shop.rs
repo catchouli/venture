@@ -4,7 +4,7 @@
 //! dialogue offers to trade) and closes it ([`ServerMessage::ShopClosed`],
 //! when the player walks away). Clicking an item asks to buy one (five with
 //! Shift); while it's open, clicking an item in the bag asks to sell one (see
-//! [`crate::ui::inventory`]). The server decides, and says how it went in chat.
+//! [`crate::ui::character_window::bag`]). The server decides, and says how it went in chat.
 
 use bevy::prelude::*;
 use venture_protocol::{ClientMessage, ServerMessage, ShopStock};
@@ -12,7 +12,7 @@ use venture_protocol::{ClientMessage, ServerMessage, ShopStock};
 use crate::content::ContentStore;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::tooltip::Tooltip;
-use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, spawn_close_button};
+use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER, spawn_close_button};
 
 /// Items per row.
 const COLUMNS: usize = 5;
@@ -26,8 +26,8 @@ const ICON_SIZE: f32 = 32.0;
 const GAP: f32 = 4.0;
 /// Space around the window's contents, in pixels.
 const PADDING: f32 = 10.0;
-/// How far from the right edge the window sits, in pixels: just left of the bag.
-const RIGHT: f32 = 212.0;
+/// How far from the right edge the window sits, in pixels: just left of the character window.
+const RIGHT: f32 = 12.0 + crate::ui::character_window::WINDOW_WIDTH + 10.0;
 /// How many one Shift-click buys.
 const SHIFT_COUNT: u32 = 5;
 /// Colour of the shop's name.
@@ -106,6 +106,7 @@ fn spawn_window(mut commands: Commands) {
             },
             BackgroundColor(WINDOW_BACKGROUND),
             BorderColor::all(BORDER_COLOUR),
+            WINDOW_LAYER,
             Visibility::Hidden,
         ))
         .with_children(|window| {

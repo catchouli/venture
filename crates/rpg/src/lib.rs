@@ -37,6 +37,6 @@ pub mod progression;
 pub use abilities::{Abilities, Ability, modifier};
 pub use class::ClassRules;
 pub use combat::{AttackOutcome, hit_chance, resolve_attack};
-pub use derived::{DerivedStats, Gear};
+pub use derived::{DerivedStats, Gear, UNARMED_DAMAGE};
 pub use dice::Dice;
 pub use progression::{LevelUp, MAX_LEVEL, Progress};

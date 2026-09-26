@@ -58,6 +58,31 @@ def ring(cx, cy, r, width):
     return lambda x, y: abs(math.hypot(x - cx, y - cy) - r) - width / 2
 
 
+def polygon(points):
+    """A filled polygon (points in order around it)."""
+    def shape(x, y):
+        inside = False
+        nearest = float("inf")
+        for i, (ax, ay) in enumerate(points):
+            bx, by = points[(i + 1) % len(points)]
+            if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
+                inside = not inside
+            dx, dy = bx - ax, by - ay
+            t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
+            nearest = min(nearest, math.hypot(x - (ax + t * dx), y - (ay + t * dy)))
+        return -nearest if inside else nearest
+    return shape
+
+
+def star(cx, cy, outer, inner, points=5, turn=0.0):
+    corners = []
+    for i in range(points * 2):
+        angle = turn + i * math.pi / points - math.pi / 2
+        r = outer if i % 2 == 0 else inner
+        corners.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+    return polygon(corners)
+
+
 def detail(shape):
     """A layer drawn without an outline (markings on top of a shape)."""
     shape.detail = True
@@ -116,12 +141,191 @@ def old_pipe():
     ]
 
 
+WOOD = (150, 104, 62)
+LIGHT_WOOD = (186, 138, 86)
+STEEL = (190, 196, 204)
+STRAP = (92, 58, 34)
+
+
+def training_sword():
+    return [
+        (polygon([(9, 25), (22, 7), (25, 6), (24, 9), (11, 27)]), STEEL),  # the blade
+        (capsule(6, 22, 13, 29, 1.6), (120, 84, 44)),  # the crossguard
+        (capsule(6, 29, 9, 26, 1.8), STRAP),  # the grip
+        (circle(5, 30, 2), (170, 140, 60)),  # the pommel
+    ]
+
+
+def wooden_staff():
+    return [
+        (capsule(8, 29, 23, 5, 1.8), WOOD),
+        (circle(24, 5, 3.2), LIGHT_WOOD),  # the knob
+        (detail(capsule(13, 21, 15, 18, 1.9)), STRAP),  # a leather wrap
+    ]
+
+
+def wooden_chestguard():
+    return [
+        (rounded_box(16, 17, 10, 11, 3), LIGHT_WOOD),
+        (detail(capsule(9, 10, 9, 27, 0.8)), WOOD),  # plank edges
+        (detail(capsule(16, 7, 16, 28, 0.8)), WOOD),
+        (detail(capsule(23, 10, 23, 27, 0.8)), WOOD),
+        (detail(capsule(6, 13, 26, 13, 1.3)), STRAP),  # straps
+        (detail(capsule(6, 22, 26, 22, 1.3)), STRAP),
+    ]
+
+
+def wooden_legguards():
+    return [
+        (rounded_box(10.5, 17, 5, 12, 2.5), LIGHT_WOOD),
+        (rounded_box(21.5, 17, 5, 12, 2.5), LIGHT_WOOD),
+        (detail(capsule(6, 11, 15, 11, 1.2)), STRAP),
+        (detail(capsule(17, 11, 26, 11, 1.2)), STRAP),
+        (detail(capsule(6, 23, 15, 23, 1.2)), STRAP),
+        (detail(capsule(17, 23, 26, 23, 1.2)), STRAP),
+    ]
+
+
+def plain_robes():
+    blue = (72, 80, 140)
+    return [
+        (polygon([(12, 5), (20, 5), (27, 29), (5, 29)]), blue),
+        (detail(capsule(11, 15, 21, 15, 1.2)), (200, 176, 104)),  # the sash
+        (detail(polygon([(14, 5), (18, 5), (16, 10)])), (48, 52, 96)),  # the collar
+    ]
+
+
+# Skill, action and emote icons sit on a dark tile, so they read as buttons.
+
+def tile(colour):
+    return (rounded_box(16, 16, 14.5, 14.5, 4), colour)
+
+
+def rest():
+    return [
+        tile((44, 52, 70)),
+        (polygon([(8, 24), (24, 24), (22, 27), (10, 27)]), WOOD),  # logs
+        (detail(capsule(9, 25, 23, 25, 1.0)), (110, 72, 40)),
+        (polygon([(16, 7), (22, 20), (16, 24), (10, 20)]), (240, 150, 50)),  # the flame
+        (detail(polygon([(16, 13), (19, 21), (16, 23), (13, 21)])), (255, 220, 110)),
+    ]
+
+
+def whack():
+    return [
+        tile((80, 40, 36)),
+        (star(18, 14, 10, 4.5, 7), (250, 214, 90)),  # the impact
+        (capsule(7, 27, 15, 17, 2.4), WOOD),  # a club swinging in
+    ]
+
+
+def air_blast():
+    return [
+        tile((50, 70, 96)),
+        (detail(ring(16, 16, 9, 2.2)), (236, 244, 255)),
+        (detail(ring(19, 13, 4, 1.8)), (236, 244, 255)),
+        (circle(13, 19, 2.2), (255, 255, 255)),
+    ]
+
+
+def cleave():
+    return [
+        tile((80, 40, 36)),
+        (detail(ring(16, 30, 18, 2.4)), (250, 214, 90)),  # a wide arc
+        (polygon([(8, 22), (22, 6), (25, 6), (24, 9), (10, 24)]), STEEL),
+    ]
+
+
+def second_wind():
+    return [
+        tile((40, 72, 52)),
+        (polygon([(16, 5), (19, 13), (27, 13), (21, 18), (23, 26), (16, 21), (9, 26), (11, 18), (5, 13), (13, 13)]),
+         (120, 220, 130)),
+    ]
+
+
+def frost_shard():
+    return [
+        tile((50, 70, 96)),
+        (polygon([(16, 4), (21, 16), (16, 28), (11, 16)]), (170, 226, 255)),
+        (detail(polygon([(16, 7), (18, 16), (16, 25), (14, 16)])), (230, 248, 255)),
+    ]
+
+
+def arcane_bolt():
+    return [
+        tile((60, 44, 90)),
+        (polygon([(19, 4), (9, 18), (15, 18), (12, 28), (23, 13), (17, 13)]), (200, 150, 255)),
+    ]
+
+
+def action_attack():
+    return [
+        tile((70, 50, 44)),
+        (polygon([(7, 24), (21, 7), (24, 7), (23, 10), (9, 26)]), STEEL),
+        (polygon([(25, 24), (11, 7), (8, 7), (9, 10), (23, 26)]), STEEL),
+        (detail(capsule(5, 23, 10, 28, 1.3)), STRAP),
+        (detail(capsule(27, 23, 22, 28, 1.3)), STRAP),
+    ]
+
+
+def action_talk():
+    return [
+        tile((56, 60, 70)),
+        (ellipse(16, 14, 11, 8), (240, 236, 224)),
+        (polygon([(10, 19), (15, 21), (8, 27)]), (240, 236, 224)),
+        (detail(circle(11, 14, 1.5)), (90, 90, 100)),
+        (detail(circle(16, 14, 1.5)), (90, 90, 100)),
+        (detail(circle(21, 14, 1.5)), (90, 90, 100)),
+    ]
+
+
+def action_follow():
+    return [
+        tile((56, 60, 70)),
+        (ellipse(11, 22, 3.5, 5), (220, 214, 200)),  # footprints
+        (ellipse(21, 11, 3.5, 5), (220, 214, 200)),
+        (detail(circle(9, 15.5, 1.3)), (220, 214, 200)),
+        (detail(circle(19, 4.5, 1.3)), (220, 214, 200)),
+    ]
+
+
+def emote_wave():
+    skin = (232, 190, 150)
+    return [
+        tile((70, 64, 50)),
+        (rounded_box(16, 19, 6, 7, 3), skin),  # the palm
+        (capsule(11.5, 14, 11.5, 7, 1.7), skin),  # fingers
+        (capsule(15, 13, 15, 5, 1.7), skin),
+        (capsule(18.5, 13, 18.5, 6, 1.7), skin),
+        (capsule(22, 18, 25, 12, 1.7), skin),  # the thumb
+        (detail(capsule(6, 8, 4, 12, 0.8)), (250, 240, 200)),  # motion lines
+        (detail(capsule(27, 5, 29, 9, 0.8)), (250, 240, 200)),
+    ]
+
+
 ICONS = {
     "miasma.png": miasma,
     "bread.png": bread,
     "meat_pie.png": meat_pie,
     "sweet_roll.png": sweet_roll,
     "old_pipe.png": old_pipe,
+    "training_sword.png": training_sword,
+    "wooden_staff.png": wooden_staff,
+    "wooden_chestguard.png": wooden_chestguard,
+    "wooden_legguards.png": wooden_legguards,
+    "plain_robes.png": plain_robes,
+    "rest.png": rest,
+    "whack.png": whack,
+    "air_blast.png": air_blast,
+    "cleave.png": cleave,
+    "second_wind.png": second_wind,
+    "frost_shard.png": frost_shard,
+    "arcane_bolt.png": arcane_bolt,
+    "action_attack.png": action_attack,
+    "action_talk.png": action_talk,
+    "action_follow.png": action_follow,
+    "emote_wave.png": emote_wave,
 }
 
 

@@ -1,0 +1,76 @@
+// Skills: what characters can do beyond attacking. Classes list which of
+// these they start with and which they can learn (content/classes/), and
+// everyone starts with the ones in new_characters.ron.
+//
+// effect: Rest (sit and recover), Strike(damage) (a weapon blow, with these
+// dice instead of the weapon's), Bolt(damage) (a spell that flies to the
+// target), or Heal(amount). mana is what it costs, cooldown (seconds) how long
+// before it can be used again, range (metres) how far away the target can be.
+[
+    (
+        id: "rest",
+        name: "Rest",
+        description: "Sit down and catch your breath. Health and mana come back faster until you move.",
+        icon: "rest.png",
+        effect: Rest,
+    ),
+    (
+        id: "whack",
+        name: "Whack",
+        description: "A big, clumsy swing that lands hard.",
+        icon: "whack.png",
+        mana: 2,
+        cooldown: 6.0,
+        range: 2.5,
+        effect: Strike(damage: "1d8"),
+    ),
+    (
+        id: "air_blast",
+        name: "Air Blast",
+        description: "A puff of wind with a bit of a punch, hurled at your target.",
+        icon: "air_blast.png",
+        mana: 3,
+        cooldown: 2.5,
+        range: 15.0,
+        effect: Bolt(damage: "1d6"),
+    ),
+    (
+        id: "cleave",
+        name: "Cleave",
+        description: "A wide, sweeping blow.",
+        icon: "cleave.png",
+        mana: 4,
+        cooldown: 8.0,
+        range: 2.5,
+        effect: Strike(damage: "1d10"),
+    ),
+    (
+        id: "second_wind",
+        name: "Second Wind",
+        description: "Grit your teeth and push on, recovering some health.",
+        icon: "second_wind.png",
+        mana: 5,
+        cooldown: 30.0,
+        effect: Heal(amount: "2d6"),
+    ),
+    (
+        id: "frost_shard",
+        name: "Frost Shard",
+        description: "A sliver of ice, flung hard.",
+        icon: "frost_shard.png",
+        mana: 5,
+        cooldown: 4.0,
+        range: 15.0,
+        effect: Bolt(damage: "1d10"),
+    ),
+    (
+        id: "arcane_bolt",
+        name: "Arcane Bolt",
+        description: "Raw magic, crackling towards your target.",
+        icon: "arcane_bolt.png",
+        mana: 8,
+        cooldown: 6.0,
+        range: 18.0,
+        effect: Bolt(damage: "2d8"),
+    ),
+]

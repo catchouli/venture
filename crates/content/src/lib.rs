@@ -10,6 +10,7 @@
 //!   icons/*.png         item pictures (sent to clients)
 //!   new_characters.ron  what new characters start with (server only)
 //!   classes/*.ron       the classes players choose from (server only)
+//!   skills/*.ron        what skills do (sent to clients)
 //!   npcs/*.ron          who lives where (server only)
 //!   shops/*.ron         what shops sell (server only)
 //!   quests/*.ron        quests and their stages (server only)
@@ -32,9 +33,11 @@ mod load;
 #[cfg(feature = "scripts")]
 pub mod script_hooks;
 
-pub use client::{CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_appearances, parse_items};
+pub use client::{
+    CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_appearances, parse_items, parse_skills,
+};
 pub use definitions::{
-    AppearanceDef, ClassDef, Colour, ItemCount, ItemDef, NewCharacterDef, NpcDef, Placement, QuestDef, QuestStage,
-    ShopDef, ShopItem,
+    AppearanceDef, ClassDef, ClassSkill, Colour, Equippable, ItemCount, ItemDef, NewCharacterDef, NpcDef, OutfitStyle,
+    Placement, QuestDef, QuestStage, ShopDef, ShopItem, SkillDef, SkillEffect, WeaponDef,
 };
 pub use load::{ContentError, ContentPack};

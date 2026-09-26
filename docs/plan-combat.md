@@ -46,13 +46,12 @@ real time.**
 - **Combat level** is the character's level. It's shown under the name when
   selected.
 
-## Step 1: classes, levels and stats (the foundation)
+## Step 1: classes, levels and stats (the foundation, done)
 
 - **The `venture_rpg` crate**, covering everything above.
 - **Classes in the content pack** (`classes/*.ron`): name, description, hit
-  die and mana, starting stats, and an outfit (until equipment shows for
-  itself). Fighter and Mage to begin with. Starting skills, starting
-  equipment and class skill lists come in step 2.
+  die and mana, and starting stats. Fighter and Mage to begin with. Starting
+  skills, starting equipment and class skill lists came in step 2.
 - **Character creation** asks for a name, a class and a body type
   (Masculine, Feminine or Androgynous; it changes the model's build), with a
   turning preview of the character. **Names are unique**, ignoring case.
@@ -66,7 +65,7 @@ real time.**
 - **Admins** (listed by name in `server.ron`) have `/setlevel LEVEL`,
   `/reset` and `/setclass CLASS`, with a level-up effect everyone sees.
 
-## Step 2: the character window
+## Step 2: the character window (done)
 
 One window with tabs, each with its own key:
 
@@ -75,7 +74,7 @@ One window with tabs, each with its own key:
 | Stats | C | Name, class, level and experience bar. STR, DEX, CON, INT, WIS, with + buttons to spend stat points. Secondary stats: health, mana, armour class, attack bonus, damage, attack speed. |
 | Skills | K | **Actions** every character has (Attack, Talk, Follow). **Skills** from the class: learned ones to use, and locked ones with the level they unlock at and a button to learn them with skill points. |
 | Inventory | I | The bag (from step 1). |
-| Equipment | E | Weapon and body slots to begin with. Equip from the bag, unequip back into it. |
+| Equipment | G | Weapon and body slots to begin with. Equip from the bag, unequip back into it. |
 | Quests | J | The journal (as now). |
 | Emotes | O | Gestures to click (Wave first; `/wave` in chat does the same). Last, as the least important. |
 

@@ -1,8 +1,20 @@
 //! The kinds of things a content pack defines.
 
 use serde::{Deserialize, Serialize};
-use venture_protocol::{BodyType, Outfit, OutfitStyle};
-use venture_rpg::{Abilities, ClassRules};
+use venture_protocol::{BodyType, EquipSlot, ItemLook};
+use venture_rpg::{Abilities, Ability, ClassRules, Dice};
+
+/// The cut of an NPC's clothes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OutfitStyle {
+    /// A plain tunic and trousers.
+    #[default]
+    Tunic,
+    /// A tunic with wooden plates strapped over it.
+    Armour,
+    /// A long robe.
+    Robe,
+}
 
 /// A colour as sRGB red, green and blue, each from 0 to 1.
 pub type Colour = (f32, f32, f32);
@@ -108,6 +120,106 @@ pub struct ItemDef {
     /// shops won't buy it at all (quest items, for example).
     #[serde(default)]
     pub value: u32,
+    /// If it can be worn or wielded: where, what it does, and how it looks.
+    #[serde(default)]
+    pub equip: Option<Equippable>,
+}
+
+/// What an equippable item does when worn.
+///
+/// ```ron
+/// equip: Some((slots: [Weapon], weapon: Some((damage: "1d6", speed: 1.0, ability: Strength)),
+///              look: (style: Sword, main: (0.7, 0.7, 0.72), trim: (0.35, 0.22, 0.12))))
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Equippable {
+    /// The slots it fills (a robe fills both `Body` and `Legs`).
+    pub slots: Vec<EquipSlot>,
+    /// Armour class it adds.
+    #[serde(default)]
+    pub armour: i32,
+    /// What it does as a weapon (for items in the `Weapon` slot).
+    #[serde(default)]
+    pub weapon: Option<WeaponDef>,
+    /// How it shows on the character.
+    pub look: ItemLook,
+}
+
+/// A weapon's part in the rules.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WeaponDef {
+    /// Its damage dice, before the ability's bonus (such as `"1d6"`).
+    pub damage: Dice,
+    /// Attacks per second, before Dexterity.
+    pub speed: f32,
+    /// The ability it attacks and does damage with.
+    pub ability: Ability,
+}
+
+/// A skill: something a character can do, learned from their class.
+///
+/// ```ron
+/// (id: "whack", name: "Whack", description: "A heavy blow.", icon: "whack.png",
+///  mana: 3, cooldown: 6.0, range: 2.5, effect: Strike(damage: "1d8"))
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SkillDef {
+    /// Unique name (saved in profiles, so don't rename lightly).
+    pub id: String,
+    /// The name shown to players.
+    pub name: String,
+    /// What it does, in a sentence or two.
+    pub description: String,
+    /// Its picture: a PNG file in `icons/`.
+    pub icon: String,
+    /// Mana it costs to use.
+    #[serde(default)]
+    pub mana: u32,
+    /// Seconds before it can be used again.
+    #[serde(default)]
+    pub cooldown: f32,
+    /// How far away the target may be, in metres (0 for skills on yourself).
+    #[serde(default)]
+    pub range: f32,
+    /// What it does.
+    pub effect: SkillEffect,
+}
+
+/// What a skill does when used.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum SkillEffect {
+    /// Sit down and recover health and mana faster, until you move.
+    Rest,
+    /// Hit the target with the weapon, for this damage instead of the weapon's.
+    Strike {
+        /// Its damage dice, before the weapon ability's bonus.
+        damage: Dice,
+    },
+    /// Throw a spell at the target, which flies to it.
+    Bolt {
+        /// Its damage dice, before the casting ability's bonus.
+        damage: Dice,
+    },
+    /// Heal yourself.
+    Heal {
+        /// How much health comes back.
+        amount: Dice,
+    },
+}
+
+/// A skill a class can learn: from which level, and for how many skill points.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClassSkill {
+    /// Which skill (a [`SkillDef`] id).
+    pub skill: String,
+    /// The level it can be learned from.
+    pub level: u32,
+    /// What it costs, in skill points.
+    pub cost: u32,
 }
 
 impl ItemDef {
@@ -202,6 +314,9 @@ pub struct NewCharacterDef {
     /// The items in their bag.
     #[serde(default)]
     pub items: Vec<ItemCount>,
+    /// The skills every character knows from the start (such as resting).
+    #[serde(default)]
+    pub skills: Vec<String>,
 }
 
 /// A class, which players choose when they make a character.
@@ -209,7 +324,9 @@ pub struct NewCharacterDef {
 /// ```ron
 /// (id: "fighter", name: "Fighter", description: "...",
 ///  rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
-///  stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10))
+///  stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
+///  starting_equipment: ["training_sword"], starting_skills: ["whack"],
+///  skills: [(skill: "shield_bash", level: 3, cost: 1)])
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -224,12 +341,15 @@ pub struct ClassDef {
     pub rules: ClassRules,
     /// The ability scores a new character of this class starts with.
     pub stats: Abilities,
-    /// What its characters wear (until they wear equipment).
-    ///
-    /// ```ron
-    /// outfit: (style: Robe, main: (0.3, 0.3, 0.55), trim: (0.8, 0.7, 0.4))
-    /// ```
-    pub outfit: Outfit,
+    /// The items a new character of this class has equipped.
+    #[serde(default)]
+    pub starting_equipment: Vec<String>,
+    /// The skills a new character of this class knows (on top of everyone's).
+    #[serde(default)]
+    pub starting_skills: Vec<String>,
+    /// The skills the class can learn with skill points.
+    #[serde(default)]
+    pub skills: Vec<ClassSkill>,
 }
 
 /// A number of one kind of item.

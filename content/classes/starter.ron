@@ -4,8 +4,10 @@
 // rules: hit_die is the health die per level (SRD 5.1: d10 for fighters, d6
 // for wizards); mana_per_level and casting_ability set mana (see
 // crates/rpg/src/derived.rs). stats are a new character's ability scores.
-// outfit is what the class wears (style: Tunic, Armour or Robe; colours are
-// sRGB from 0 to 1) until characters wear real equipment.
+// starting_equipment is worn from the start (items in items/ that can be
+// equipped); starting_skills are known from the start (on top of everyone's,
+// in new_characters.ron); skills can be learned with skill points, from a
+// level, for a cost.
 [
     (
         id: "fighter",
@@ -13,8 +15,12 @@
         description: "Tough and strong, at home in the thick of a fight. Starts with a sword, wooden armour, and Whack.",
         rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
         stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
-        // Planks of wood strapped over a plain tunic.
-        outfit: (style: Armour, main: (0.42, 0.30, 0.20), trim: (0.62, 0.46, 0.28)),
+        starting_equipment: ["training_sword", "wooden_chestguard", "wooden_legguards"],
+        starting_skills: ["whack"],
+        skills: [
+            (skill: "cleave", level: 3, cost: 1),
+            (skill: "second_wind", level: 5, cost: 2),
+        ],
     ),
     (
         id: "mage",
@@ -22,7 +28,11 @@
         description: "Frail but clever, striking from afar with spells. Starts with a staff, plain robes, and Air Blast.",
         rules: (hit_die: 6, mana_per_level: 8, casting_ability: Intelligence),
         stats: (strength: 8, dexterity: 12, constitution: 12, intelligence: 15, wisdom: 13),
-        // A long, plain robe.
-        outfit: (style: Robe, main: (0.28, 0.30, 0.52), trim: (0.78, 0.68, 0.40)),
+        starting_equipment: ["wooden_staff", "plain_robes"],
+        starting_skills: ["air_blast"],
+        skills: [
+            (skill: "frost_shard", level: 3, cost: 1),
+            (skill: "arcane_bolt", level: 5, cost: 2),
+        ],
     ),
 ]

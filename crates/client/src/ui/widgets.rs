@@ -9,6 +9,11 @@ const CLOSE_SIZE: f32 = 12.0;
 
 /// Colour of window borders.
 pub const BORDER_COLOUR: Color = Color::srgba(0.85, 0.7, 0.4, 0.8);
+/// How windows are layered above the nameplates drawn over the world
+/// (which would otherwise show through them). The connection overlay and
+/// tooltips are higher still.
+pub const WINDOW_LAYER: GlobalZIndex = GlobalZIndex(5);
+
 /// Colour of window backgrounds.
 pub const WINDOW_BACKGROUND: Color = Color::srgba(0.05, 0.04, 0.03, 0.85);
 

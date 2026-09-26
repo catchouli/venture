@@ -40,6 +40,7 @@ events. Much of it should be writable by **people who aren't programmers**
 ```
 content/
   classes/*.ron        the classes players choose from
+  skills/*.ron         what skills do (sent to clients)
   appearances/*.ron    how characters look (sent to clients)
   items/*.ron          things players can carry (sent to clients)
   icons/*.png          item pictures (sent to clients)
@@ -77,7 +78,12 @@ content, so a typo never takes the game down.
         description: "Tough and strong...",   // shown when choosing a class
         rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
         stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
-        outfit: (style: Armour, main: (0.42, 0.30, 0.20), trim: (0.62, 0.46, 0.28)),
+        starting_equipment: ["training_sword", "wooden_chestguard", "wooden_legguards"],
+        starting_skills: ["whack"],
+        skills: [                       // learned with skill points: from a level, for a cost
+            (skill: "cleave", level: 3, cost: 1),
+            (skill: "second_wind", level: 5, cost: 2),
+        ],
     ),
 ]
 ```
@@ -86,9 +92,33 @@ Players choose a class when they make a character; the first one listed is
 the default. `rules` is the class's part in the RPG rules (see
 `crates/rpg`): `hit_die` sets health per level (SRD 5.1: d10 for a fighter,
 d6 for a wizard), and `mana_per_level` plus the `casting_ability`'s modifier
-sets mana. `stats` are a new character's ability scores. `outfit` is what the
-class wears (`Tunic`, `Armour` or `Robe`, in a main and a trim colour) until
-characters wear real equipment.
+sets mana. `stats` are a new character's ability scores. New characters wear
+the `starting_equipment` (items that can be equipped; no two in the same
+slot) and know the `starting_skills`, plus everyone's skills from
+`new_characters.ron`. `skills` are the ones the class can learn later.
+
+### Skills
+
+```ron
+[
+    (
+        id: "whack",                    // saved in profiles, so don't rename lightly
+        name: "Whack",
+        description: "A big, clumsy swing that lands hard.",
+        icon: "whack.png",              // a PNG in icons/
+        mana: 2,                        // optional: what it costs
+        cooldown: 6.0,                  // optional: seconds before it can be used again
+        range: 2.5,                     // optional: metres to the target (0 for yourself)
+        effect: Strike(damage: "1d8"),
+    ),
+]
+```
+
+`effect` is `Rest` (sit and recover faster), `Strike(damage)` (a weapon blow
+with these dice instead of the weapon's), `Bolt(damage)` (a spell that flies
+to the target) or `Heal(amount)`. Dice are written the usual way: `"1d8"`,
+`"2d6+1"`. Skills are sent to clients (for their names, icons and
+descriptions); using them comes with fighting (see `docs/plan-combat.md`).
 
 ### Appearances
 
@@ -116,18 +146,38 @@ Colours are sRGB red, green and blue, each from 0 to 1. `body` (`Masculine`,
         stackable: false,               // optional: true for things like arrows, which share one slot
         value: 4,                       // optional: worth in Miasma; shops buy for half. 0 = unsellable
     ),
+    (
+        id: "training_sword",
+        name: "Training sword",
+        description: "A blunt blade for learning the basics.",
+        icon: "training_sword.png",
+        value: 8,
+        equip: Some((                   // optional: makes the item wearable
+            slots: [Weapon],            // Weapon, Body and/or Legs (a robe fills [Body, Legs])
+            weapon: Some((damage: "1d6", speed: 1.0, ability: Strength)),   // for Weapon items
+            armour: 0,                  // optional: armour class it adds
+            look: (style: Sword, main: (0.72, 0.74, 0.78), trim: (0.36, 0.23, 0.13)),
+        )),
+    ),
 ]
 ```
+
+An item's `look` is how it shows on the character: `Plates` (chest and back),
+`LegPlates`, `Robe` (shoulders to ankles), `Sword` or `Staff` (in the right
+hand), in a main and a trim colour. They're placeholder shapes until real
+models. A weapon's `speed` is attacks per second before Dexterity, and its
+`ability` is the one it attacks and does damage with.
 
 Money is **Miasma**, kept on the character rather than in the bag. Icons are small PNGs
 (32 × 32 works well, at most 64 KB). The current ones are placeholders drawn
 by `tools/placeholder_icons.py`; replace them with painted icons of the same
 name whenever they're ready.
 
-`new_characters.ron` says what a new character carries:
+`new_characters.ron` says what every new character carries, and the skills
+everyone knows:
 
 ```ron
-(miasma: 25, items: [(item: "bread", count: 1)])
+(miasma: 25, items: [(item: "bread", count: 1)], skills: ["rest"])
 ```
 
 ### Shops

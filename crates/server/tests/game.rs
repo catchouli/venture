@@ -6,7 +6,9 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use venture_content::ContentPack;
-use venture_protocol::{AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, PROTOCOL_VERSION, ServerMessage};
+use venture_protocol::{
+    AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, PROTOCOL_VERSION, ServerMessage,
+};
 use venture_server::content::LoadedContent;
 use venture_server::entities::NetworkId;
 use venture_server::npcs::Npc;
@@ -365,12 +367,13 @@ fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> Co
     write("scripts/greeter.rhai", script.as_bytes());
     write("items/things.ron", ITEMS.as_bytes());
     write("classes/classes.ron", CLASSES.as_bytes());
+    write("skills/skills.ron", SKILLS.as_bytes());
     write("shops/bakery.ron", br#"[(id: "bakery", name: "The Bakery", stock: [(item: "bread", price: 5)])]"#);
     write(
         "quests/errand.ron",
         br#"[(id: "errand", name: "An Errand", stages: [(id: "asked", journal: "Tom wants a loaf."), (id: "done", journal: "I gave Tom a loaf.")])]"#,
     );
-    write("new_characters.ron", br#"(miasma: 25, items: [(item: "bread", count: 1)])"#);
+    write("new_characters.ron", br#"(miasma: 25, items: [(item: "bread", count: 1)], skills: ["rest"])"#);
     // Only the start of a PNG, but that's all the content check looks at.
     write("icons/thing.png", b"\x89PNG\r\n\x1a\n");
     if let Some(dialogue) = dialogue {
@@ -383,17 +386,32 @@ fn content_with_dialogue(npcs: &str, script: &str, dialogue: Option<&str>) -> Co
 
 const ITEMS: &str = r#"[
     (id: "bread", name: "Bread", description: "A loaf.", icon: "thing.png", value: 4),
+    (id: "sword", name: "Sword", description: "Sharp.", icon: "thing.png", value: 10,
+     equip: Some((slots: [Weapon], weapon: Some((damage: "1d6", speed: 1.0, ability: Strength)),
+                  look: (style: Sword, main: (0.7, 0.7, 0.7), trim: (0.3, 0.2, 0.1))))),
+    (id: "chestguard", name: "Chestguard", description: "Wooden.", icon: "thing.png", value: 6,
+     equip: Some((slots: [Body], armour: 2, look: (style: Plates, main: (0.6, 0.4, 0.3), trim: (0.3, 0.2, 0.1))))),
+    (id: "robe", name: "Robe", description: "Long.", icon: "thing.png", value: 6,
+     equip: Some((slots: [Body, Legs], look: (style: Robe, main: (0.3, 0.3, 0.5), trim: (0.8, 0.7, 0.4))))),
 ]"#;
 
 const CLASSES: &str = r#"[
     (id: "fighter", name: "Fighter", description: "Hits things.",
      rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
      stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
-     outfit: (style: Armour, main: (0.4, 0.3, 0.2), trim: (0.6, 0.4, 0.3))),
+     starting_equipment: ["sword", "chestguard"], starting_skills: ["whack"],
+     skills: [(skill: "bash", level: 2, cost: 1)]),
     (id: "mage", name: "Mage", description: "Casts things.",
      rules: (hit_die: 6, mana_per_level: 8, casting_ability: Intelligence),
      stats: (strength: 8, dexterity: 12, constitution: 12, intelligence: 15, wisdom: 13),
-     outfit: (style: Robe, main: (0.3, 0.3, 0.5), trim: (0.8, 0.7, 0.4))),
+     starting_equipment: ["robe"], starting_skills: ["blast"]),
+]"#;
+
+const SKILLS: &str = r#"[
+    (id: "rest", name: "Rest", description: "Sit down.", icon: "thing.png", effect: Rest),
+    (id: "whack", name: "Whack", description: "A heavy blow.", icon: "thing.png", mana: 2, effect: Strike(damage: "1d8")),
+    (id: "bash", name: "Bash", description: "Another blow.", icon: "thing.png", effect: Strike(damage: "1d6")),
+    (id: "blast", name: "Blast", description: "Whoosh.", icon: "thing.png", effect: Bolt(damage: "1d8")),
 ]"#;
 
 /// A different number each call, so test content folders don't collide.
@@ -919,4 +937,76 @@ fn admins_can_change_their_body_type() {
     assert_eq!(notices(&messages), ["Your character is now masculine."]);
     assert!(messages.iter().any(|m| matches!(m, ServerMessage::PlayerChanged { look, celebrate: false, .. }
         if look.body == BodyType::Masculine)));
+}
+
+#[test]
+fn classes_start_with_their_gear_and_skills() {
+    let mut server = TestServer::with_content("kit", content_with("[]", ""));
+    let (_, messages) = create(&mut server, TOKEN_A, "Aldric", "fighter");
+    let sheet = latest_sheet(&messages).unwrap();
+    assert_eq!(sheet.skills, ["rest", "whack"]);
+    assert_eq!(
+        sheet.equipment,
+        [(EquipSlot::Weapon, "sword".to_string()), (EquipSlot::Body, "chestguard".to_string())]
+    );
+    assert_eq!(sheet.damage.to_string(), "1d6+2", "the sword, plus STR 15's +2");
+    assert_eq!(sheet.armour_class, 13, "10, +1 DEX, +2 chestguard");
+    let worn = messages.iter().find_map(|m| match m {
+        ServerMessage::Welcome { look, .. } => Some(look.worn.len()),
+        _ => None,
+    });
+    assert_eq!(worn, Some(2), "the sword and chestguard show");
+
+    // The class choices show each class's gear, for the preview.
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_B.to_string() });
+    server.run(2);
+    let robes = client.receive().into_iter().find_map(|m| match m {
+        ServerMessage::CharacterNeeded { classes, .. } => Some(classes[1].worn.len()),
+        _ => None,
+    });
+    assert_eq!(robes, Some(1), "the mage's robe (one item, though it fills two slots)");
+}
+
+#[test]
+fn gear_comes_off_into_the_bag_and_goes_back_on() {
+    let mut server = TestServer::with_content("gear", content_with("[]", ""));
+    let (client, _) = create(&mut server, TOKEN_A, "Aldric", "fighter");
+    client.send(&ClientMessage::Unequip { slot: EquipSlot::Weapon });
+    server.run(2);
+    let messages = client.receive();
+    assert_eq!(notices(&messages), ["You take off: Sword."]);
+    assert_eq!(latest_sheet(&messages).unwrap().damage.to_string(), "3", "fists again");
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::PlayerChanged { look, .. } if look.worn.len() == 1)));
+    let sword = slot_of(&messages, "sword").expect("the sword is in the bag");
+
+    client.send(&ClientMessage::Equip { slot: sword });
+    server.run(2);
+    let messages = client.receive();
+    assert_eq!(notices(&messages), ["You equip: Sword."]);
+    assert_eq!(latest_sheet(&messages).unwrap().damage.to_string(), "1d6+2");
+    let bread = slot_of(&messages, "bread").unwrap();
+    client.send(&ClientMessage::Equip { slot: bread });
+    server.run(2);
+    assert_eq!(notices(&client.receive()), ["You can't equip that."]);
+}
+
+#[test]
+fn points_are_spent_on_stats_and_skills() {
+    let mut server = TestServer::with_content("points", content_with("[]", ""));
+    let (boss, _) = create(&mut server, TOKEN_A, "Boss", "fighter");
+    boss.send(&ClientMessage::LearnSkill { skill: "bash".to_string() });
+    server.run(2);
+    assert_eq!(notices(&boss.receive()), ["You need to be level 2 to learn that skill."]);
+
+    boss.send(&ClientMessage::Admin(AdminCommand::SetLevel { level: 2 }));
+    server.run(2);
+    boss.send(&ClientMessage::SpendStatPoint { ability: venture_rpg::Ability::Constitution });
+    boss.send(&ClientMessage::LearnSkill { skill: "bash".to_string() });
+    server.run(2);
+    let messages = boss.receive();
+    assert!(notices(&messages).contains(&"You learn Bash.".to_string()));
+    let sheet = latest_sheet(&messages).unwrap();
+    assert_eq!((sheet.stats.constitution, sheet.stat_points, sheet.skill_points), (15, 1, 0));
+    assert_eq!(sheet.skills, ["rest", "whack", "bash"]);
 }

@@ -1,4 +1,4 @@
-//! The content pack's client files (NPC appearances, items and their icons):
+//! The content pack's client files (NPC appearances, items, skills and their icons):
 //! downloaded from the server, and downloaded again when the server reloads
 //! its content.
 //!
@@ -12,7 +12,10 @@ use bevy::asset::RenderAssetUsages;
 use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
-use venture_content::{AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, ItemDef, parse_appearances, parse_items};
+use venture_content::{
+    AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, ItemDef, SkillDef, parse_appearances, parse_items,
+    parse_skills,
+};
 use venture_protocol::ServerMessage;
 
 use crate::network::launch::ServerChoice;
@@ -45,6 +48,8 @@ pub struct ContentStore {
     pub appearances: HashMap<String, AppearanceDef>,
     /// Items, by id.
     pub items: HashMap<String, ItemDef>,
+    /// Skills, by id.
+    pub skills: HashMap<String, SkillDef>,
     /// Item icons, by file name within `icons/`.
     pub icons: HashMap<String, Handle<Image>>,
     /// The files held, by path, with their hashes (to skip unchanged files).
@@ -70,6 +75,7 @@ struct ContentFile {
 enum FileData {
     Appearances(Vec<AppearanceDef>),
     Items(Vec<ItemDef>),
+    Skills(Vec<SkillDef>),
     /// A PNG, turned into an image once the download is finished.
     Icon(Vec<u8>),
 }
@@ -182,6 +188,7 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
     let data = match path.split('/').next() {
         Some("appearances") => FileData::Appearances(parse_appearances(&text())?),
         Some("items") => FileData::Items(parse_items(&text())?),
+        Some("skills") => FileData::Skills(parse_skills(&text())?),
         Some("icons") => FileData::Icon(bytes.to_vec()),
         _ => return Err(format!("{path}: the client doesn't know this kind of file")),
     };
@@ -201,6 +208,7 @@ fn finish_download(
         Ok(downloaded) => {
             store.appearances.clear();
             store.items.clear();
+            store.skills.clear();
             store.icons.clear();
             for (path, file) in &downloaded.files {
                 match &file.data {
@@ -208,6 +216,9 @@ fn finish_download(
                         store.appearances.extend(appearances.iter().map(|a| (a.id.clone(), a.clone())));
                     }
                     FileData::Items(items) => store.items.extend(items.iter().map(|i| (i.id.clone(), i.clone()))),
+                    FileData::Skills(skills) => {
+                        store.skills.extend(skills.iter().map(|skill| (skill.id.clone(), skill.clone())));
+                    }
                     FileData::Icon(png) => match decode_icon(png) {
                         Ok(image) => {
                             let name = path.rsplit('/').next().unwrap_or(path).to_string();

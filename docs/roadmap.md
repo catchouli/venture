@@ -53,8 +53,10 @@ variables, item use (eating), and more shops and quests as the world grows.
 ## Next: combat (milestone 4)
 
 Classes, levels, stats, skills, equipment, creatures and fighting: see
-[plan-combat.md](plan-combat.md). Step 1 (the RPG rules, classes and
-character creation, levels and stats, Miasma, admins) is done.
+[plan-combat.md](plan-combat.md). Steps 1 and 2 are done: the RPG rules,
+classes and character creation, levels, stats, Miasma, admins, the tabbed
+character window, skills to learn, and equipment that shows on the character.
+Next: creatures and spawners.
 
 ## Then: the game
 

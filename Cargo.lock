@@ -6474,6 +6474,7 @@ dependencies = [
  "venture_content",
  "venture_navigation",
  "venture_protocol",
+ "venture_rpg",
  "venture_server",
  "venture_simulation",
  "venture_world",

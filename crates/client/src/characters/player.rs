@@ -124,7 +124,7 @@ fn place_on_welcome(
             player.movement = Movement::Idle;
             player.following = None;
             player.admin = *admin;
-            player.look = *server_look;
+            player.look = server_look.clone();
             transform.translation = translation;
             nameplate.0.clone_from(name);
             continue;
@@ -132,7 +132,13 @@ fn place_on_welcome(
         let character = spawn_character(&mut commands, &assets, Transform::from_translation(translation), &look);
         commands.entity(character).insert((
             Name::new("Player"),
-            LocalPlayer { id: *you, movement: Movement::Idle, following: None, admin: *admin, look: *server_look },
+            LocalPlayer {
+                id: *you,
+                movement: Movement::Idle,
+                following: None,
+                admin: *admin,
+                look: server_look.clone(),
+            },
             Nameplate(name.clone()),
         ));
     }
@@ -154,7 +160,7 @@ fn restyle_when_changed(
             && *id == player.id
             && *look != player.look
         {
-            player.look = *look;
+            player.look = look.clone();
             rebuild_body(&mut commands, entity, &assets, &assets.player_look(id.0, look, &mut materials));
         }
     }

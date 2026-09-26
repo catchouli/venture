@@ -43,6 +43,7 @@ pub mod config;
 pub mod content;
 pub mod dialogue;
 pub mod entities;
+pub mod equipment;
 pub mod gameplay;
 #[cfg(feature = "http")]
 pub mod http;
@@ -153,6 +154,7 @@ impl GameServer {
                 quests::QuestsPlugin,
                 character::CharacterPlugin,
                 admin::AdminPlugin,
+                equipment::EquipmentPlugin,
                 content::ContentPlugin,
             ));
     }

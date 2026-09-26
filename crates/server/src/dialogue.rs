@@ -370,6 +370,7 @@ mod tests {
             icon: String::new(),
             stackable: false,
             value: 4,
+            equip: None,
         };
         let stage = |id: &str| venture_content::QuestStage { id: id.to_string(), journal: String::new() };
         let quest = venture_content::QuestDef {
