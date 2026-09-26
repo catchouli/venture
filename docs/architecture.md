@@ -9,6 +9,9 @@ venture_client ──► venture_protocol, venture_simulation, venture_navigatio
 venture_server ──► venture_protocol, venture_simulation, venture_navigation, venture_content (+scripts), venture_world
    (headless Bevy, tokio/axum, Rhai)
 
+venture_editor ──► venture_client (its world rendering), venture_content (+reflect), venture_world
+   (Bevy, egui)
+
 venture_worldgen ──► venture_world     (the bake tool; nothing at runtime depends on it)
 ```
 
@@ -22,9 +25,12 @@ venture_worldgen ──► venture_world     (the bake tool; nothing at runtime 
 | `venture_protocol` | The messages between client and server, their encoding (postcard), size limits, and shared validation rules for names, chat and tokens. |
 | `venture_content` | The content pack: class, appearance, item, shop, quest and NPC definitions, loading with every problem reported by file, script and dialogue checks (with the `scripts` feature), the client manifest, and the `check` tool. |
 | `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles (with unique names), characters and admin powers, gameplay, creatures, abilities and the hotbar, combat, inventories, shops, quests, NPCs, private NPC conversations (Yarn Spinner), the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
-| `venture_client` | The game client: a view of the server's game, with rendering, input, prediction, actions and chat commands, chat, the dialogue window and debug tools. |
+| `venture_client` | The game client: a view of the server's game, with rendering, input, prediction, actions and chat commands, chat, the dialogue window and debug tools. A library (its plugins, shared with the editor) and a thin binary. |
+| `venture_editor` | The editor: the content's data files edited through the content crate's own types (by reflection), with undo, checking and saving, and the world shown with the client's rendering. See [editor.md](editor.md). |
 
-**Rule:** only the client and the server depend on Bevy. The shared crates
+**Rule:** only the client, the editor and the server depend on Bevy. (The
+content, protocol and RPG crates can derive Bevy's `Reflect` for the editor,
+behind their `reflect` feature, which only the editor turns on.) The shared crates
 are engine-free, so both sides can use them and they're easy to test.
 
 ## Client and server
@@ -62,7 +68,8 @@ flow out as `ToServer` messages. No other module touches the connection.
 
 ```
 src/
-  main.rs            the app: adds one plugin per concern
+  lib.rs             the game's plugins (one per concern), and `run`, which makes the app
+  main.rs            just calls `run`
   camera.rs          follow and free cameras, and their controls
   content/           the content pack's client files, downloaded and kept up to date
   network/           the connection to the server
