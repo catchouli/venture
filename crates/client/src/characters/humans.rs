@@ -69,7 +69,7 @@ impl Plugin for HumansPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<HumanModels>().init_resource::<MaskedMeshes>().add_systems(
             Update,
-            (load_models, dress_humans, assemble_humans, remove_placeholders, animate_humans).chain(),
+            (load_models, resize_humans, dress_humans, assemble_humans, remove_placeholders, animate_humans).chain(),
         );
     }
 }
@@ -214,6 +214,10 @@ pub struct HumanRig {
     started_wave: bool,
     /// Whether they were resting (to stand up when they stop).
     was_resting: bool,
+    /// The bones sized for their height, build and head, by name.
+    bones: HashMap<String, Entity>,
+    /// The look they're dressed in.
+    dressed_as: HumanLook,
 }
 
 /// The character models, loading or loaded.
@@ -355,11 +359,18 @@ fn dress_humans(
     models: Res<HumanModels>,
     asset_server: Res<AssetServer>,
     gltfs: Res<Assets<Gltf>>,
-    people: Query<(Entity, &HumanLook, Option<&Children>), Or<(Changed<HumanLook>, Without<Dressed>)>>,
+    people: Query<
+        (Entity, &HumanLook, Option<&Children>, Option<&HumanRig>, Has<Dressed>),
+        Or<(Changed<HumanLook>, Without<Dressed>)>,
+    >,
     scenes: Query<(), With<HumanScene>>,
 ) {
     let Some(defs) = &models.models else { return };
-    for (person, look, children) in &people {
+    for (person, look, children, rig, dressed) in &people {
+        // (A change of size alone is made by [`resize_humans`].)
+        if dressed && rig.is_some_and(|rig| only_sizes_differ(look, &rig.dressed_as)) {
+            continue;
+        }
         // (Until everything's loaded, they keep what they have.)
         if !look_ready(look, &models, defs, &asset_server) {
             continue;
@@ -510,7 +521,7 @@ impl Assembly<'_, '_> {
             }
         }
 
-        self.size_bones(body_root, &bones, look.sizes);
+        size_bones(&mut self.transforms, body_root, &bones, look.sizes);
 
         // Simple shapes for held things without a model, where nothing else is held.
         let shapes: Vec<ItemLook> = look
@@ -571,37 +582,9 @@ impl Assembly<'_, '_> {
             started_swing: false,
             started_wave: false,
             was_resting: false,
+            bones: SIZED_BONES.iter().filter_map(|name| Some((name.to_string(), *bones.get(*name)?))).collect(),
+            dressed_as: look.clone(),
         });
-    }
-
-    /// Scales the body (and so everything on it) for the person's height,
-    /// build and head size. Build widens the body and thickens the arms and
-    /// legs; the bones beyond (neck, shoulders, hands and feet) are scaled
-    /// back, so they keep their shape.
-    fn size_bones(&mut self, body_root: Entity, bones: &HashMap<String, Entity>, [height, build, head]: [i8; 3]) {
-        let amount = |slider: i8, change: f32| 1.0 + f32::from(slider) / f32::from(FEATURE_RANGE) * change;
-        let width = amount(build, BUILD_CHANGE);
-        let (wider, back) = (Vec3::new(width, 1.0, width), Vec3::new(1.0 / width, 1.0, 1.0 / width));
-        let mut sizes: Vec<(String, Vec3)> = vec![
-            ("spine_01".to_string(), wider),
-            ("neck_01".to_string(), back),
-            ("Head".to_string(), Vec3::splat(amount(head, HEAD_CHANGE))),
-        ];
-        for side in ["l", "r"] {
-            for (bone, size) in
-                [("clavicle", back), ("upperarm", wider), ("hand", back), ("thigh", wider), ("foot", back)]
-            {
-                sizes.push((format!("{bone}_{side}"), size));
-            }
-        }
-        for (name, size) in sizes {
-            if let Some(mut transform) = bones.get(&name).and_then(|bone| self.transforms.get_mut(*bone).ok()) {
-                transform.scale = size;
-            }
-        }
-        if let Ok(mut transform) = self.transforms.get_mut(body_root) {
-            transform.scale = Vec3::splat(amount(height, HEIGHT_CHANGE));
-        }
     }
 
     /// Points a part's (or hair's) meshes at the body's bones, and removes
@@ -685,6 +668,70 @@ impl Assembly<'_, '_> {
             self.recolour(entity, colour);
         }
     }
+}
+
+/// Scales the body (and so everything on it) for a person's height, build
+/// and head size. Build widens the body and thickens the arms and legs; the
+/// bones beyond (neck, shoulders, hands and feet) are scaled back, so they
+/// keep their shape. `bones` are the skeleton's bones by name.
+fn size_bones(
+    transforms: &mut Query<&mut Transform>,
+    body_root: Entity,
+    bones: &HashMap<String, Entity>,
+    [height, build, head]: [i8; 3],
+) {
+    let amount = |slider: i8, change: f32| 1.0 + f32::from(slider) / f32::from(FEATURE_RANGE) * change;
+    let width = amount(build, BUILD_CHANGE);
+    let (wider, back) = (Vec3::new(width, 1.0, width), Vec3::new(1.0 / width, 1.0, 1.0 / width));
+    for name in SIZED_BONES {
+        let size = match name.trim_end_matches("_l").trim_end_matches("_r") {
+            "spine_01" | "upperarm" | "thigh" => wider,
+            "Head" => Vec3::splat(amount(head, HEAD_CHANGE)),
+            _ => back,
+        };
+        if let Some(mut transform) = bones.get(name).and_then(|bone| transforms.get_mut(*bone).ok()) {
+            transform.scale = size;
+        }
+    }
+    if let Ok(mut transform) = transforms.get_mut(body_root) {
+        transform.scale = Vec3::splat(amount(height, HEIGHT_CHANGE));
+    }
+}
+
+/// The bones [`size_bones`] scales.
+const SIZED_BONES: [&str; 13] = [
+    "spine_01",
+    "neck_01",
+    "Head",
+    "clavicle_l",
+    "clavicle_r",
+    "upperarm_l",
+    "upperarm_r",
+    "hand_l",
+    "hand_r",
+    "thigh_l",
+    "thigh_r",
+    "foot_l",
+    "foot_r",
+];
+
+/// Resizes people whose look changed only in size (such as while a slider
+/// in the character creator is dragged), without dressing them again.
+fn resize_humans(
+    mut people: Query<(&HumanLook, &mut HumanRig), Changed<HumanLook>>,
+    mut transforms: Query<&mut Transform>,
+) {
+    for (look, mut rig) in &mut people {
+        if look != &rig.dressed_as && only_sizes_differ(look, &rig.dressed_as) {
+            size_bones(&mut transforms, rig.body_root, &rig.bones, look.sizes);
+            rig.dressed_as = look.clone();
+        }
+    }
+}
+
+/// Whether two looks are the same but for their sizes.
+fn only_sizes_differ(one: &HumanLook, other: &HumanLook) -> bool {
+    one == &HumanLook { sizes: one.sizes, ..other.clone() }
 }
 
 /// Each entity under `root` with its path of names from `root` (the way the

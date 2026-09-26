@@ -1,12 +1,15 @@
 # Plan: real character models, and a character creator
 
-**Status (September 2026):** steps 1 to 4 are done, with Quaternius's
+**Status (September 2026):** steps 1 to 5 are done, with Quaternius's
 Universal Base Characters, Modular Character Outfits, Universal Animation
 Library and Fantasy Props (all CC0). People are a body, hair and outfit
 parts on one skeleton, dressed by what they wear, holding their sword and
 shield; see "Character models" in [content-authoring.md](content-authoring.md)
-and `crates/client/src/characters/humans.rs`. Still to do: the creator
-(steps 5 and 6), creatures (step 7), a sit-on-the-ground animation
+and `crates/client/src/characters/humans.rs`. The creator has height, build
+and head-size sliders (scaled bones), hairstyles, beards, and hair and skin
+colours (the skin texture tinted), and NPCs' sizes are picked from their
+appearance's id. Still to do: face and body shape sliders (step 6), eye
+colours, creatures (step 7), a sit-on-the-ground animation
 (resting kneels for now), grips for staffs and clubs (placeholder shapes for
 now), and a check of the download size and frame rate on the web.
 

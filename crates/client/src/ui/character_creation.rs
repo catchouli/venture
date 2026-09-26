@@ -1,5 +1,8 @@
 //! Making a character, the first time a player joins: choosing a name, a
-//! class and a body type, with a turning preview of how they'll look. The
+//! class, a body type and their looks (height, build, head size, hair,
+//! beard, and hair and skin colours, from what the content's
+//! `characters/characters.ron` offers), with a turning preview of how
+//! they'll look. The
 //! server offers the classes ([`ServerMessage::CharacterNeeded`]) and turns
 //! away names that are taken ([`ServerMessage::CharacterRejected`]).
 //!
@@ -11,12 +14,15 @@ use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
+use bevy::ui::RelativeCursorPosition;
 use venture_protocol::{
-    BodyType, ClassChoice, ClientMessage, Features, MAX_NAME_CHARS, PlayerLook, ServerMessage, clean_name,
+    BodyType, ClassChoice, ClientMessage, FEATURE_RANGE, Features, MAX_NAME_CHARS, PlayerLook, ServerMessage,
+    clean_name,
 };
 
 use crate::characters::humans::HumanLook;
 use crate::characters::model::{CharacterAssets, Gait, rebuild_body, spawn_character};
+use crate::content::ContentStore;
 use crate::dev::settings::DevSettings;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
@@ -41,6 +47,14 @@ const PREVIEW_LAYER: usize = 1;
 const STAGE: Vec3 = Vec3::new(0.0, -2000.0, 0.0);
 /// How fast the preview turns, in radians per second.
 const TURN_SPEED: f32 = 0.6;
+/// Width of the looks' labels, and of a slider's track, in pixels.
+const LABEL_WIDTH: f32 = 92.0;
+const TRACK_WIDTH: f32 = 130.0;
+/// Colour of a slider's track and of its filled part.
+const TRACK_COLOUR: Color = Color::srgba(0.0, 0.0, 0.0, 0.55);
+const FILL_COLOUR: Color = Color::srgb(0.75, 0.6, 0.32);
+/// Size of a colour swatch, in pixels.
+const SWATCH_SIZE: f32 = 22.0;
 
 /// Lets new players make a character.
 pub struct CharacterCreationPlugin;
@@ -57,6 +71,7 @@ impl Plugin for CharacterCreationPlugin {
                 (
                     choose_options,
                     show_choices,
+                    (build_looks, choose_looks, show_looks).chain(),
                     (dress_preview, put_stage_on_its_layer, turn_preview).chain(),
                     submit.after(TextInputSystems),
                     show_rejections,
@@ -104,6 +119,46 @@ struct ClassButton(usize);
 /// A body type to choose.
 #[derive(Component)]
 struct BodyButton(BodyType);
+
+/// A look that's chosen by steps: a slider, or one of a list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Feature {
+    Height,
+    Build,
+    Head,
+    Hair,
+    Beard,
+}
+
+impl Feature {
+    const SLIDERS: [(Feature, &'static str); 3] =
+        [(Feature::Height, "Height"), (Feature::Build, "Build"), (Feature::Head, "Head")];
+}
+
+/// The column the looks are chosen in (filled once the content says what's offered).
+#[derive(Component)]
+struct LooksColumn;
+
+/// A button stepping a look back (-1) or forward (1).
+#[derive(Component)]
+struct Stepper(Feature, i8);
+
+/// A slider's track (clicked or dragged to set it), and its filled part.
+#[derive(Component)]
+struct Track(Feature);
+#[derive(Component)]
+struct TrackFill(Feature);
+
+/// The name of the chosen hairstyle or beard.
+#[derive(Component)]
+struct ChoiceName(Feature);
+
+/// A colour to choose: hair (`false`) or skin (`true`), and its place in the palette.
+#[derive(Component)]
+struct Swatch {
+    skin: bool,
+    index: u8,
+}
 
 /// The chosen class's description.
 #[derive(Component)]
@@ -297,6 +352,11 @@ fn open_prompt(
                                     }
                                 });
                             });
+                        // ...and their looks furthest right.
+                        row.spawn((
+                            LooksColumn,
+                            Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },
+                        ));
                     });
                     panel.spawn((
                         Text::new("Press Enter to begin"),
@@ -307,6 +367,202 @@ fn open_prompt(
                 });
         });
     focus.0 = field;
+}
+
+/// Fills the looks column with what the content offers, once it's here.
+fn build_looks(
+    mut commands: Commands,
+    content: Res<ContentStore>,
+    column: Single<(Entity, Option<&Children>), With<LooksColumn>>,
+) {
+    let (column, children) = column.into_inner();
+    let Some(models) = &content.character_models else { return };
+    if children.is_some_and(|children| !children.is_empty()) {
+        return;
+    }
+    let body = TextFont { font_size: FontSize::Px(16.0), ..default() };
+    let small = TextFont { font_size: FontSize::Px(15.0), ..default() };
+    let label = |text: &str| (Text::new(text), small.clone(), Node { width: px(LABEL_WIDTH), ..default() });
+    let stepper = |feature: Feature, step: i8| {
+        (
+            Stepper(feature, step),
+            Button,
+            Node {
+                width: px(24),
+                height: px(24),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(4)),
+                ..default()
+            },
+            BackgroundColor(OPTION_COLOUR),
+            BorderColor::all(BORDER_COLOUR),
+            Themed(Piece::Button),
+            children![(Text::new(if step < 0 { "<" } else { ">" }), small.clone(), TextColor(TITLE_COLOUR))],
+        )
+    };
+    let row = || Node { align_items: AlignItems::Center, column_gap: px(6), ..default() };
+    commands.entity(column).with_children(|looks| {
+        looks.spawn((Text::new("Looks"), body.clone()));
+        for (feature, name) in Feature::SLIDERS {
+            looks.spawn(row()).with_children(|line| {
+                line.spawn(label(name));
+                line.spawn(stepper(feature, -1));
+                line.spawn((
+                    Track(feature),
+                    Button,
+                    RelativeCursorPosition::default(),
+                    Node {
+                        width: px(TRACK_WIDTH),
+                        height: px(10),
+                        border_radius: BorderRadius::all(px(5)),
+                        ..default()
+                    },
+                    BackgroundColor(TRACK_COLOUR),
+                ))
+                .with_child((
+                    TrackFill(feature),
+                    Node { height: percent(100), border_radius: BorderRadius::all(px(5)), ..default() },
+                    BackgroundColor(FILL_COLOUR),
+                ));
+                line.spawn(stepper(feature, 1));
+            });
+        }
+        for (feature, name) in [(Feature::Hair, "Hair"), (Feature::Beard, "Beard")] {
+            looks.spawn(row()).with_children(|line| {
+                line.spawn(label(name));
+                line.spawn(stepper(feature, -1));
+                line.spawn((
+                    ChoiceName(feature),
+                    Text::default(),
+                    small.clone(),
+                    TextColor(TITLE_COLOUR),
+                    TextLayout::justify(Justify::Center),
+                    Node { width: px(TRACK_WIDTH), ..default() },
+                ));
+                line.spawn(stepper(feature, 1));
+            });
+        }
+        for (skin, name, palette) in [(false, "Hair colour", &models.hair_colours), (true, "Skin", &models.skin_tones)]
+        {
+            looks.spawn((Text::new(name), small.clone()));
+            looks.spawn(Node { column_gap: px(5), flex_wrap: FlexWrap::Wrap, ..default() }).with_children(|line| {
+                for (index, &(r, g, b)) in palette.iter().enumerate().take(u8::MAX as usize) {
+                    line.spawn((
+                        Swatch { skin, index: index as u8 },
+                        Button,
+                        Node {
+                            width: px(SWATCH_SIZE),
+                            height: px(SWATCH_SIZE),
+                            border: UiRect::all(px(2)),
+                            border_radius: BorderRadius::all(px(4)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(r, g, b)),
+                        BorderColor::all(BORDER_COLOUR),
+                    ));
+                }
+            });
+        }
+    });
+}
+
+/// Clicking the looks' controls changes the chosen features. Sliders' tracks
+/// can be clicked or dragged along.
+fn choose_looks(
+    content: Res<ContentStore>,
+    steppers: Query<(&Interaction, &Stepper), Changed<Interaction>>,
+    tracks: Query<(&Interaction, &Track, &RelativeCursorPosition)>,
+    swatches: Query<(&Interaction, &Swatch), Changed<Interaction>>,
+    mut offer: ResMut<Offer>,
+) {
+    let Some(models) = &content.character_models else { return };
+    let mut features = offer.features.clone();
+    for (_, Stepper(feature, step)) in steppers.iter().filter(|(interaction, _)| **interaction == Interaction::Pressed)
+    {
+        match feature {
+            Feature::Hair => {
+                let usual = &models.bodies.of(offer.body).hair;
+                let current = features.hair.as_ref().unwrap_or(usual);
+                features.hair = Some(step_through(&models.hairstyles, Some(current), *step)).flatten();
+            }
+            Feature::Beard => features.beard = step_through(&models.beards, features.beard.as_ref(), *step),
+            _ => *slider(&mut features, *feature) += step,
+        }
+    }
+    for (_, Track(feature), cursor) in tracks.iter().filter(|(interaction, ..)| **interaction == Interaction::Pressed) {
+        // (The cursor's position runs from -0.5 at the left to 0.5 at the right.)
+        if let Some(position) = cursor.normalized {
+            let along = (position.x + 0.5).clamp(0.0, 1.0);
+            *slider(&mut features, *feature) = (along * 2.0 * f32::from(FEATURE_RANGE)).round() as i8 - FEATURE_RANGE;
+        }
+    }
+    for (_, swatch) in swatches.iter().filter(|(interaction, _)| **interaction == Interaction::Pressed) {
+        if swatch.skin {
+            features.skin = swatch.index;
+        } else {
+            features.hair_colour = swatch.index;
+        }
+    }
+    let features = models.allowed(features);
+    if features != offer.features {
+        offer.features = features;
+    }
+}
+
+/// One of a slider's features.
+fn slider(features: &mut Features, feature: Feature) -> &mut i8 {
+    match feature {
+        Feature::Build => &mut features.build,
+        Feature::Head => &mut features.head,
+        _ => &mut features.height,
+    }
+}
+
+/// The next (`step` 1) or previous (-1) of a list with "none" at its start,
+/// going round.
+fn step_through(list: &[String], current: Option<&String>, step: i8) -> Option<String> {
+    let places = list.len() as i32 + 1;
+    let place = current.and_then(|current| list.iter().position(|item| item == current)).map_or(0, |at| at as i32 + 1);
+    let next = (place + i32::from(step)).rem_euclid(places);
+    (next > 0).then(|| list[next as usize - 1].clone())
+}
+
+/// A hair or beard's name as shown: "long" becomes "Long".
+fn shown_name(name: &str) -> String {
+    let mut letters = name.chars();
+    letters.next().map(|first| first.to_uppercase().chain(letters).collect()).unwrap_or_default()
+}
+
+/// Shows the chosen looks: sliders' fills, names, and the chosen swatches.
+fn show_looks(
+    offer: Res<Offer>,
+    content: Res<ContentStore>,
+    mut fills: Query<(&TrackFill, &mut Node)>,
+    mut names: Query<(&ChoiceName, &mut Text)>,
+    mut swatches: Query<(&Swatch, &mut BorderColor)>,
+    new_controls: Query<(), Added<Swatch>>,
+) {
+    if !offer.is_changed() && new_controls.is_empty() {
+        return;
+    }
+    let Some(models) = &content.character_models else { return };
+    let mut features = offer.features.clone();
+    for (TrackFill(feature), mut node) in &mut fills {
+        let value = f32::from(*slider(&mut features, *feature) + FEATURE_RANGE);
+        node.width = percent(100.0 * value / f32::from(2 * FEATURE_RANGE));
+    }
+    for (ChoiceName(feature), mut text) in &mut names {
+        text.0 = match feature {
+            Feature::Hair => shown_name(features.hair.as_ref().unwrap_or(&models.bodies.of(offer.body).hair)),
+            _ => features.beard.as_deref().map_or("None".to_string(), shown_name),
+        };
+    }
+    for (swatch, mut border) in &mut swatches {
+        let chosen = if swatch.skin { features.skin } else { features.hair_colour } == swatch.index;
+        *border = BorderColor::all(if chosen { TITLE_COLOUR } else { Color::srgba(0.0, 0.0, 0.0, 0.5) });
+    }
 }
 
 fn close_prompt(mut commands: Commands, screen: Query<Entity, With<CreationScreen>>, mut focus: ResMut<KeyboardFocus>) {
@@ -364,22 +620,28 @@ fn show_choices(
     description.0 = offer.classes.get(offer.class).map(|class| class.description.clone()).unwrap_or_default();
 }
 
-/// Dresses the preview character in the chosen class and body type, and has
-/// them wave hello in their new look.
+/// Dresses the preview character in the chosen class, body type and looks.
+/// A new class or body type rebuilds the placeholder body (shown until the
+/// models load), and has them wave hello in their new look.
 fn dress_preview(
     mut commands: Commands,
     offer: Res<Offer>,
     assets: Res<CharacterAssets>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     preview: Single<(Entity, &mut Gait), With<PreviewCharacter>>,
+    mut shown: Local<Option<(usize, BodyType)>>,
 ) {
-    if offer.is_changed() {
-        let (entity, mut gait) = preview.into_inner();
+    if !offer.is_changed() {
+        return;
+    }
+    let (entity, mut gait) = preview.into_inner();
+    if *shown != Some((offer.class, offer.body)) {
+        *shown = Some((offer.class, offer.body));
         let look = assets.player_look(0, &offer.look(), &mut materials);
         rebuild_body(&mut commands, entity, &assets, &look);
-        commands.entity(entity).insert(HumanLook::of_player(&offer.look()));
         gait.wave();
     }
+    commands.entity(entity).insert(HumanLook::of_player(&offer.look()));
 }
 
 /// Puts every part of the preview character on the preview's render layer

@@ -241,10 +241,15 @@ Deliberately simple, so people can get into the game quickly:
 - On connecting, the client sends its token. If the server has a profile for
   it, that profile is loaded into memory. If not, the server asks for a new
   character (`CharacterNeeded`, offering a name and the classes), and the
-  player chooses a name, a class and a body type (`CreateCharacter`).
+  player chooses a name, a class, a body type and their looks
+  (`CreateCharacter`, with `Features`: height, build and head size from -10
+  to 10, a hairstyle, a beard, and a hair colour and skin tone from the
+  content's palettes). The gate brings the sliders within range and turns
+  away overlong names; the server then puts back anything the content
+  doesn't offer (checked again at each login, as the content can change).
   **Names are unique**, ignoring case: a taken name is turned away
   (`CharacterRejected`) and the player picks another.
-- A profile holds: name, position, class, body type, level, experience,
+- A profile holds: name, position, class, body type, looks, level, experience,
   stats, unspent stat and ability points, Miasma, inventory and
   quest state. Fields added over time have defaults, so older profiles still
   load (and their coins become Miasma). The server saves it when the player leaves, and every
@@ -353,7 +358,9 @@ character's secondary stats (armour, the weapon's damage and speed).
 Other players see a player's level and look in `EntityAppeared` (`Player {
 level, look }`), and `PlayerChanged` when either changes; `celebrate` marks
 a level going up, and everyone nearby sees the level-up effect. A player's
-look is their body type and how each item they wear looks (`worn`).
+look is their body type, their looks (`features`), how each item they wear
+looks (`worn`, the placeholder shapes), and the outfit parts it puts on them
+(`outfit`).
 
 **Admins** are listed by character name in `server.ron`. Their commands
 (`Admin(SetLevel | Reset | SetClass | SetBody)`: `/setlevel`, `/reset`,

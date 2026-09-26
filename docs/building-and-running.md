@@ -161,6 +161,7 @@ runs start with it hidden.
 | `VENTURE_SELECT_NEAREST=1` | Select the character (player or NPC) nearest yours once one is in sight (to check the target frame, or with `VENTURE_SAY=/talk`). |
 | `VENTURE_OPEN=stats` | Open the character window on a tab once in the game (`stats`, `skills`, `abilities`, `inventory`, `gear`, `quests` or `emotes`). |
 | `VENTURE_NAME=name`, `VENTURE_CLASS=mage`, `VENTURE_BODY=feminine` | The name, class and body type automated runs make new characters with. `VENTURE_NAME=cat` makes an admin (with the default `server.ron`), to try admin commands with `VENTURE_SAY=/setlevel 5`. |
+| `VENTURE_LOOK=height=5,build=-3,head=2,hair=long,beard=beard,hair_colour=3,skin=5` | The looks automated runs make new characters with, and the character creation screen starts with (any left out are the usual). |
 | `VENTURE_SHOW_CREATION=1` | Show character creation even in an automated run, and take the screenshot there (with `VENTURE_CLASS` and `VENTURE_BODY` choosing what the preview shows). |
 | `VENTURE_CHOOSE=1,2` | Pick these dialogue replies (numbered from 1), one per page, as conversations offer them. |
 | `VENTURE_PROFILE=name` | Use a separate login token (so a separate character), for running several clients on one computer. Automated `--local` runs normally start with fresh profiles; with a name, the profile is kept between runs, so a check can carry on over several runs. |

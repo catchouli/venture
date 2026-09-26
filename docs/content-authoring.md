@@ -261,10 +261,13 @@ Colours are sRGB red, green and blue, each from 0 to 1. `body` (`Masculine`,
 `Feminine` or `Androgynous`) sets the build and hair, and `outfit` (`Tunic`,
 `Armour` or `Robe`) the cut of the clothes; both are optional. With character
 models, `outfit` picks a set of parts from `characters.ron`; `parts: [...]`
-names parts to wear instead, and `hairstyle: "hair_long"` a hairstyle other
-than the body's usual one. The colours still dress the placeholder shapes
-(shown until the models load); on models, so far only the hair colour is
-used, and the skin colour picks the lighter or darker skin texture.
+names parts to wear instead, `hairstyle: "long"` a hairstyle other than the
+body's usual one, and `beard: "beard"` a beard. `height`, `build` and `head`
+(from -10 to 10, as in the character creator) set their size; any left out
+are picked from the appearance's id (between -6 and 6), so each person
+looks a little different, but always the same. On models, the skin and
+hair colours are used as they are; the tunic and trousers colours only
+dress the placeholder shapes (shown until the models load).
 
 ### Character models
 
@@ -277,11 +280,15 @@ on one shared skeleton, animated by one file of animations. They live in
     animations: "animations.glb",
     clips: { "idle": "Idle_Loop", "run": "Jog_Fwd_Loop", /* ... */ },
     bodies: (
-        masculine: (model: "body_male.gltf", fits: Masculine, hair: "hair_simpleparted",
-                    light_skin: "t_superhero_male_ligh.png"),
+        masculine: (model: "body_male.gltf", fits: Masculine, hair: "parted",
+                    skin_colour: (0.66, 0.47, 0.33)),
         feminine: (/* ... */), androgynous: (/* ... */),
     ),
-    hair: { "hair_long": "hair_long.gltf" },
+    hairstyles: ["parted", "long", "buns"],
+    beards: ["beard"],
+    hair_colours: [(0.32, 0.21, 0.12), (0.10, 0.07, 0.05)],
+    skin_tones: [(0.93, 0.80, 0.72), (0.66, 0.47, 0.33), (0.32, 0.21, 0.15)],
+    hair: { "parted": "hair_simpleparted.gltf", "long": "hair_long.gltf", "beard": "hair_beard.gltf" },
     parts: {
         "ranger_body": (masculine: "male_ranger_body.gltf", feminine: "female_ranger_body.gltf",
                         covers: [Torso]),
@@ -301,7 +308,12 @@ on one shared skeleton, animated by one file of animations. They live in
   `cast` play on the upper body only, over the walk or run.
 - **bodies**: each body type's model, which parts fit it (parts are made
   for masculine or feminine bodies; a part with only one model uses it on
-  both), its usual hairstyle, and a paler skin texture.
+  both), its usual hairstyle, and the colour of the skin in its texture
+  (the texture is tinted from it to each skin tone).
+- **hairstyles**, **beards**, **hair_colours** and **skin_tones** are what
+  players choose from when making a character, in the order shown.
+  Hairstyles and beards are names from **hair** (the hair models); colours
+  are sRGB, 0 to 1. The server only accepts choices from these lists.
 - **parts** are clothes and armour (worn on the skeleton) or, with `held`,
   things attached to a bone (`hand_r`, `hand_l`, `lowerarm_r`, `lowerarm_l`,
   `Head`, `spine_03`, `pelvis`, `root`), placed in the bone's own directions
