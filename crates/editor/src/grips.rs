@@ -13,8 +13,8 @@ use bevy::render::render_resource::TextureFormat;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures, egui};
 use venture_client::characters::humans::{HumanLook, Paint};
 use venture_client::characters::model::Gait;
-use venture_content::ItemDef;
 use venture_content::characters::CharacterModels;
+use venture_content::{AppearanceDef, ItemDef};
 use venture_protocol::BodyType;
 
 use crate::document::Document;
@@ -44,6 +44,8 @@ pub struct GripStage {
     image: Handle<Image>,
     /// The item being held, if one is showing.
     pub item: Option<String>,
+    /// The appearance being worn, if one is showing (instead of an item).
+    pub appearance: Option<String>,
     /// The body holding it.
     pub body: BodyType,
     /// Whether they swing (rather than stand).
@@ -82,7 +84,14 @@ fn build_stage(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         Gait::default(),
         layer,
     ));
-    commands.insert_resource(GripStage { image, item: None, body: BodyType::Masculine, swinging: false, turn: 0.6 });
+    commands.insert_resource(GripStage {
+        image,
+        item: None,
+        appearance: None,
+        body: BodyType::Masculine,
+        swinging: false,
+        turn: 0.6,
+    });
 }
 
 /// Dresses the person in the item (and plain clothes), on the chosen body.
@@ -109,6 +118,16 @@ fn dress_holder(
         hair_colour: Paint::Palette(0),
         sizes: [0; 3],
         shapes: Vec::new(),
+    };
+    // An appearance, if one's showing, is worn instead.
+    let appearance = stage.appearance.as_ref().and_then(|id| {
+        let (_, all) = document.find::<AppearanceDef>()?;
+        all.files().iter().flat_map(|file| &file.entries).find(|appearance| &appearance.id == id).cloned()
+    });
+    let models = document.find::<CharacterModels>().and_then(|(_, all)| all.files().first()?.entries.first().cloned());
+    let look = match &appearance {
+        Some(appearance) => HumanLook::of_appearance(Some(appearance), models.as_ref()),
+        None => look,
     };
     if current.is_none_or(|current| *current != look) {
         commands.entity(*entity).insert(look);
@@ -148,6 +167,7 @@ pub fn grip_panel(root: &mut egui::Ui, world: &mut World, document: &mut Documen
         .collect();
     let Some(mut stage) = world.remove_resource::<GripStage>() else { return };
     stage.item = (!held.is_empty()).then(|| item_id.to_string());
+    stage.appearance = None;
     if held.is_empty() {
         world.insert_resource(stage);
         return;
@@ -191,4 +211,22 @@ pub fn grip_panel(root: &mut egui::Ui, world: &mut World, document: &mut Documen
     if changed {
         document.changed(models_index, 0, now);
     }
+}
+
+/// The appearance panel: a person in an appearance, as NPCs wearing it look.
+pub fn appearance_panel(root: &mut egui::Ui, world: &mut World, appearance: &str) {
+    let Some(mut stage) = world.remove_resource::<GripStage>() else { return };
+    stage.item = None;
+    stage.appearance = Some(appearance.to_string());
+    let texture = world.resource_mut::<EguiUserTextures>().add_image(EguiTextureHandle::Weak(stage.image.id()));
+    egui::Panel::right("appearance preview").resizable(true).default_size(400.0).show_inside(root, |ui| {
+        ui.heading("How it looks");
+        ui.add(egui::Image::new((texture, egui::vec2(SIZE.0 as f32, SIZE.1 as f32))));
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut stage.swinging, "Swing");
+            ui.add(egui::Slider::new(&mut stage.turn, -3.1..=3.1).text("Turn"));
+        });
+        ui.weak("Sizes left empty are picked from the appearance's id, as in the game.");
+    });
+    world.insert_resource(stage);
 }

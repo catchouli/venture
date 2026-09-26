@@ -58,6 +58,8 @@ as for `--local`.
     bone it's on, its position (metres along the bone's own directions),
     rotation (degrees) and size. Changes show at once; each item's grip is
     its own, so a staff can be held differently from a sword.
+  - Appearances show **How it looks**: a person wearing it, as NPCs with it
+    look in the game, updated as it changes.
   - The **Character models** tab edits the rest of `characters.ron`:
     animations, bodies, hair, parts and what players can choose.
   - Classes show what they're like at each level (health, mana, armour,
