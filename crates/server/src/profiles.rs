@@ -15,7 +15,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use venture_protocol::{BodyType, EquipSlot, HotbarEntry, ItemStack};
+use venture_protocol::{BodyType, EquipSlot, Features, HotbarEntry, ItemStack};
 use venture_rpg::{Progress, Stats};
 
 /// Everything saved about a character. Fields added since the first
@@ -33,6 +33,10 @@ pub struct Profile {
     /// Their build (androgynous for characters made before body types existed).
     #[serde(default)]
     pub body: BodyType,
+    /// Their looks, from the character creator (the usual ones for
+    /// characters made before it).
+    #[serde(default)]
+    pub features: Features,
     /// Their level.
     #[serde(default = "first_level")]
     pub level: u32,
@@ -85,6 +89,7 @@ impl Profile {
             position,
             class: None,
             body: BodyType::default(),
+            features: Features::default(),
             level: 1,
             experience: 0,
             stats: None,

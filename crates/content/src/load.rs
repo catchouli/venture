@@ -601,8 +601,9 @@ fn check_model_names(pack: &ContentPack, errors: &mut Vec<ContentError>) {
             let message = format!("appearance \"{}\": there's no outfit part called \"{part}\"", appearance.id);
             errors.push(error(Path::new("appearances"), message));
         }
-        if let Some(hair) = appearance.hairstyle.as_ref().filter(|hair| !models.hair.contains_key(*hair)) {
-            let message = format!("appearance \"{}\": there's no hairstyle called \"{hair}\"", appearance.id);
+        let hairs = appearance.hairstyle.iter().chain(&appearance.beard);
+        for hair in hairs.filter(|hair| !models.hair.contains_key(*hair)) {
+            let message = format!("appearance \"{}\": there's no hair called \"{hair}\"", appearance.id);
             errors.push(error(Path::new("appearances"), message));
         }
     }

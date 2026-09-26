@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use venture_content::ContentPack;
 use venture_protocol::{
-    AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, HotbarAction, HotbarEntry,
+    AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, Features, HotbarAction, HotbarEntry,
     PROTOCOL_VERSION, ServerMessage,
 };
 use venture_server::content::LoadedContent;
@@ -94,6 +94,7 @@ impl TestServer {
                 name: name.to_string(),
                 class: "fighter".to_string(),
                 body: BodyType::Androgynous,
+                features: Features::default(),
             });
             self.run(2);
         }
@@ -190,6 +191,7 @@ fn new_players_choose_a_valid_name_and_enter_the_game() {
         name: "!!".to_string(),
         class: "fighter".to_string(),
         body: BodyType::Androgynous,
+        features: Features::default(),
     });
     server.run(2);
     assert!(matches!(client.receive()[..], [ServerMessage::CharacterRejected { .. }]));
@@ -198,12 +200,43 @@ fn new_players_choose_a_valid_name_and_enter_the_game() {
         name: "  Aldric  ".to_string(),
         class: "fighter".to_string(),
         body: BodyType::Androgynous,
+        features: Features::default(),
     });
     server.run(2);
     let welcome = client.receive().into_iter().find(|m| matches!(m, ServerMessage::Welcome { .. }));
     assert!(
         matches!(welcome, Some(ServerMessage::Welcome { ref name, position: (100.0, 100.0), .. }) if name == "Aldric")
     );
+}
+
+#[test]
+fn chosen_features_are_kept_within_what_the_content_offers() {
+    let mut server = TestServer::new("features");
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
+    server.run(2);
+    let features = Features {
+        height: 100,
+        build: -4,
+        hair: Some("no such hair".to_string()),
+        hair_colour: 200,
+        ..Features::default()
+    };
+    client.send(&ClientMessage::CreateCharacter {
+        name: "Tallis".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+        features,
+    });
+    server.run(2);
+    let look = client.receive().into_iter().find_map(|m| match m {
+        ServerMessage::Welcome { look, .. } => Some(look),
+        _ => None,
+    });
+    let features = look.expect("a welcome").features;
+    assert_eq!((features.height, features.build), (10, -4));
+    assert_eq!(features.hair, None, "the test content has no hairstyles");
+    assert_eq!(features.hair_colour, 0);
 }
 
 #[test]
@@ -458,6 +491,7 @@ fn npcs_from_content_appear_to_players() {
         name: "Visitor".to_string(),
         class: "fighter".to_string(),
         body: BodyType::Androgynous,
+        features: Features::default(),
     });
     server.run(2);
     let (_, name) = first_npc(&client.receive()).expect("the greeter appears");
@@ -475,6 +509,7 @@ fn talking_to_a_distant_npc_walks_over_then_runs_its_script() {
         name: "Visitor".to_string(),
         class: "fighter".to_string(),
         body: BodyType::Androgynous,
+        features: Features::default(),
     });
     server.run(2);
     let messages = client.receive();
@@ -647,6 +682,7 @@ fn new_characters_get_starting_items_and_keep_them() {
         name: "Newcomer".to_string(),
         class: "fighter".to_string(),
         body: BodyType::Androgynous,
+        features: Features::default(),
     });
     server.run(2);
     let expected = vec![("bread".to_string(), 1)];
@@ -695,6 +731,7 @@ fn shops_open_from_dialogue_and_trade_miasma_for_goods() {
         name: "Shopper".to_string(),
         class: "fighter".to_string(),
         body: BodyType::Androgynous,
+        features: Features::default(),
     });
     server.run(2);
     client.receive();
@@ -777,6 +814,7 @@ fn quests_start_complete_and_reward_once() {
         name: "Helper".to_string(),
         class: "fighter".to_string(),
         body: BodyType::Androgynous,
+        features: Features::default(),
     });
     server.run(2);
     assert_eq!(latest_journal(&client.receive()), Some(vec![]), "an empty journal to start with");
@@ -841,6 +879,7 @@ fn create(server: &mut TestServer, token: &str, name: &str, class: &str) -> (Tes
         name: name.to_string(),
         class: class.to_string(),
         body: BodyType::Feminine,
+        features: Features::default(),
     });
     server.run(2);
     let messages = client.receive();
@@ -869,6 +908,7 @@ fn new_characters_choose_a_class_and_a_unique_name() {
             name: name.to_string(),
             class: class.to_string(),
             body: BodyType::Feminine,
+            features: Features::default(),
         });
         server.run(2);
         assert!(matches!(client.receive()[..], [ServerMessage::CharacterRejected { .. }]), "{name} as a {class}");
@@ -877,6 +917,7 @@ fn new_characters_choose_a_class_and_a_unique_name() {
         name: "Brienne".to_string(),
         class: "fighter".to_string(),
         body: BodyType::Androgynous,
+        features: Features::default(),
     });
     server.run(2);
     assert!(client.receive().iter().any(|m| matches!(m, ServerMessage::Welcome { admin: false, .. })));

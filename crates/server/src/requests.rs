@@ -112,6 +112,8 @@ pub enum SessionRequest {
         class: String,
         /// The chosen body type.
         body: venture_protocol::BodyType,
+        /// The chosen looks, sliders in range. Not yet checked against the content.
+        features: venture_protocol::Features,
     },
     /// The connection has closed.
     Leave {
@@ -387,14 +389,24 @@ fn judge(id: ConnectionId, connection: &mut Connection, bytes: &[u8], world: &Se
             connection.stage = Stage::Joining;
             Verdict::Session(SessionRequest::Hello { connection: id, profile: ProfileKey::from_token(&token) })
         }
-        (Stage::AwaitingName { .. }, ClientMessage::CreateCharacter { class, .. }) if class.len() > MAX_ID_BYTES => {
+        (Stage::AwaitingName { .. }, ClientMessage::CreateCharacter { class, features, .. })
+            if class.len() > MAX_ID_BYTES
+                || [&features.hair, &features.beard].into_iter().flatten().any(|hair| hair.len() > MAX_ID_BYTES) =>
+        {
             Verdict::Strike
         }
-        (Stage::AwaitingName { profile }, ClientMessage::CreateCharacter { name, class, body }) => {
+        (Stage::AwaitingName { profile }, ClientMessage::CreateCharacter { name, class, body, features }) => {
             match clean_name(&name) {
                 Ok(name) => {
-                    let request =
-                        SessionRequest::CreateCharacter { connection: id, profile: profile.clone(), name, class, body };
+                    let features = features.clamped();
+                    let request = SessionRequest::CreateCharacter {
+                        connection: id,
+                        profile: profile.clone(),
+                        name,
+                        class,
+                        body,
+                        features,
+                    };
                     connection.stage = Stage::Joining;
                     Verdict::Session(request)
                 }

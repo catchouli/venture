@@ -13,8 +13,9 @@
 //!    own skeletons go. Held things (a sword, a shield) are hung on their
 //!    bone instead.
 //! 3. The body's mesh loses the triangles clothes cover (so they don't poke
-//!    through), the skin and hair are coloured, and the body's skeleton is
-//!    given the animations.
+//!    through), the skin and hair are coloured, bones are scaled for the
+//!    person's height, build and head size (animations only turn bones, so
+//!    the sizes stay), and the body's skeleton is given the animations.
 //!
 //! Changing a person's look dresses them again.
 
@@ -30,13 +31,16 @@ use bevy::prelude::*;
 use bevy::world_serialization::{WorldAssetRoot, WorldInstance, WorldInstanceSpawner};
 use venture_content::AppearanceDef;
 use venture_content::characters::{BodyRegion, CharacterModels, PartModel};
-use venture_protocol::{BodyType, ItemLook, LookStyle, PlayerLook};
+use venture_protocol::{BodyType, FEATURE_RANGE, ItemLook, LookStyle, PlayerLook};
 
 use crate::characters::model::{CharacterAssets, Gait, PlaceholderPart};
 use crate::content::{CONTENT_SOURCE, ContentStore};
 
-/// Players' hair colour (until they can choose one).
-const PLAYER_HAIR: Color = Color::srgb(0.32, 0.21, 0.12);
+/// How much the sliders change a person at their ends (a fraction of their
+/// size): height, head size, and the width of the body and limbs for build.
+const HEIGHT_CHANGE: f32 = 0.08;
+const HEAD_CHANGE: f32 = 0.1;
+const BUILD_CHANGE: f32 = 0.14;
 /// How long animations take to blend into each other, in seconds.
 const BLEND_SECONDS: f32 = 0.2;
 /// Moving slower than this (metres per second) walks rather than runs.
@@ -77,22 +81,42 @@ pub struct HumanLook {
     pub body: BodyType,
     /// Their hairstyle, if not their body's usual one.
     pub hair: Option<String>,
+    /// Their beard, if any.
+    pub beard: Option<String>,
     /// Their outfit parts (clothes, armour, and things held).
     pub parts: Vec<String>,
-    /// Whether their skin is the paler one.
-    pub light_skin: bool,
-    /// A colour their hair is tinted, if any.
-    pub hair_colour: Option<Color>,
+    /// Their skin and hair colours.
+    pub skin: Paint,
+    pub hair_colour: Paint,
+    /// Their height, build and head size (from `-FEATURE_RANGE` to `FEATURE_RANGE`).
+    pub sizes: [i8; 3],
     /// Simple shapes for held things that may have no model (a staff):
     /// drawn in the hand, unless an outfit part is held there instead.
     pub shapes: Vec<ItemLook>,
 }
 
+/// A colour: one of the content's palette (players choose these), or given.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Paint {
+    Palette(u8),
+    Colour(Color),
+}
+
+impl Paint {
+    /// The colour, from the palette if it's from there.
+    fn colour(self, palette: &[(f32, f32, f32)]) -> Option<Color> {
+        match self {
+            Paint::Palette(index) => palette.get(index as usize).map(|&(r, g, b)| Color::srgb(r, g, b)),
+            Paint::Colour(colour) => Some(colour),
+        }
+    }
+}
+
 impl HumanLook {
-    /// A player's look: their build, and the outfit parts of what they wear.
+    /// A player's look: their build and features, and the outfit parts of
+    /// what they wear.
     pub fn of_player(look: &PlayerLook) -> Self {
-        // (Brown hair, until players can choose.)
-        let hair_colour = Some(PLAYER_HAIR);
+        let features = &look.features;
         let shapes = look
             .worn
             .iter()
@@ -101,20 +125,30 @@ impl HumanLook {
             })
             .copied()
             .collect();
-        Self { body: look.body, hair: None, parts: look.outfit.clone(), light_skin: true, hair_colour, shapes }
+        Self {
+            body: look.body,
+            hair: features.hair.clone(),
+            beard: features.beard.clone(),
+            parts: look.outfit.clone(),
+            skin: Paint::Palette(features.skin),
+            hair_colour: Paint::Palette(features.hair_colour),
+            sizes: [features.height, features.build, features.head],
+            shapes,
+        }
     }
 
     /// An NPC's look, from their appearance: its parts (or the ones for its
-    /// outfit style), hairstyle, skin (paler for light skin colours) and
-    /// hair colour.
+    /// outfit style), hair, colours and sizes.
     pub fn of_appearance(appearance: Option<&AppearanceDef>, models: Option<&CharacterModels>) -> Self {
         let Some(appearance) = appearance else {
             return Self {
                 body: BodyType::Masculine,
                 hair: None,
+                beard: None,
                 parts: Vec::new(),
-                light_skin: true,
-                hair_colour: None,
+                skin: Paint::Palette(0),
+                hair_colour: Paint::Palette(0),
+                sizes: [0; 3],
                 shapes: Vec::new(),
             };
         };
@@ -124,14 +158,16 @@ impl HumanLook {
         } else {
             appearance.parts.clone()
         };
-        let (r, g, b) = appearance.skin;
-        let (hr, hg, hb) = appearance.hair;
+        let features = appearance.features();
+        let colour = |(r, g, b): (f32, f32, f32)| Paint::Colour(Color::srgb(r, g, b));
         Self {
             body: appearance.body,
-            hair: appearance.hairstyle.clone(),
+            hair: features.hair,
+            beard: features.beard,
             parts,
-            light_skin: 0.3 * r + 0.55 * g + 0.15 * b > 0.6,
-            hair_colour: Some(Color::srgb(hr, hg, hb)),
+            skin: colour(appearance.skin),
+            hair_colour: colour(appearance.hair),
+            sizes: [features.height, features.build, features.head],
             shapes: Vec::new(),
         }
     }
@@ -187,8 +223,6 @@ pub struct HumanModels {
     models: Option<CharacterModels>,
     /// Each model file, by name.
     files: HashMap<String, Handle<Gltf>>,
-    /// Textures used as they are (paler skins), by name.
-    textures: HashMap<String, Handle<Image>>,
     /// The animations, once loaded.
     animations: Option<Animations>,
     /// The content version these are for.
@@ -241,7 +275,6 @@ fn load_models(
         }
         let defs = content.character_models.clone();
         let mut files = HashMap::new();
-        let mut textures = HashMap::new();
         if let Some(defs) = &defs {
             let bodies =
                 [BodyType::Masculine, BodyType::Feminine, BodyType::Androgynous].map(|body| defs.bodies.of(body));
@@ -250,11 +283,8 @@ fn load_models(
             for file in names.chain([&defs.animations]) {
                 files.insert(file.clone(), asset_server.load(content_path(file)));
             }
-            for skin in bodies.iter().filter_map(|body| body.light_skin.as_ref()) {
-                textures.insert(skin.clone(), asset_server.load(content_path(skin)));
-            }
         }
-        *models = HumanModels { models: defs, files, textures, animations: None, version: content.version.clone() };
+        *models = HumanModels { models: defs, files, animations: None, version: content.version.clone() };
         for person in &dressed {
             commands.entity(person).remove::<Dressed>();
         }
@@ -301,6 +331,7 @@ fn files_for(look: &HumanLook, defs: &CharacterModels) -> Vec<String> {
     let mut files = vec![body.model.clone()];
     let hair = look.hair.as_ref().filter(|hair| defs.hair.contains_key(*hair)).unwrap_or(&body.hair);
     files.extend(defs.hair.get(hair).cloned());
+    files.extend(look.beard.as_ref().and_then(|beard| defs.hair.get(beard)).cloned());
     files.extend(worn_parts(look, defs).iter().filter_map(|(_, part)| part.model_for(body.fits).cloned()));
     files
 }
@@ -350,6 +381,10 @@ fn dress_humans(
         if let Some(file) = defs.hair.get(hair).filter(|_| !hides_hair) {
             spawn(file, SceneKind::Hair);
         }
+        // (Beards show under hoods.)
+        if let Some(file) = look.beard.as_ref().and_then(|beard| defs.hair.get(beard)) {
+            spawn(file, SceneKind::Hair);
+        }
         for (_, part) in worn_parts(look, defs) {
             let Some(file) = part.model_for(body.fits) else { continue };
             let kind = part.held.clone().map_or(SceneKind::Worn, SceneKind::Held);
@@ -376,6 +411,8 @@ struct Assembly<'w, 's> {
     skinned: Query<'w, 's, (&'static mut SkinnedMesh, &'static Mesh3d)>,
     mesh_materials: Query<'w, 's, &'static MeshMaterial3d<StandardMaterial>>,
     layers: Query<'w, 's, &'static RenderLayers>,
+    transforms: Query<'w, 's, &'static mut Transform>,
+    parents: Query<'w, 's, &'static ChildOf>,
     shapes: Res<'w, CharacterAssets>,
 }
 
@@ -453,7 +490,7 @@ impl Assembly<'_, '_> {
                 SceneKind::Hair | SceneKind::Worn => {
                     self.bind_to(root, &bones);
                     if matches!(kind, SceneKind::Hair)
-                        && let Some(colour) = look.hair_colour
+                        && let Some(colour) = look.hair_colour.colour(&defs.hair_colours)
                     {
                         self.tint(root, colour);
                     }
@@ -472,6 +509,8 @@ impl Assembly<'_, '_> {
                 }
             }
         }
+
+        self.size_bones(body_root, &bones, look.sizes);
 
         // Simple shapes for held things without a model, where nothing else is held.
         let shapes: Vec<ItemLook> = look
@@ -535,6 +574,36 @@ impl Assembly<'_, '_> {
         });
     }
 
+    /// Scales the body (and so everything on it) for the person's height,
+    /// build and head size. Build widens the body and thickens the arms and
+    /// legs; the bones beyond (neck, shoulders, hands and feet) are scaled
+    /// back, so they keep their shape.
+    fn size_bones(&mut self, body_root: Entity, bones: &HashMap<String, Entity>, [height, build, head]: [i8; 3]) {
+        let amount = |slider: i8, change: f32| 1.0 + f32::from(slider) / f32::from(FEATURE_RANGE) * change;
+        let width = amount(build, BUILD_CHANGE);
+        let (wider, back) = (Vec3::new(width, 1.0, width), Vec3::new(1.0 / width, 1.0, 1.0 / width));
+        let mut sizes: Vec<(String, Vec3)> = vec![
+            ("spine_01".to_string(), wider),
+            ("neck_01".to_string(), back),
+            ("Head".to_string(), Vec3::splat(amount(head, HEAD_CHANGE))),
+        ];
+        for side in ["l", "r"] {
+            for (bone, size) in
+                [("clavicle", back), ("upperarm", wider), ("hand", back), ("thigh", wider), ("foot", back)]
+            {
+                sizes.push((format!("{bone}_{side}"), size));
+            }
+        }
+        for (name, size) in sizes {
+            if let Some(mut transform) = bones.get(&name).and_then(|bone| self.transforms.get_mut(*bone).ok()) {
+                transform.scale = size;
+            }
+        }
+        if let Ok(mut transform) = self.transforms.get_mut(body_root) {
+            transform.scale = Vec3::splat(amount(height, HEIGHT_CHANGE));
+        }
+    }
+
     /// Points a part's (or hair's) meshes at the body's bones, and removes
     /// the part's own skeleton.
     fn bind_to(&mut self, root: Entity, bones: &HashMap<String, Entity>) {
@@ -557,13 +626,24 @@ impl Assembly<'_, '_> {
 
     /// Hides the body under clothes, and gives it the right skin.
     fn prepare_body(&mut self, root: Entity, look: &HumanLook, defs: &CharacterModels, covered: &[BodyRegion]) {
-        let light = defs.bodies.of(look.body).light_skin.as_ref().filter(|_| look.light_skin);
-        let light = light.and_then(|file| self.models.textures.get(file).cloned());
+        // The skin texture is tinted from its own colour to theirs.
+        let (r, g, b) = defs.bodies.of(look.body).skin_colour;
+        let skin = look.skin.colour(&defs.skin_tones).map(|colour| {
+            let wanted = colour.to_srgba();
+            Color::srgb(wanted.red / r.max(0.01), wanted.green / g.max(0.01), wanted.blue / b.max(0.01))
+        });
+        let hair = look.hair_colour.colour(&defs.hair_colours);
         for entity in self.descendants(root) {
             let Ok((skinned, mesh)) = self.skinned.get(entity) else { continue };
-            // The body itself is the mesh with the most vertices (the others are eyes and eyebrows).
             let Some(source) = self.meshes.get(&mesh.0) else { continue };
+            // The body itself is the mesh with the most vertices (the others
+            // are the eyes and eyebrows, which are hair-coloured).
             if source.count_vertices() < 1000 {
+                let named = |entity: Entity| self.names.get(entity).is_ok_and(|name| name.as_str() == "Eyebrows");
+                let eyebrows = named(entity) || self.parents.get(entity).is_ok_and(|parent| named(parent.parent()));
+                if let (true, Some(hair)) = (eyebrows, hair) {
+                    self.recolour(entity, hair);
+                }
                 continue;
             }
             if !covered.is_empty() {
@@ -584,24 +664,25 @@ impl Assembly<'_, '_> {
                 };
                 self.commands.entity(entity).insert(Mesh3d(masked));
             }
-            if let (Some(texture), Ok(material)) = (light.clone(), self.mesh_materials.get(entity))
-                && let Some(mut skin) = self.materials.get(&material.0).cloned()
-            {
-                skin.base_color_texture = Some(texture);
-                let skin = self.materials.add(skin);
-                self.commands.entity(entity).insert(MeshMaterial3d(skin));
+            if let Some(skin) = skin {
+                self.recolour(entity, skin);
             }
         }
+    }
+
+    /// Gives one mesh a copy of its material, tinted.
+    fn recolour(&mut self, entity: Entity, colour: Color) {
+        let Ok(material) = self.mesh_materials.get(entity) else { return };
+        let Some(mut tinted) = self.materials.get(&material.0).cloned() else { return };
+        tinted.base_color = colour;
+        let tinted = self.materials.add(tinted);
+        self.commands.entity(entity).insert(MeshMaterial3d(tinted));
     }
 
     /// Tints a model's materials (hair colour).
     fn tint(&mut self, root: Entity, colour: Color) {
         for entity in self.descendants(root) {
-            let Ok(material) = self.mesh_materials.get(entity) else { continue };
-            let Some(mut tinted) = self.materials.get(&material.0).cloned() else { continue };
-            tinted.base_color = colour;
-            let tinted = self.materials.add(tinted);
-            self.commands.entity(entity).insert(MeshMaterial3d(tinted));
+            self.recolour(entity, colour);
         }
     }
 }

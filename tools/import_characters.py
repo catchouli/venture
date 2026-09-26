@@ -68,12 +68,6 @@ MODELS += [
     (f"{PROPS}/Exports/glTF/Shield_Wooden.gltf", "shield_wooden"),
 ]
 
-# Extra skin colours for the bodies (the models use the dark ones).
-EXTRA_TEXTURES = [
-    f"{BASE}/Base Characters/Textures/T_Superhero_Male_Ligh.png",
-    f"{BASE}/Base Characters/Textures/T_Superhero_Female_Light_BaseColor.png",
-]
-
 ANIMATION_FILE = f"{ANIMATIONS}/Unreal-Godot/UAL1_Standard.glb"
 # The animations the game uses.
 ANIMATIONS_KEPT = [
@@ -348,10 +342,6 @@ def main():
     for source, name in MODELS:
         import_model(root, source, name, textures)
         print("model", name)
-    for source in EXTRA_TEXTURES:
-        out_name = texture_name(os.path.basename(source))
-        shrink(os.path.join(root, source), os.path.join(OUT, out_name), COLOUR_SIZE)
-        print("texture", out_name)
     names = import_animations(root)
     print("animations", len(names))
 

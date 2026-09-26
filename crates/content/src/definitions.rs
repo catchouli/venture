@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use venture_protocol::{BodyType, CreatureLook, EquipSlot, ItemLook};
+use venture_protocol::{BodyType, CreatureLook, EquipSlot, FEATURE_RANGE, Features, ItemLook};
 use venture_rpg::{ClassRules, Dice, Stat, Stats};
 
 /// The cut of an NPC's clothes.
@@ -57,7 +57,61 @@ pub struct AppearanceDef {
     /// the ones for their outfit style.
     #[serde(default)]
     pub parts: Vec<String>,
+    /// Their beard (from `characters/characters.ron`), if they have one.
+    #[serde(default)]
+    pub beard: Option<String>,
+    /// Their height, build and head size (from -10 to 10, as in the character
+    /// creator). Any left out are picked from the appearance's id, so each
+    /// person looks a little different, but always the same.
+    #[serde(default)]
+    pub height: Option<i8>,
+    /// Their build (see `height`).
+    #[serde(default)]
+    pub build: Option<i8>,
+    /// Their head size (see `height`).
+    #[serde(default)]
+    pub head: Option<i8>,
 }
+
+/// How far picked sliders go either way (less than players can choose, so
+/// NPCs look ordinary unless a designer says otherwise).
+pub const PICKED_RANGE: i8 = 6;
+
+impl AppearanceDef {
+    /// Their features: the ones given, and the rest picked from the id.
+    /// (Colours are the appearance's own, so the palette choices are left
+    /// at the first.)
+    pub fn features(&self) -> Features {
+        let pick = |given: Option<i8>, which: u8| {
+            given.unwrap_or_else(|| {
+                let span = (2 * PICKED_RANGE + 1) as u64;
+                (seeded(&self.id, which) % span) as i8 - PICKED_RANGE
+            })
+        };
+        Features {
+            height: pick(self.height, 0),
+            build: pick(self.build, 1),
+            head: pick(self.head, 2),
+            hair: self.hairstyle.clone(),
+            beard: self.beard.clone(),
+            hair_colour: 0,
+            skin: 0,
+        }
+        .clamped()
+    }
+}
+
+/// A number picked from a name (the same on every computer): FNV-1a.
+fn seeded(name: &str, which: u8) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in name.bytes().chain([which]) {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash
+}
+
+const _: () = assert!(PICKED_RANGE <= FEATURE_RANGE);
 
 /// A non-player character.
 ///
@@ -659,3 +713,41 @@ pub struct RespawnPoint {
 pub(crate) const MAX_NPC_NAME_CHARS: usize = 32;
 /// The furthest an NPC may be allowed to wander from home, in metres.
 pub(crate) const MAX_WANDER_RADIUS: f32 = 50.0;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn appearance(id: &str) -> AppearanceDef {
+        let colour = (0.5, 0.5, 0.5);
+        AppearanceDef {
+            id: id.to_string(),
+            skin: colour,
+            hair: colour,
+            tunic: colour,
+            trousers: colour,
+            body: BodyType::default(),
+            outfit: OutfitStyle::default(),
+            hairstyle: None,
+            parts: Vec::new(),
+            beard: None,
+            height: Some(9),
+            build: None,
+            head: None,
+        }
+    }
+
+    #[test]
+    fn picked_features_are_ordinary_and_always_the_same() {
+        let features = appearance("guard").features();
+        assert_eq!(features, appearance("guard").features());
+        assert_eq!(features.height, 9);
+        for id in ["guard", "baker", "farmer", "elder", "child", "smith"] {
+            let features = appearance(id).features();
+            assert!(features.build.abs() <= PICKED_RANGE && features.head.abs() <= PICKED_RANGE);
+        }
+        let builds: std::collections::BTreeSet<i8> =
+            ["a", "b", "c", "d", "e", "f"].map(|id| appearance(id).features().build).into();
+        assert!(builds.len() > 1, "different people should differ");
+    }
+}

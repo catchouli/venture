@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use venture_protocol::BodyType;
+use venture_protocol::{BodyType, Features};
 
 /// Everything about character models.
 ///
@@ -14,11 +14,15 @@ use venture_protocol::BodyType;
 /// (
 ///     animations: "animations.glb",
 ///     clips: { "idle": "Idle_Loop", "run": "Jog_Fwd_Loop" },
-///     bodies: (masculine: (model: "body_male.gltf", fits: Masculine, hair: "hair_simpleparted"), ...),
-///     hair: { "hair_long": "hair_long.gltf" },
+///     bodies: (masculine: (model: "body_male.gltf", fits: Masculine, hair: "parted"), ...),
+///     hair: { "long": "hair_long.gltf" },
 ///     parts: { "ranger_body": (masculine: "male_ranger_body.gltf", feminine: "female_ranger_body.gltf", covers: [Torso]) },
 ///     plain_clothes: ["peasant_body", "peasant_legs"],
 ///     outfits: { "Tunic": ["peasant_body", "peasant_arms", "peasant_legs", "peasant_feet"] },
+///     hairstyles: ["parted", "long"],
+///     beards: ["beard"],
+///     hair_colours: [(0.32, 0.21, 0.12), (0.08, 0.06, 0.05)],
+///     skin_tones: [(0.93, 0.80, 0.72), (0.48, 0.32, 0.22)],
 /// )
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -45,6 +49,33 @@ pub struct CharacterModels {
     /// The parts for each of the NPCs' outfit styles (`Tunic`, `Armour`, `Robe`).
     #[serde(default)]
     pub outfits: BTreeMap<String, Vec<String>>,
+    /// The hairstyles players can choose (names from `hair`), in order.
+    #[serde(default)]
+    pub hairstyles: Vec<String>,
+    /// The beards players can choose (names from `hair`), in order.
+    #[serde(default)]
+    pub beards: Vec<String>,
+    /// The hair colours players can choose (sRGB, 0 to 1), in order.
+    #[serde(default)]
+    pub hair_colours: Vec<(f32, f32, f32)>,
+    /// The skin tones players can choose (sRGB, 0 to 1), in order. The skin
+    /// textures are tinted to match (see [`BodyModel::skin_colour`]).
+    #[serde(default)]
+    pub skin_tones: Vec<(f32, f32, f32)>,
+}
+
+impl CharacterModels {
+    /// A player's chosen features, with anything the content doesn't offer
+    /// put back to the usual: unknown hairstyles and beards, and colours
+    /// past the end of the palettes.
+    pub fn allowed(&self, features: Features) -> Features {
+        let Features { hair, beard, hair_colour, skin, .. } = &features;
+        let hair = hair.clone().filter(|hair| self.hairstyles.contains(hair));
+        let beard = beard.clone().filter(|beard| self.beards.contains(beard));
+        let hair_colour = if (*hair_colour as usize) < self.hair_colours.len() { *hair_colour } else { 0 };
+        let skin = if (*skin as usize) < self.skin_tones.len() { *skin } else { 0 };
+        Features { hair, beard, hair_colour, skin, ..features.clamped() }
+    }
 }
 
 /// The game's names for animations, with when each plays.
@@ -97,10 +128,10 @@ pub struct BodyModel {
     pub fits: PartFit,
     /// The hairstyle it has unless one is chosen.
     pub hair: String,
-    /// A paler skin texture, for lighter-skinned characters (the model's
-    /// own texture is the darker one).
-    #[serde(default)]
-    pub light_skin: Option<String>,
+    /// The colour of the skin in its texture (sRGB, 0 to 1), which is tinted
+    /// to make other skin tones.
+    #[serde(default = "texture_skin")]
+    pub skin_colour: (f32, f32, f32),
 }
 
 /// Which bodies an outfit part was made for.
@@ -152,6 +183,10 @@ pub struct Held {
     /// Its size (1 as modelled).
     #[serde(default = "one")]
     pub scale: f32,
+}
+
+fn texture_skin() -> (f32, f32, f32) {
+    (0.66, 0.47, 0.33)
 }
 
 fn one() -> f32 {
@@ -258,9 +293,6 @@ pub fn check_character_models(models: &CharacterModels, files: &[String]) -> Vec
     for body in [BodyType::Masculine, BodyType::Feminine, BodyType::Androgynous] {
         let model = models.bodies.of(body);
         file(format!("{body:?} body"), &model.model);
-        if let Some(skin) = &model.light_skin {
-            file(format!("{body:?} body's light skin"), skin);
-        }
     }
     for (name, hair) in &models.hair {
         file(format!("hair \"{name}\""), hair);
@@ -285,6 +317,9 @@ pub fn check_character_models(models: &CharacterModels, files: &[String]) -> Vec
             problems.push(format!("{body:?} body: there's no hairstyle called \"{hair}\""));
         }
     }
+    for hair in models.hairstyles.iter().chain(&models.beards).filter(|hair| !models.hair.contains_key(*hair)) {
+        problems.push(format!("there's no hair called \"{hair}\""));
+    }
     let parts = models.plain_clothes.iter().chain(models.outfits.values().flatten());
     for part in parts.filter(|part| !models.parts.contains_key(*part)) {
         problems.push(format!("there's no part called \"{part}\""));
@@ -298,6 +333,30 @@ pub fn check_character_models(models: &CharacterModels, files: &[String]) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_offered_features_are_allowed() {
+        let models = CharacterModels {
+            hairstyles: vec!["long".to_string()],
+            hair_colours: vec![(0.1, 0.1, 0.1); 2],
+            skin_tones: vec![(0.5, 0.4, 0.3)],
+            ..CharacterModels::default()
+        };
+        let chosen = Features {
+            height: 100,
+            build: -3,
+            head: -100,
+            hair: Some("long".to_string()),
+            beard: Some("long".to_string()),
+            hair_colour: 1,
+            skin: 1,
+        };
+        let allowed = models.allowed(chosen);
+        assert_eq!((allowed.height, allowed.build, allowed.head), (10, -3, -10));
+        assert_eq!(allowed.hair.as_deref(), Some("long"));
+        assert_eq!(allowed.beard, None);
+        assert_eq!((allowed.hair_colour, allowed.skin), (1, 0));
+    }
 
     #[test]
     fn parts_fall_back_to_the_other_body() {
