@@ -76,8 +76,8 @@ struct Offer {
 impl Offer {
     /// How the chosen options look.
     fn look(&self) -> PlayerLook {
-        let outfit = self.classes.get(self.class).map(|class| class.outfit).unwrap_or_default();
-        PlayerLook { body: self.body, outfit }
+        let worn = self.classes.get(self.class).map(|class| class.worn.clone()).unwrap_or_default();
+        PlayerLook { body: self.body, worn }
     }
 }
 

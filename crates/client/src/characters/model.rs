@@ -1,7 +1,7 @@
 //! A placeholder human character, 1.8 metres tall, built from simple shapes
 //! with jointed limbs, and a procedural run and idle animation. Its build
-//! follows the character's body type, and its clothes their outfit (a tunic,
-//! armour plates over one, or a robe).
+//! follows the character's body type. Over plain clothes it wears what the
+//! character has equipped (plates, a robe), with the weapon in the right hand.
 //!
 //! The character faces +Z in its own space. Its origin is on the ground
 //! between its feet. Proportions follow a real adult (about 7.5 heads tall).
@@ -9,8 +9,8 @@
 use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
-use venture_content::{AppearanceDef, Colour};
-use venture_protocol::{BodyType, OutfitStyle, PlayerLook};
+use venture_content::{AppearanceDef, Colour, OutfitStyle};
+use venture_protocol::{BodyType, ItemLook, LookStyle, PlayerLook};
 
 /// Distance covered by one full running cycle (two steps), in metres.
 const STRIDE_LENGTH: f32 = 2.6;
@@ -121,6 +121,7 @@ pub struct CharacterAssets {
 struct CharacterMeshes {
     unit_sphere: Handle<Mesh>,
     unit_cube: Handle<Mesh>,
+    unit_cylinder: Handle<Mesh>,
     torso: Handle<Mesh>,
     belt: Handle<Mesh>,
     skirt: Handle<Mesh>,
@@ -140,6 +141,7 @@ impl FromWorld for CharacterAssets {
         let character_meshes = CharacterMeshes {
             unit_sphere: meshes.add(Sphere::new(1.0).mesh().ico(3).expect("valid subdivision")),
             unit_cube: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+            unit_cylinder: meshes.add(Cylinder::new(1.0, 1.0)),
             torso: meshes.add(Capsule3d::new(0.15, 0.3)),
             belt: meshes.add(Cylinder::new(0.16, 0.06)),
             skirt: meshes.add(ConicalFrustum { radius_top: 0.19, radius_bottom: 0.24, height: 0.22 }),
@@ -185,73 +187,97 @@ const HAIR_COLOURS: [Colour; 6] = [
     (0.60, 0.58, 0.55),
 ];
 
-/// How a character is drawn: their build, the cut of their clothes, and colours.
+/// How a character is drawn: their build, their plain clothes, and what
+/// they wear over them.
 #[derive(Clone)]
 pub struct Look {
     /// Build.
     pub body: BodyType,
-    /// The cut of their clothes.
-    pub outfit: OutfitStyle,
     /// Skin.
     pub skin: Handle<StandardMaterial>,
     /// Hair.
     pub hair: Handle<StandardMaterial>,
-    /// Tunic or robe.
+    /// Their plain tunic.
     pub tunic: Handle<StandardMaterial>,
-    /// Trousers.
+    /// Their plain trousers.
     pub trousers: Handle<StandardMaterial>,
-    /// Armour plates and trim.
+    /// Each worn item: its shape, and its main and trim colours.
+    pub worn: Vec<Worn>,
+}
+
+/// A worn item, ready to draw.
+#[derive(Clone)]
+pub struct Worn {
+    /// Its shape.
+    pub style: LookStyle,
+    /// Its main colour.
+    pub main: Handle<StandardMaterial>,
+    /// Its second colour.
     pub trim: Handle<StandardMaterial>,
 }
 
+/// Colour of everyone's plain tunic, under what they wear.
+const PLAIN_TUNIC: Colour = (0.52, 0.47, 0.38);
+/// Colour of everyone's plain trousers.
+const PLAIN_TROUSERS: Colour = (0.30, 0.26, 0.22);
+
 impl CharacterAssets {
-    /// A player's look: their build and outfit, with a skin tone and hair
-    /// colour picked by `variant` (their id, say), so players look different.
+    /// A player's look: their build and what they wear, with a skin tone and
+    /// hair colour picked by `variant` (their id, say), so players look different.
     pub fn player_look(&self, variant: u32, look: &PlayerLook, materials: &mut Assets<StandardMaterial>) -> Look {
-        let mut material = |(r, g, b): Colour, roughness: f32| {
-            materials.add(StandardMaterial {
-                base_color: Color::srgb(r, g, b),
-                perceptual_roughness: roughness,
-                ..default()
-            })
-        };
-        let outfit = look.outfit;
         let hash = variant.wrapping_mul(2_654_435_761);
         Look {
             body: look.body,
-            outfit: outfit.style,
             skin: self.skins[hash as usize % self.skins.len()].clone(),
             hair: self.hairs[(hash >> 8) as usize % self.hairs.len()].clone(),
-            tunic: material(outfit.main, 0.8),
-            trousers: material(darker(outfit.main), 0.9),
-            trim: material(outfit.trim, 0.6),
+            tunic: material(materials, PLAIN_TUNIC, 0.9),
+            trousers: material(materials, PLAIN_TROUSERS, 0.9),
+            worn: look.worn.iter().map(|item| worn(materials, item)).collect(),
         }
     }
 }
 
-/// A colour a little darker (for trousers under a tunic of that colour).
-fn darker((r, g, b): Colour) -> Colour {
-    (r * 0.6, g * 0.6, b * 0.6)
+fn material(materials: &mut Assets<StandardMaterial>, (r, g, b): Colour, roughness: f32) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial { base_color: Color::srgb(r, g, b), perceptual_roughness: roughness, ..default() })
 }
 
-/// The look described by a content appearance, with new materials.
+fn worn(materials: &mut Assets<StandardMaterial>, item: &ItemLook) -> Worn {
+    // Weapons have a little shine to them; clothes and wood don't.
+    let roughness = if matches!(item.style, LookStyle::Sword) { 0.35 } else { 0.7 };
+    Worn {
+        style: item.style,
+        main: material(materials, item.main, roughness),
+        trim: material(materials, item.trim, 0.6),
+    }
+}
+
+/// The look described by a content appearance, with new materials. An NPC's
+/// outfit becomes the same worn shapes players' equipment uses.
 pub fn appearance_look(materials: &mut Assets<StandardMaterial>, appearance: &AppearanceDef) -> Look {
-    let mut material = |(r, g, b): Colour, roughness: f32| {
-        materials.add(StandardMaterial {
-            base_color: Color::srgb(r, g, b),
-            perceptual_roughness: roughness,
-            ..default()
-        })
+    let outfit = match appearance.outfit {
+        OutfitStyle::Tunic => Vec::new(),
+        OutfitStyle::Armour => {
+            let wood = ItemLook { style: LookStyle::Plates, main: (0.55, 0.40, 0.25), trim: (0.28, 0.18, 0.10) };
+            vec![wood, ItemLook { style: LookStyle::LegPlates, ..wood }]
+        }
+        OutfitStyle::Robe => {
+            vec![ItemLook { style: LookStyle::Robe, main: appearance.tunic, trim: appearance.trousers }]
+        }
     };
     Look {
         body: appearance.body,
-        outfit: appearance.outfit,
-        skin: material(appearance.skin, 0.7),
-        hair: material(appearance.hair, 0.6),
-        tunic: material(appearance.tunic, 0.8),
-        trousers: material(appearance.trousers, 0.9),
-        // NPC armour is plain wood.
-        trim: material((0.55, 0.40, 0.25), 0.6),
+        skin: material(materials, appearance.skin, 0.7),
+        hair: material(materials, appearance.hair, 0.6),
+        tunic: material(materials, appearance.tunic, 0.8),
+        trousers: material(materials, appearance.trousers, 0.9),
+        worn: outfit.iter().map(|item| worn(materials, item)).collect(),
+    }
+}
+
+impl Look {
+    /// The first worn item of a shape, if any.
+    fn wearing(&self, style: LookStyle) -> Option<&Worn> {
+        self.worn.iter().find(|item| item.style == style)
     }
 }
 
@@ -332,8 +358,10 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
     let tunic = &look.tunic;
     let m = &assets.meshes;
     let build = Build::of(look.body);
-    let robed = look.outfit == OutfitStyle::Robe;
-    let armoured = look.outfit == OutfitStyle::Armour;
+    let robe = look.wearing(LookStyle::Robe);
+    let plates = look.wearing(LookStyle::Plates);
+    let leg_plates = look.wearing(LookStyle::LegPlates);
+    let weapon = look.worn.iter().find(|item| matches!(item.style, LookStyle::Sword | LookStyle::Staff));
     let joint = |kind| Joint { owner, kind };
 
     // A mesh part, placed relative to its parent.
@@ -347,35 +375,37 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
         part(&m.unit_cube, material, Transform::from_translation(position).with_scale(size))
     };
     // Sleeves match a robe; otherwise they're the linen shirt under the tunic.
-    let sleeves = if robed { tunic } else { &assets.linen };
-    let belt = if robed { &look.trim } else { &assets.belt };
+    let sleeves = robe.map_or(&assets.linen, |robe| &robe.main);
+    let belt = robe.map_or(&assets.belt, |robe| &robe.trim);
 
     let body = commands
         .spawn((joint(JointKind::Body), Transform::from_xyz(0.0, 0.95, 0.0), Visibility::default()))
         .with_children(|body| {
             // Hips, then a tunic's skirt or a robe down to the ankles, and a belt.
             body.spawn(sphere(&look.trousers, Vec3::new(0.0, 0.02, 0.0), build.hips));
-            if robed {
+            // A robe covers the tunic, top to bottom.
+            let top = robe.map_or(tunic, |robe| &robe.main);
+            if let Some(robe) = robe {
                 let robe_scale = Vec3::new(build.skirt.x * 0.95, 1.0, build.skirt.z);
-                body.spawn(part(&m.robe, tunic, scaled(0.0, -0.36, 0.0, robe_scale)));
+                body.spawn(part(&m.robe, &robe.main, scaled(0.0, -0.36, 0.0, robe_scale)));
             } else {
                 body.spawn(part(&m.skirt, tunic, scaled(0.0, -0.06, 0.0, build.skirt)));
             }
-            body.spawn(part(&m.torso, tunic, scaled(0.0, 0.30, 0.0, build.torso)));
+            body.spawn(part(&m.torso, top, scaled(0.0, 0.30, 0.0, build.torso)));
             if build.bust {
-                body.spawn(sphere(tunic, Vec3::new(0.0, 0.38, 0.07), Vec3::new(0.13, 0.06, 0.055)));
+                body.spawn(sphere(top, Vec3::new(0.0, 0.38, 0.07), Vec3::new(0.13, 0.06, 0.055)));
             }
             body.spawn(part(&m.belt, belt, scaled(0.0, 0.06, 0.0, Vec3::new(build.torso.x * 0.96, 1.0, 0.85))));
             // Armour: wooden plates strapped over the chest and back.
-            if armoured {
+            if let Some(plates) = plates {
                 let width = 0.2 * build.torso.x;
                 body.spawn(block(
-                    &look.trim,
+                    &plates.main,
                     Vec3::new(0.0, 0.34, 0.125 + if build.bust { 0.03 } else { 0.0 }),
                     Vec3::new(width, 0.26, 0.035),
                 ));
-                body.spawn(block(&look.trim, Vec3::new(0.0, 0.34, -0.13), Vec3::new(width, 0.28, 0.035)));
-                body.spawn(block(&assets.belt, Vec3::new(0.0, 0.28, 0.0), Vec3::new(width + 0.02, 0.03, 0.29)));
+                body.spawn(block(&plates.main, Vec3::new(0.0, 0.34, -0.13), Vec3::new(width, 0.28, 0.035)));
+                body.spawn(block(&plates.trim, Vec3::new(0.0, 0.28, 0.0), Vec3::new(width + 0.02, 0.03, 0.29)));
             }
             // Neck, head and hair. The top of the hair is 1.8 m above the ground.
             body.spawn(part(&m.neck, &look.skin, Transform::from_xyz(0.0, 0.60, 0.0)));
@@ -410,7 +440,7 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
     for side in [Side::Left, Side::Right] {
         let x = side.sign();
         // Armour has bigger shoulder guards in its plates' colour.
-        let (guard, guard_size) = if armoured { (&look.trim, 0.095) } else { (&assets.leather, 0.075) };
+        let (guard, guard_size) = plates.map_or((&assets.leather, 0.075), |plates| (&plates.main, 0.095));
         let shoulder = commands
             .spawn((
                 joint(JointKind::Shoulder(side)),
@@ -425,6 +455,10 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
                     .with_children(|elbow| {
                         elbow.spawn(part(&m.forearm, sleeves, Transform::from_xyz(0.0, -0.13, 0.0)));
                         elbow.spawn(sphere(&look.skin, Vec3::new(0.0, -0.28, 0.0), Vec3::new(0.04, 0.055, 0.03)));
+                        // The weapon, in the right hand.
+                        if let (Some(weapon), Side::Right) = (weapon, side) {
+                            spawn_weapon(elbow, m, weapon);
+                        }
                     });
             })
             .id();
@@ -438,15 +472,62 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
             ))
             .with_children(|hip| {
                 hip.spawn(part(&m.thigh, &look.trousers, Transform::from_xyz(0.0, -0.21, 0.0)));
+                // Leg plates: one strapped over the front of the thigh, one over the shin.
+                if let Some(plates) = leg_plates {
+                    hip.spawn(block(&plates.main, Vec3::new(0.0, -0.2, 0.072), Vec3::new(0.14, 0.3, 0.03)));
+                    hip.spawn(block(&plates.trim, Vec3::new(0.0, -0.2, 0.0), Vec3::new(0.165, 0.035, 0.17)));
+                }
                 hip.spawn((joint(JointKind::Knee(side)), Transform::from_xyz(0.0, -0.44, 0.0), Visibility::default()))
                     .with_children(|knee| {
                         knee.spawn(part(&m.shin, &look.trousers, Transform::from_xyz(0.0, -0.2, 0.0)));
+                        if let Some(plates) = leg_plates {
+                            knee.spawn(block(&plates.main, Vec3::new(0.0, -0.17, 0.066), Vec3::new(0.12, 0.24, 0.028)));
+                        }
                         knee.spawn(part(&m.boot_shaft, &assets.boots, Transform::from_xyz(0.0, -0.32, 0.0)));
                         knee.spawn(part(&m.foot, &assets.boots, Transform::from_xyz(0.0, -0.44, 0.05)));
                     });
             })
             .id();
         commands.entity(owner).add_child(hip);
+    }
+}
+
+/// Puts a weapon in the hand at the end of a forearm (the elbow's space).
+/// Swords point forward, as if ready; staves stand upright.
+fn spawn_weapon(elbow: &mut ChildSpawnerCommands, m: &CharacterMeshes, weapon: &Worn) {
+    let hand = Vec3::new(0.0, -0.29, 0.0);
+    let part = |mesh: &Handle<Mesh>, material: &Handle<StandardMaterial>, position: Vec3, size: Vec3| {
+        (Mesh3d(mesh.clone()), MeshMaterial3d(material.clone()), Transform::from_translation(position).with_scale(size))
+    };
+    match weapon.style {
+        LookStyle::Sword => {
+            // Held with the blade forward and a little up: the weapon's own Y
+            // axis runs along the blade.
+            let grip = Transform::from_translation(hand).with_rotation(Quat::from_rotation_x(1.35));
+            elbow.spawn((grip, Visibility::default())).with_children(|sword| {
+                sword.spawn(part(&m.unit_cylinder, &weapon.trim, Vec3::ZERO, Vec3::new(0.022, 0.14, 0.022)));
+                sword.spawn(part(&m.unit_cube, &weapon.trim, Vec3::new(0.0, 0.08, 0.0), Vec3::new(0.16, 0.025, 0.035)));
+                sword.spawn(part(&m.unit_cube, &weapon.main, Vec3::new(0.0, 0.42, 0.0), Vec3::new(0.05, 0.64, 0.012)));
+            });
+        }
+        LookStyle::Staff => {
+            elbow.spawn((Transform::from_translation(hand), Visibility::default())).with_children(|staff| {
+                staff.spawn(part(
+                    &m.unit_cylinder,
+                    &weapon.main,
+                    Vec3::new(0.0, 0.3, 0.0),
+                    Vec3::new(0.022, 1.5, 0.022),
+                ));
+                staff.spawn(part(&m.unit_sphere, &weapon.main, Vec3::new(0.0, 1.06, 0.0), Vec3::splat(0.045)));
+                staff.spawn(part(
+                    &m.unit_cylinder,
+                    &weapon.trim,
+                    Vec3::new(0.0, 0.02, 0.0),
+                    Vec3::new(0.027, 0.12, 0.027),
+                ));
+            });
+        }
+        _ => {}
     }
 }
 

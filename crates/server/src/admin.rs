@@ -16,6 +16,7 @@ use crate::ServerSystems;
 use crate::character::{Admin, Character, class_or_default, find_class};
 use crate::content::LoadedContent;
 use crate::entities::{NetworkId, Player};
+use crate::equipment::{Equipment, player_look};
 use crate::link::Link;
 use crate::requests::AdminRequest;
 
@@ -32,12 +33,15 @@ fn carry_out_admin_commands(
     mut requests: MessageReader<AdminRequest>,
     content: Res<LoadedContent>,
     mut link: ResMut<Link>,
-    mut players: Query<(&Player, &NetworkId, &mut Character, Has<Admin>)>,
+    mut players: Query<(&Player, &NetworkId, &mut Character, &Equipment, Has<Admin>)>,
     everyone: Query<&Player>,
 ) {
     let pack = &content.pack;
     for request in requests.read() {
-        let Ok((player, &NetworkId(id), mut character, admin)) = players.get_mut(request.player) else { continue };
+        let Ok((player, &NetworkId(id), mut character, equipment, admin)) = players.get_mut(request.player) else {
+            continue;
+        };
+        let common = &pack.new_characters.skills;
         let connection = player.connection;
         let mut tell = |text: String| link.send(connection, &ServerMessage::Notice { text });
         if !admin {
@@ -46,18 +50,18 @@ fn carry_out_admin_commands(
         }
         let old_level = character.level();
         let class = class_or_default(pack, Some(&character.class));
-        let old_look = character.look(&class);
+        let old_look = player_look(&character, equipment, &pack.items);
         match &request.command {
             AdminCommand::SetLevel { level } => {
                 if !(1..=MAX_LEVEL).contains(level) {
                     tell(format!("Levels go from 1 to {MAX_LEVEL}."));
                     continue;
                 }
-                character.set_level(*level, &class);
+                character.set_level(*level, &class, common);
                 tell(format!("You are now level {level}."));
             }
             AdminCommand::Reset => {
-                character.reset(&class);
+                character.reset(&class, common);
                 tell(format!("Your character has been reset to a level 1 {}.", class.name));
             }
             AdminCommand::SetClass { class: wanted } => {
@@ -66,9 +70,9 @@ fn carry_out_admin_commands(
                     tell(format!("There's no class called \"{wanted}\". The classes are: {}.", names.join(", ")));
                     continue;
                 };
-                character.change_class(new_class);
+                character.change_class(new_class, common);
                 tell(format!(
-                    "You are now a {}. Your stats are back to a {}'s, and your points are yours to spend again.",
+                    "You are now a {}. Your stats and skills are back to a {}'s, and your points are yours to spend again.",
                     new_class.name, new_class.name
                 ));
             }
@@ -79,7 +83,7 @@ fn carry_out_admin_commands(
         }
         // Everyone sees the new level and look (and a level-up celebrates).
         let level = character.level();
-        let look = character.look(&class_or_default(pack, Some(&character.class)));
+        let look = player_look(&character, equipment, &pack.items);
         if level != old_level || look != old_look {
             let message = ServerMessage::PlayerChanged { id, level, look, celebrate: level > old_level };
             link.broadcast(everyone.iter().map(|player| player.connection), &message);

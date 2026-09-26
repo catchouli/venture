@@ -28,4 +28,66 @@
         description: "A well-chewed wooden pipe. It smells of cherry tobacco.",
         icon: "old_pipe.png",
     ),
+
+    // Starting equipment. `equip` says which slots an item fills, what it
+    // adds (armour, or weapon stats), and how it looks on the character.
+    (
+        id: "training_sword",
+        name: "Training sword",
+        description: "A blunt blade for learning the basics. Better than your fists.",
+        icon: "training_sword.png",
+        value: 8,
+        equip: Some((
+            slots: [Weapon],
+            weapon: Some((damage: "1d6", speed: 1.0, ability: Strength)),
+            look: (style: Sword, main: (0.72, 0.74, 0.78), trim: (0.36, 0.23, 0.13)),
+        )),
+    ),
+    (
+        id: "wooden_staff",
+        name: "Wooden staff",
+        description: "A sturdy length of ash, smoothed by many hands.",
+        icon: "wooden_staff.png",
+        value: 6,
+        equip: Some((
+            slots: [Weapon],
+            weapon: Some((damage: "1d6", speed: 0.9, ability: Strength)),
+            look: (style: Staff, main: (0.55, 0.38, 0.22), trim: (0.36, 0.23, 0.13)),
+        )),
+    ),
+    (
+        id: "wooden_chestguard",
+        name: "Wooden chestguard",
+        description: "Planks of wood strapped across the chest with leather. It creaks.",
+        icon: "wooden_chestguard.png",
+        value: 6,
+        equip: Some((
+            slots: [Body],
+            armour: 1,
+            look: (style: Plates, main: (0.62, 0.46, 0.28), trim: (0.30, 0.19, 0.11)),
+        )),
+    ),
+    (
+        id: "wooden_legguards",
+        name: "Wooden legguards",
+        description: "More planks, strapped to the legs. Surprisingly easy to run in.",
+        icon: "wooden_legguards.png",
+        value: 5,
+        equip: Some((
+            slots: [Legs],
+            armour: 1,
+            look: (style: LegPlates, main: (0.62, 0.46, 0.28), trim: (0.30, 0.19, 0.11)),
+        )),
+    ),
+    (
+        id: "plain_robes",
+        name: "Plain robes",
+        description: "Woollen robes, from collar to ankle. They cover body and legs.",
+        icon: "plain_robes.png",
+        value: 6,
+        equip: Some((
+            slots: [Body, Legs],
+            look: (style: Robe, main: (0.28, 0.30, 0.52), trim: (0.78, 0.68, 0.40)),
+        )),
+    ),
 ]

@@ -106,7 +106,7 @@ fn follow_server_events(
                     Targetable { id: *id, kind: target_kind },
                 ));
                 if let EntityKind::Player { level, look } = kind {
-                    commands.entity(entity).insert((Level(*level), PlayerAppearance(*look)));
+                    commands.entity(entity).insert((Level(*level), PlayerAppearance(look.clone())));
                 }
                 remotes.0.insert(*id, entity);
             }
@@ -115,7 +115,7 @@ fn follow_server_events(
                 let Ok((mut shown_level, mut appearance)) = players.get_mut(entity) else { continue };
                 shown_level.0 = *level;
                 if appearance.0 != *look {
-                    appearance.0 = *look;
+                    appearance.0 = look.clone();
                     rebuild_body(&mut commands, entity, &assets, &assets.player_look(id.0, look, &mut materials));
                 }
             }

@@ -10,8 +10,9 @@
 //!
 //! and only then does it become a [`SessionRequest`] (for [`crate::sessions`]),
 //! a [`PlayerRequest`] (for [`crate::gameplay`]), a [`DialogueRequest`] (for
-//! [`crate::dialogue`]), a [`ShopRequest`] (for [`crate::shops`]) or an
-//! [`AdminRequest`] (for [`crate::admin`]). Too many strikes and the
+//! [`crate::dialogue`]), a [`ShopRequest`] (for [`crate::shops`]), a
+//! [`CharacterRequest`] (for [`crate::character`]), an [`EquipmentRequest`]
+//! (for [`crate::equipment`]) or an [`AdminRequest`] (for [`crate::admin`]). Too many strikes and the
 //! connection is closed.
 
 use std::collections::HashMap;
@@ -34,8 +35,8 @@ const MAX_STRIKES: u32 = 10;
 const MESSAGE_BURST: f32 = 40.0;
 /// ...and per second after that.
 const MESSAGES_PER_SECOND: f32 = 20.0;
-/// The longest a class id may be, in bytes.
-const MAX_CLASS_ID_BYTES: usize = 64;
+/// The longest a content id (a class or skill) may be, in bytes.
+const MAX_ID_BYTES: usize = 64;
 /// The most items one purchase or sale may involve.
 const MAX_TRADE_COUNT: u32 = 100;
 /// Chat messages a player may send in a burst...
@@ -54,6 +55,8 @@ impl Plugin for RequestsPlugin {
             .add_message::<DialogueRequest>()
             .add_message::<ShopRequest>()
             .add_message::<AdminRequest>()
+            .add_message::<CharacterRequest>()
+            .add_message::<EquipmentRequest>()
             .add_systems(FixedUpdate, receive_messages.in_set(ServerSystems::Requests));
     }
 }
@@ -151,6 +154,40 @@ pub struct DialogueRequest {
     pub choice: DialogueChoice,
 }
 
+/// A player spending points, for [`crate::character`].
+#[derive(Message)]
+pub struct CharacterRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// What they asked for.
+    pub action: CharacterAction,
+}
+
+/// How a player wants to spend points. Checked against their character.
+pub enum CharacterAction {
+    /// A stat point on an ability.
+    SpendStatPoint(venture_rpg::Ability),
+    /// Skill points on a skill (its id, at most [`MAX_ID_BYTES`] long).
+    LearnSkill(String),
+}
+
+/// A player changing what they wear, for [`crate::equipment`].
+#[derive(Message)]
+pub struct EquipmentRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// What they asked for.
+    pub action: EquipmentAction,
+}
+
+/// What a player wants to put on or take off. Checked against their bag and equipment.
+pub enum EquipmentAction {
+    /// Equip the item in this inventory slot.
+    Equip(u32),
+    /// Take off what's in this slot.
+    Unequip(venture_protocol::EquipSlot),
+}
+
 /// An admin command, for [`crate::admin`] (which checks the player is an admin).
 #[derive(Message)]
 pub struct AdminRequest {
@@ -210,6 +247,8 @@ fn receive_messages(
     mut dialogue: MessageWriter<DialogueRequest>,
     mut shops: MessageWriter<ShopRequest>,
     mut admin: MessageWriter<AdminRequest>,
+    mut characters: MessageWriter<CharacterRequest>,
+    mut equipment: MessageWriter<EquipmentRequest>,
 ) {
     let now = time.elapsed_secs();
     while let Some(event) = link.next_event() {
@@ -245,6 +284,12 @@ fn receive_messages(
                     Verdict::Admin(request) => {
                         admin.write(request);
                     }
+                    Verdict::Character(request) => {
+                        characters.write(request);
+                    }
+                    Verdict::Equipment(request) => {
+                        equipment.write(request);
+                    }
                     Verdict::Reply(message) => link.send(id, &message),
                     Verdict::Ignore => {}
                     Verdict::Strike => {
@@ -271,6 +316,8 @@ enum Verdict {
     Dialogue(DialogueRequest),
     Shop(ShopRequest),
     Admin(AdminRequest),
+    Character(CharacterRequest),
+    Equipment(EquipmentRequest),
     /// Answer the client directly, without changing anything.
     Reply(ServerMessage),
     Ignore,
@@ -300,9 +347,7 @@ fn judge(id: ConnectionId, connection: &mut Connection, bytes: &[u8], world: &Se
             connection.stage = Stage::Joining;
             Verdict::Session(SessionRequest::Hello { connection: id, profile: ProfileKey::from_token(&token) })
         }
-        (Stage::AwaitingName { .. }, ClientMessage::CreateCharacter { class, .. })
-            if class.len() > MAX_CLASS_ID_BYTES =>
-        {
+        (Stage::AwaitingName { .. }, ClientMessage::CreateCharacter { class, .. }) if class.len() > MAX_ID_BYTES => {
             Verdict::Strike
         }
         (Stage::AwaitingName { profile }, ClientMessage::CreateCharacter { name, class, body }) => {
@@ -379,10 +424,23 @@ fn judge_player_message(
             return Verdict::Shop(ShopRequest { player, action: ShopAction::Sell { slot, count } });
         }
         ClientMessage::CloseShop => return Verdict::Shop(ShopRequest { player, action: ShopAction::Close }),
-        ClientMessage::Admin(AdminCommand::SetClass { class }) if class.len() > MAX_CLASS_ID_BYTES => {
+        ClientMessage::Admin(AdminCommand::SetClass { class }) if class.len() > MAX_ID_BYTES => {
             return Verdict::Strike;
         }
         ClientMessage::Admin(command) => return Verdict::Admin(AdminRequest { player, command }),
+        ClientMessage::SpendStatPoint { ability } => {
+            return Verdict::Character(CharacterRequest { player, action: CharacterAction::SpendStatPoint(ability) });
+        }
+        ClientMessage::LearnSkill { skill } if skill.len() > MAX_ID_BYTES => return Verdict::Strike,
+        ClientMessage::LearnSkill { skill } => {
+            return Verdict::Character(CharacterRequest { player, action: CharacterAction::LearnSkill(skill) });
+        }
+        ClientMessage::Equip { slot } => {
+            return Verdict::Equipment(EquipmentRequest { player, action: EquipmentAction::Equip(slot) });
+        }
+        ClientMessage::Unequip { slot } => {
+            return Verdict::Equipment(EquipmentRequest { player, action: EquipmentAction::Unequip(slot) });
+        }
         ClientMessage::Hello { .. } | ClientMessage::CreateCharacter { .. } => return Verdict::Strike,
     };
     Verdict::Player(PlayerRequest { player, action })

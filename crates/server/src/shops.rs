@@ -177,6 +177,7 @@ mod tests {
             icon: String::new(),
             stackable,
             value,
+            equip: None,
         };
         BTreeMap::from([("bread".to_string(), item("bread", false, 4)), ("pipe".to_string(), item("pipe", false, 0))])
     }

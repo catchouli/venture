@@ -1,11 +1,11 @@
 //! The part of the content pack clients download: presentation data only
-//! (appearances, items and their icons), never NPC definitions, scripts or
+//! (appearances, items, skills and their icons), never NPC definitions, scripts or
 //! dialogue, which stay on the server.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::definitions::{AppearanceDef, ItemDef};
+use crate::definitions::{AppearanceDef, ItemDef, SkillDef};
 
 /// Where the manifest is served, relative to the content address.
 pub const CLIENT_MANIFEST_FILE: &str = "manifest.ron";
@@ -79,6 +79,11 @@ pub fn parse_appearances(text: &str) -> Result<Vec<AppearanceDef>, String> {
 
 /// Reads an items file: a list of [`ItemDef`]s.
 pub fn parse_items(text: &str) -> Result<Vec<ItemDef>, String> {
+    ron::from_str(text).map_err(|error| error.to_string())
+}
+
+/// Reads a skills file: a list of [`SkillDef`]s.
+pub fn parse_skills(text: &str) -> Result<Vec<SkillDef>, String> {
     ron::from_str(text).map_err(|error| error.to_string())
 }
 

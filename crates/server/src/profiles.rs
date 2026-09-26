@@ -15,7 +15,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use venture_protocol::{BodyType, ItemStack};
+use venture_protocol::{BodyType, EquipSlot, ItemStack};
 use venture_rpg::Abilities;
 
 /// Everything saved about a character. Fields added since the first
@@ -48,6 +48,13 @@ pub struct Profile {
     /// Skill points to spend.
     #[serde(default)]
     pub skill_points: u32,
+    /// The skills they know (if missing, their class's starting skills).
+    #[serde(default)]
+    pub skills: Option<Vec<String>>,
+    /// What they have equipped, slot by slot (if missing, their class's
+    /// starting equipment: characters made before equipment existed get it).
+    #[serde(default)]
+    pub equipment: Option<Vec<(EquipSlot, String)>>,
     /// Their money.
     #[serde(default)]
     pub miasma: u64,
@@ -76,6 +83,8 @@ impl Profile {
             stats: None,
             stat_points: 0,
             skill_points: 0,
+            skills: None,
+            equipment: None,
             miasma: 0,
             inventory: Vec::new(),
             quests: Vec::new(),

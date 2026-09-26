@@ -95,8 +95,10 @@ src/
     clicks.rs          left clicks: select, follow, talk, or run there
     move_marker.rs     the glowing move marker
   ui/                the interface
-    toolbar.rs (the window buttons), chat.rs, dialogue_window.rs, inventory.rs
-    (the bag), journal.rs (quests), shop.rs, character_creation.rs,
+    character_window/  the character window: mod.rs (the tabs), stats.rs,
+                       skills.rs, bag.rs, equipment.rs, quests.rs, emotes.rs
+    toolbar.rs (buttons for the window's tabs), chat.rs, dialogue_window.rs,
+    shop.rs, character_creation.rs,
     target_frame.rs, connection_overlay.rs, cursor.rs, text_input.rs,
     tooltip.rs, widgets.rs (shared pieces such as the close button)
   dev/               development tools

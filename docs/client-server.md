@@ -336,12 +336,23 @@ scores and unspent points) lives on the server and changes only through its
 own methods, which follow the rules in `venture_rpg`. Whenever it changes,
 the server sends the player their character sheet (`Character`), including
 the secondary stats it worked out (health, mana, armour class, attack bonus,
-attack speed), so the client never repeats the rules. Other players see a
-player's level and look in `EntityAppeared` (`Player { level, look }`), and
-`PlayerChanged` when either changes; `celebrate` marks a level going up, and
-everyone nearby sees the level-up effect. A player's look is their body type
-and their class's outfit (equipment will take over from the class; see
-`docs/plan-combat.md`).
+attack speed, damage), their skills, the skills their class can learn, and
+what they have equipped, so the client never repeats the rules. Players
+spend points with `SpendStatPoint { ability }` and `LearnSkill { skill }`;
+the server checks the level, the points and the class, and says in a
+`Notice` if it can't.
+
+**Equipment** lives in its own component, changed only in `equipment.rs`.
+`Equip { slot }` (an inventory slot) and `Unequip { slot }` (an equipment
+slot) swap items between the bag and the slots as one inventory `Change`, so
+nothing is lost or duplicated; an item filling several slots (a robe: body
+and legs) replaces whatever is in any of them. What's worn feeds the
+character's secondary stats (armour, the weapon's damage and speed).
+
+Other players see a player's level and look in `EntityAppeared` (`Player {
+level, look }`), and `PlayerChanged` when either changes; `celebrate` marks
+a level going up, and everyone nearby sees the level-up effect. A player's
+look is their body type and how each item they wear looks (`worn`).
 
 **Admins** are listed by character name in `server.ron`. Their commands
 (`Admin(SetLevel | Reset | SetClass | SetBody)`: `/setlevel`, `/reset`,

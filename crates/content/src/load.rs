@@ -3,11 +3,13 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::client::{ClientContent, parse_appearances, parse_items};
+use crate::client::{ClientContent, parse_appearances, parse_items, parse_skills};
 use crate::definitions::{
     AppearanceDef, ClassDef, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS,
-    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef, ShopDef,
+    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef, ShopDef, SkillDef,
 };
+use venture_protocol::EquipSlot;
+use venture_rpg::MAX_LEVEL;
 
 /// The file saying what new characters start with.
 const NEW_CHARACTERS_FILE: &str = "new_characters.ron";
@@ -44,6 +46,8 @@ pub struct ContentPack {
     pub shops: BTreeMap<String, ShopDef>,
     /// Quests, by id.
     pub quests: BTreeMap<String, QuestDef>,
+    /// Skills, by id.
+    pub skills: BTreeMap<String, SkillDef>,
     /// Classes, in the order players are offered them (the first is the default).
     pub classes: Vec<ClassDef>,
     /// NPCs, in file order.
@@ -110,11 +114,27 @@ impl ContentPack {
             }
         }
 
+        for (relative, text) in read_files(folder, "skills", "ron", &mut errors) {
+            match parse_skills(&text) {
+                Ok(skills) => {
+                    for skill in skills {
+                        check_skill(&skill, &icons, &relative, &mut errors);
+                        if pack.skills.contains_key(&skill.id) {
+                            errors.push(error(&relative, format!("there's already a skill called \"{}\"", skill.id)));
+                        }
+                        pack.skills.insert(skill.id.clone(), skill);
+                    }
+                    client_files.push((to_slashes(&relative), text.into_bytes()));
+                }
+                Err(message) => errors.push(error(&relative, message)),
+            }
+        }
+
         for (relative, text) in read_files(folder, "classes", "ron", &mut errors) {
             match ron::from_str::<Vec<ClassDef>>(&text) {
                 Ok(classes) => {
                     for class in classes {
-                        check_class(&class, &relative, &mut errors);
+                        check_class(&class, &pack, &relative, &mut errors);
                         if pack.classes.iter().any(|other| other.id == class.id) {
                             errors.push(error(&relative, format!("there's already a class called \"{}\"", class.id)));
                         }
@@ -132,6 +152,11 @@ impl ContentPack {
                     for stack in &new_characters.items {
                         if !pack.items.contains_key(&stack.item) {
                             errors.push(error(file, format!("there's no item called \"{}\"", stack.item)));
+                        }
+                    }
+                    for skill in &new_characters.skills {
+                        if !pack.skills.contains_key(skill) {
+                            errors.push(error(file, format!("there's no skill called \"{skill}\"")));
                         }
                     }
                     pack.new_characters = new_characters;
@@ -255,6 +280,33 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
     if !icons.contains(&item.icon) {
         problem(format!("there's no icon called \"{}\" in icons/", item.icon));
     }
+    if let Some(equip) = &item.equip {
+        if equip.slots.is_empty() {
+            problem("it must fill at least one equipment slot".to_string());
+        }
+        let wielded = equip.slots.contains(&EquipSlot::Weapon);
+        match &equip.weapon {
+            Some(weapon) if !wielded => problem("only items in the Weapon slot can have weapon stats".to_string()),
+            Some(weapon) if !(weapon.speed > 0.0 && weapon.speed.is_finite()) => {
+                problem("its weapon speed must be more than 0".to_string());
+            }
+            None if wielded => problem("items in the Weapon slot need weapon stats".to_string()),
+            _ => {}
+        }
+    }
+}
+
+fn check_skill(skill: &SkillDef, icons: &HashSet<String>, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, format!("skill \"{}\": {message}", skill.id)));
+    if skill.name.trim().is_empty() {
+        problem("it needs a name".to_string());
+    }
+    if !icons.contains(&skill.icon) {
+        problem(format!("there's no icon called \"{}\" in icons/", skill.icon));
+    }
+    if !(skill.cooldown >= 0.0 && skill.cooldown.is_finite() && skill.range >= 0.0 && skill.range.is_finite()) {
+        problem("its cooldown and range must be 0 or more".to_string());
+    }
 }
 
 fn check_shop(shop: &ShopDef, pack: &ContentPack, file: &Path, errors: &mut Vec<ContentError>) {
@@ -272,7 +324,7 @@ fn check_shop(shop: &ShopDef, pack: &ContentPack, file: &Path, errors: &mut Vec<
     }
 }
 
-fn check_class(class: &ClassDef, file: &Path, errors: &mut Vec<ContentError>) {
+fn check_class(class: &ClassDef, pack: &ContentPack, file: &Path, errors: &mut Vec<ContentError>) {
     let mut problem = |message: String| errors.push(error(file, format!("class \"{}\": {message}", class.id)));
     if class.name.trim().is_empty() {
         problem("it needs a name".to_string());
@@ -282,6 +334,30 @@ fn check_class(class: &ClassDef, file: &Path, errors: &mut Vec<ContentError>) {
     }
     if !class.stats.is_valid() {
         problem("its stats must each be from 1 to 99".to_string());
+    }
+    let mut filled = HashSet::new();
+    for item in &class.starting_equipment {
+        match pack.items.get(item).and_then(|def| def.equip.as_ref()) {
+            None => problem(format!("its starting equipment \"{item}\" isn't an item that can be equipped")),
+            Some(equip) => {
+                for slot in &equip.slots {
+                    if !filled.insert(*slot) {
+                        problem(format!("two of its starting items go in the {} slot", slot.name()));
+                    }
+                }
+            }
+        }
+    }
+    let class_skills = class.skills.iter().map(|offer| &offer.skill);
+    for skill in class.starting_skills.iter().chain(class_skills) {
+        if !pack.skills.contains_key(skill) {
+            problem(format!("there's no skill called \"{skill}\""));
+        }
+    }
+    for offer in &class.skills {
+        if !(1..=MAX_LEVEL).contains(&offer.level) {
+            problem(format!("{} must unlock at a level from 1 to {MAX_LEVEL}", offer.skill));
+        }
     }
 }
 

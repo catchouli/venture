@@ -17,7 +17,7 @@ use crate::dev::settings::DevSettings;
 use crate::interaction::targeting::Targetable;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::chat::NPC_NAME_COLOUR;
-use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, spawn_close_button};
+use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER, spawn_close_button};
 
 /// Width of the window, in pixels.
 const WIDTH: f32 = 420.0;
@@ -95,6 +95,7 @@ fn spawn_window(mut commands: Commands) {
                 },
                 BackgroundColor(WINDOW_BACKGROUND),
                 BorderColor::all(BORDER_COLOUR),
+                WINDOW_LAYER,
                 Visibility::Hidden,
             ))
             .with_children(|window| {

@@ -31,6 +31,8 @@ impl Plugin for ActionsPlugin {
 /// Something the player can do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
+    /// Attack the selected creature.
+    Attack,
     /// Follow the selected player.
     Follow,
     /// Talk to the selected NPC.
@@ -45,11 +47,13 @@ pub enum Action {
 
 impl Action {
     /// Every action, in the order `/help` lists them.
-    pub const ALL: [Action; 5] = [Action::Follow, Action::Talk, Action::Wave, Action::Town, Action::Help];
+    pub const ALL: [Action; 6] =
+        [Action::Attack, Action::Follow, Action::Talk, Action::Wave, Action::Town, Action::Help];
 
     /// Its name, as typed in a chat command (`/follow`).
     pub fn name(self) -> &'static str {
         match self {
+            Action::Attack => "attack",
             Action::Follow => "follow",
             Action::Talk => "talk",
             Action::Town => "town",
@@ -61,6 +65,7 @@ impl Action {
     /// What it does, in a few words.
     pub fn description(self) -> &'static str {
         match self {
+            Action::Attack => "attack the selected creature",
             Action::Follow => "follow the selected player",
             Action::Talk => "talk to the selected NPC",
             Action::Town => "go back to the starting town",
@@ -99,6 +104,10 @@ fn perform_actions(
             }
             (Action::Talk, Some((entity, Targetable { id, kind: TargetKind::Npc }))) => orders.talk_to(entity, id),
             (Action::Talk, Some((_, Targetable { id, .. }))) => orders.ask(ClientMessage::Interact { target: id }),
+            // Fighting comes in the next step of the combat plan (docs/plan-combat.md).
+            (Action::Attack, _) => {
+                system.write(SystemMessage("There's nothing to fight here yet.".to_string()));
+            }
             (Action::Town, _) => orders.ask(ClientMessage::ReturnToTown),
             (Action::Wave, _) => orders.ask(ClientMessage::Emote(Emote::Wave)),
             (Action::Help, _) => {

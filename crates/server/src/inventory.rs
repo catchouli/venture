@@ -234,6 +234,7 @@ mod tests {
             icon: String::new(),
             stackable,
             value: 1,
+            equip: None,
         };
         BTreeMap::from([("arrows".to_string(), item("arrows", true)), ("bread".to_string(), item("bread", false))])
     }
