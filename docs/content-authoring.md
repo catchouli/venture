@@ -112,8 +112,9 @@ content, so a typo never takes the game down.
 ]
 ```
 
-Players choose a class when they make a character; the first one listed is
-the default. `rules` is the class's part in the RPG rules (see
+Players choose a class when they make a character, from those with
+`starting` (true unless set to `false`: classes that aren't offered could be
+reached later, by advancing); the first class listed is the default. `rules` is the class's part in the RPG rules (see
 `crates/rpg`): `hit_die` sets health per level (SRD 5.1: d10 for a fighter,
 d6 for a wizard), and `mana_per_level` plus the `casting_stat`'s modifier
 sets mana. `stats` are a new character's stats. New characters wear

@@ -17,8 +17,10 @@
 
 mod camera;
 mod document;
+mod fields;
 mod looks;
 mod places;
+mod previews;
 mod screenshot;
 mod shell;
 
@@ -26,7 +28,6 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
-use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use venture_client::network::launch::ServerChoice;
 
 /// Where the editor's files are.
@@ -77,13 +78,14 @@ fn main() {
     // The game's world rendering reads the world from a folder, as `--local` does.
     .insert_resource(ServerChoice::Local { world_folder: project.world.clone(), new_character: false, admin: false })
     .add_plugins(venture_client::world::WorldPlugin)
-    .add_plugins((EguiPlugin::default(), DefaultInspectorConfigPlugin))
+    .add_plugins(EguiPlugin::default())
     .insert_resource(project)
     .insert_resource(document)
     .add_plugins((
         camera::EditorCameraPlugin,
         shell::ShellPlugin,
         looks::LooksPlugin,
+        fields::FieldsPlugin,
         places::PlacesPlugin,
         screenshot::ScreenshotPlugin,
     ));

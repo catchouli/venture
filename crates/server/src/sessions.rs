@@ -119,11 +119,9 @@ impl Sessions<'_, '_> {
 
     fn ask_for_character(&mut self, connection: ConnectionId, profile: &ProfileKey) {
         self.set_stage(connection, Stage::AwaitingName { profile: profile.clone() });
-        let classes = if self.content.pack.classes.is_empty() {
-            vec![class_or_default(&self.content.pack, None)]
-        } else {
-            self.content.pack.classes.clone()
-        };
+        // (Only the classes offered at the start.)
+        let offered: Vec<_> = self.content.pack.classes.iter().filter(|class| class.starting).cloned().collect();
+        let classes = if offered.is_empty() { vec![class_or_default(&self.content.pack, None)] } else { offered };
         let classes = classes
             .into_iter()
             .map(|class| ClassChoice {
@@ -148,7 +146,8 @@ impl Sessions<'_, '_> {
         features: &Features,
     ) {
         let pack = &self.content.pack;
-        let class_exists = pack.classes.iter().any(|class| class.id == class_id) || pack.classes.is_empty();
+        let class_exists =
+            pack.classes.iter().any(|class| class.id == class_id && class.starting) || pack.classes.is_empty();
         let problem = if !class_exists {
             Some("Please choose one of the classes.".to_string())
         } else if !self.store.claim_name(name, profile) {

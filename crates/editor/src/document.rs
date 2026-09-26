@@ -117,6 +117,8 @@ pub trait AnyCollection: Send + Sync {
     fn duplicate(&mut self, file: usize, index: usize) -> Option<usize>;
     /// Removes an entry.
     fn remove(&mut self, file: usize, index: usize);
+    /// Gives an entry a new key (its id).
+    fn rename(&mut self, file: usize, index: usize, key: String);
     /// Moves an entry up (-1) or down (1) in its file. Returns its new index.
     fn shift(&mut self, file: usize, index: usize, by: isize) -> Option<usize>;
     /// Registers the entry type for reflection.
@@ -275,6 +277,12 @@ impl<T: Entry> AnyCollection for Collection<T> {
         }
     }
 
+    fn rename(&mut self, file: usize, index: usize, key: String) {
+        if let Some(entry) = self.files.get_mut(file).and_then(|file| file.entries.get_mut(index)) {
+            entry.set_key(key);
+        }
+    }
+
     fn shift(&mut self, file: usize, index: usize, by: isize) -> Option<usize> {
         let entries = &mut self.files.get_mut(file)?.entries;
         let to = index.checked_add_signed(by).filter(|to| *to < entries.len())?;
@@ -385,21 +393,31 @@ impl Document {
     }
 
     /// Undoes the last change. Returns which (collection, file) it was in.
+    /// (Changes made at the same moment, such as a rename touching several
+    /// files, undo and redo together.)
     pub fn undo(&mut self) -> Option<(usize, usize)> {
-        let step = self.undo.pop()?;
-        self.restore(step.collection, step.file, &step.before);
-        let place = (step.collection, step.file);
-        self.redo.push(step);
-        Some(place)
+        let at = self.undo.last()?.at;
+        let mut place = None;
+        while self.undo.last().is_some_and(|step| step.at == at) {
+            let step = self.undo.pop()?;
+            self.restore(step.collection, step.file, &step.before);
+            place = Some((step.collection, step.file));
+            self.redo.push(step);
+        }
+        place
     }
 
     /// Redoes the last undone change.
     pub fn redo(&mut self) -> Option<(usize, usize)> {
-        let step = self.redo.pop()?;
-        self.restore(step.collection, step.file, &step.after);
-        let place = (step.collection, step.file);
-        self.undo.push(step);
-        Some(place)
+        let at = self.redo.last()?.at;
+        let mut place = None;
+        while self.redo.last().is_some_and(|step| step.at == at) {
+            let step = self.redo.pop()?;
+            self.restore(step.collection, step.file, &step.after);
+            place = Some((step.collection, step.file));
+            self.undo.push(step);
+        }
+        place
     }
 
     /// Whether there's anything to undo or redo.

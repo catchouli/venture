@@ -19,6 +19,31 @@ pub enum OutfitStyle {
     Robe,
 }
 
+/// What a field names (for the editor, which offers the names that exist,
+/// and follows renames). Marked on fields with `#[reflect(@Refers::Item)]`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+pub enum Refers {
+    /// An appearance's id.
+    Appearance,
+    /// A creature's id.
+    Creature,
+    /// An item's id.
+    Item,
+    /// An ability's id.
+    Ability,
+    /// A picture in `icons/`.
+    Icon,
+    /// A sound in `sounds/`.
+    Sound,
+    /// A script in `scripts/`.
+    Script,
+    /// An outfit part from `characters/characters.ron`.
+    Part,
+    /// A hairstyle or beard from `characters/characters.ron`.
+    Hair,
+}
+
 /// A colour as sRGB red, green and blue, each from 0 to 1.
 pub type Colour = (f32, f32, f32);
 
@@ -36,6 +61,15 @@ fn is_default_bolt_speed(speed: &f32) -> bool {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_default_aggro_radius(radius: &f32) -> bool {
     *radius == default_aggro_radius()
+}
+
+fn offered() -> bool {
+    true
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_offered(starting: &bool) -> bool {
+    *starting
 }
 
 fn default_bolt_speed() -> f32 {
@@ -70,13 +104,16 @@ pub struct AppearanceDef {
     pub outfit: OutfitStyle,
     /// Their hairstyle (from `characters/characters.ron`), if not their body's usual one.
     #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Hair))]
     pub hairstyle: Option<String>,
     /// The outfit parts they wear (from `characters/characters.ron`), if not
     /// the ones for their outfit style.
     #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Part))]
     pub parts: Vec<String>,
     /// Their beard (from `characters/characters.ron`), if they have one.
     #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Hair))]
     pub beard: Option<String>,
     /// Their height, build and head size (from -10 to 10, as in the character
     /// creator). Any left out are picked from the appearance's id, so each
@@ -149,11 +186,13 @@ pub struct NpcDef {
     /// The name shown to players.
     pub name: String,
     /// Which appearance to use (an [`AppearanceDef`] id).
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Appearance))]
     pub appearance: String,
     /// Where the NPC lives.
     pub at: Placement,
     /// The script that gives the NPC its behaviour (a file in `scripts/`), if any.
     #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Script))]
     pub script: Option<String>,
     /// The conversation that opens when a player talks to the NPC: the title
     /// of a node in the `dialogue/` files, if any.
@@ -249,6 +288,7 @@ pub struct ItemDef {
     /// A line or two about it, shown when the player points at it.
     pub description: String,
     /// Its picture: a PNG file in `icons/`.
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Icon))]
     pub icon: String,
     /// Whether any number of them share one inventory slot (like arrows).
     #[serde(default, skip_serializing_if = "is_default")]
@@ -289,6 +329,7 @@ pub struct Equippable {
     /// The outfit parts it puts on the character (from
     /// `characters/characters.ron`): clothes, armour, or a weapon in hand.
     #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Part))]
     pub parts: Vec<String>,
 }
 
@@ -322,6 +363,7 @@ pub struct AbilityDef {
     /// What it does, in a sentence or two.
     pub description: String,
     /// Its picture: a PNG file in `icons/`.
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Icon))]
     pub icon: String,
     /// Mana it costs to use.
     #[serde(default, skip_serializing_if = "is_default")]
@@ -336,6 +378,7 @@ pub struct AbilityDef {
     pub effect: AbilityEffect,
     /// The sound it makes when used: a file in `sounds/`, if any.
     #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Sound))]
     pub sound: Option<String>,
     /// How it looks: the colour and size of its flash, bolt or glow.
     #[serde(default, skip_serializing_if = "is_default")]
@@ -378,6 +421,7 @@ pub struct SkillDef {
     /// What it's about, in a sentence or two.
     pub description: String,
     /// Its picture: a PNG file in `icons/`.
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Icon))]
     pub icon: String,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -554,6 +598,7 @@ pub enum AbilityEffect {
 #[serde(deny_unknown_fields)]
 pub struct ClassAbility {
     /// Which ability (a [`AbilityDef`] id).
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Ability))]
     pub ability: String,
     /// The level it can be learned from.
     pub level: u32,
@@ -596,6 +641,7 @@ pub struct ShopDef {
 #[serde(deny_unknown_fields)]
 pub struct ShopItem {
     /// Which item (an [`ItemDef`] id).
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Item))]
     pub item: String,
     /// What one costs, in Miasma.
     pub price: u32,
@@ -666,6 +712,7 @@ pub struct NewCharacterDef {
     pub items: Vec<ItemCount>,
     /// The abilities every character knows from the start (such as resting).
     #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Ability))]
     pub abilities: Vec<String>,
 }
 
@@ -692,11 +739,17 @@ pub struct ClassDef {
     pub rules: ClassRules,
     /// The stats a new character of this class starts with.
     pub stats: Stats,
+    /// Whether players can choose it when they make a character. (Classes
+    /// that aren't offered can still be given, such as by advancing later.)
+    #[serde(default = "offered", skip_serializing_if = "is_offered")]
+    pub starting: bool,
     /// The items a new character of this class has equipped.
     #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Item))]
     pub starting_equipment: Vec<String>,
     /// The abilities a new character of this class knows (on top of everyone's).
     #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Ability))]
     pub starting_abilities: Vec<String>,
     /// The abilities the class can learn with ability points.
     #[serde(default, skip_serializing_if = "is_default")]
@@ -712,6 +765,7 @@ pub struct ClassDef {
 #[serde(deny_unknown_fields)]
 pub struct ItemCount {
     /// Which item (an [`ItemDef`] id).
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Item))]
     pub item: String,
     /// How many.
     pub count: u32,
@@ -797,6 +851,7 @@ pub struct SpawnerDef {
     /// Unique name.
     pub id: String,
     /// Which creature (a [`CreatureDef`] id).
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Creature))]
     pub creature: String,
     /// Where: creatures appear within `radius` of here.
     pub at: Placement,

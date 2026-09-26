@@ -7,7 +7,9 @@ creature spawners, respawn points) and the rules and things of the game
 edit app of [world-authoring.md](world-authoring.md): props, generator
 plug-ins (trees, then buildings), areas, roads and towns.
 
-**Status:** milestones 0 and 1 are done (see [editor.md](editor.md)). The tabs for
+**Status:** milestones 0 and 1 are done, and most of 2 (see
+[editor.md](editor.md)): the property panel, references, renaming, the
+`starting` flag and the class and creature previews. The tabs for
 classes, abilities, items and the rest already edit every field, through
 reflection; milestone 2 makes them friendlier (dropdowns for ids, colour
 pickers, dice as text, previews).

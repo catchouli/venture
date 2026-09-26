@@ -14,7 +14,6 @@ venture_protocol.workspace = true
 venture_rpg.workspace = true
 bevy = { workspace = true, features = ["default"] }
 bevy_egui = "0.40"
-bevy-inspector-egui = "0.37"
 serde.workspace = true
 ron.workspace = true
 

@@ -17,10 +17,12 @@ use venture_client::world::source::WorldInfo;
 
 use crate::camera::EditorCamera;
 use crate::document::Document;
+use crate::fields::{Choices, Fields, referred_as, rename_everywhere, users};
 use crate::places::{
     EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, add_place, copy_place, delete_place, make_absolute,
     marker_heights, settlements,
 };
+use crate::previews::{class_preview, creature_preview};
 
 /// How long after the last change the content is checked, in seconds.
 const CHECK_DELAY: f64 = 0.4;
@@ -364,12 +366,12 @@ fn table_panel(
     let registry = registry.read();
     let mut changed_files = Vec::new();
     let mut open = None;
+    let fields = Fields { registry: &registry, choices: world.resource::<Choices>() };
     egui::CentralPanel::default().show_inside(root, |ui| {
         let kind = &mut document.collections[collection];
         let files = kind.paths().len();
         // The columns: the first entry's simple fields.
-        let columns: Vec<String> =
-            (0..files).find_map(|f| kind.entry_mut(f, 0).map(simple_fields)).unwrap_or_default();
+        let columns: Vec<String> = (0..files).find_map(|f| kind.entry_mut(f, 0).map(simple_fields)).unwrap_or_default();
         egui::ScrollArea::both().show(ui, |ui| {
             ui.spacing_mut().text_edit_width = 160.0;
             egui::Grid::new("table").striped(true).num_columns(columns.len() + 1).show(ui, |ui| {
@@ -384,12 +386,12 @@ fn table_panel(
                             open = Some((f, i));
                         }
                         let Some(entry) = kind.entry_mut(f, i) else { continue };
-                        let bevy::reflect::ReflectMut::Struct(fields) = entry.reflect_mut() else { continue };
+                        let bevy::reflect::ReflectMut::Struct(record) = entry.reflect_mut() else { continue };
                         for column in &columns {
-                            match fields.field_mut(column) {
+                            match record.field_mut(column) {
                                 Some(value) if is_simple(value) => {
                                     ui.push_id((f, i, column), |ui| {
-                                        if bevy_inspector_egui::reflect_inspector::ui_for_value(value, ui, &registry) {
+                                        if fields.edit(ui, value) {
                                             changed_files.push(f);
                                         }
                                     });
@@ -441,13 +443,17 @@ fn is_simple(value: &dyn bevy::reflect::PartialReflect) -> bool {
     }
 }
 
-/// Shows an entry's every field, to edit. Returns whether it changed (the
-/// caller then tells the document).
-fn edit_entry(ui: &mut egui::Ui, world: &World, document: &mut Document, (c, f, i): EntryRef) -> bool {
+/// Shows an entry's every field, to edit, with what uses it, renaming, and
+/// previews for classes and creatures. Returns whether it changed (the
+/// caller then tells the document); renames tell the document themselves.
+fn edit_entry(ui: &mut egui::Ui, world: &World, document: &mut Document, entry: EntryRef) -> bool {
+    let (c, f, i) = entry;
     let registry = world.resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
+    let now = world.resource::<Time>().elapsed_secs_f64();
     let unsaved = document.is_unsaved(c, f);
-    let Some(kind) = document.collections.get_mut(c) else { return false };
+    let Some(kind) = document.collections.get(c) else { return false };
+    let title = kind.title();
     let Some(path) = kind.paths().get(f).cloned() else {
         ui.label("Nothing here yet.");
         return false;
@@ -455,16 +461,85 @@ fn edit_entry(ui: &mut egui::Ui, world: &World, document: &mut Document, (c, f, 
     let key = kind.keys(f).get(i).cloned().unwrap_or_default();
     ui.heading(&key);
     ui.label(format!("{}{}", path.display(), if unsaved { " (unsaved)" } else { "" }));
+    identity(ui, document, entry, &key, title, now);
     ui.separator();
     let mut changed = false;
+    let fields = Fields { registry: &registry, choices: world.resource::<Choices>() };
     egui::ScrollArea::vertical().show(ui, |ui| {
-        // (Wide enough for ids and names inside lists.)
-        ui.spacing_mut().text_edit_width = 320.0;
-        if let Some(value) = kind.entry_mut(f, i) {
-            changed = bevy_inspector_egui::reflect_inspector::ui_for_value(value, ui, &registry);
+        if let Some(value) = document.collections[c].entry_mut(f, i) {
+            changed = fields.edit(ui, value);
         }
+        ui.add_space(12.0);
+        previews(ui, document, entry, title);
     });
     changed
+}
+
+/// What uses an entry, and renaming it (everywhere it's used).
+fn identity(ui: &mut egui::Ui, document: &mut Document, entry: EntryRef, key: &str, title: &str, now: f64) {
+    let referred = referred_as(title);
+    if let Some(kind) = referred {
+        let users = users(document, kind, key);
+        egui::CollapsingHeader::new(format!("Used by {}", users.len())).id_salt("used by").show(ui, |ui| {
+            if users.is_empty() {
+                ui.weak("Nothing uses it.");
+            }
+            for (_, label) in &users {
+                ui.label(label);
+            }
+        });
+    }
+    if document.collections[entry.0].is_single() {
+        return;
+    }
+    let id = ui.id().with(("rename", entry));
+    let mut new = ui.data(|data| data.get_temp::<String>(id)).unwrap_or_else(|| key.to_string());
+    ui.horizontal(|ui| {
+        ui.label("Rename to");
+        ui.add(egui::TextEdit::singleline(&mut new).desired_width(200.0));
+        let taken = (0..document.collections[entry.0].paths().len())
+            .any(|file| document.collections[entry.0].keys(file).contains(&new));
+        let can = !new.trim().is_empty() && new != key && !taken;
+        let label = if referred.is_some() { "Rename everywhere" } else { "Rename" };
+        if ui.add_enabled(can, egui::Button::new(label)).clicked() {
+            rename_everywhere(document, entry, new.trim(), now);
+            new = new.trim().to_string();
+        }
+    });
+    ui.data_mut(|data| data.insert_temp(id, new));
+    if matches!(title, "Classes" | "Items" | "Abilities" | "Skills" | "Quests") {
+        ui.weak("Saved characters keep the old id: renaming one they have loses it for them.");
+    }
+}
+
+/// Previews for classes and creatures.
+fn previews(ui: &mut egui::Ui, document: &Document, (c, f, i): EntryRef, title: &str) {
+    match title {
+        "Classes" => {
+            let Some((_, classes)) = document.find::<venture_content::ClassDef>() else { return };
+            let Some(class) = classes.files().get(f).and_then(|file| file.entries.get(i)) else { return };
+            let items = document
+                .find::<venture_content::ItemDef>()
+                .map(|(_, items)| {
+                    items
+                        .files()
+                        .iter()
+                        .flat_map(|file| &file.entries)
+                        .map(|item| (item.id.clone(), item.clone()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            class_preview(ui, class, &items);
+        }
+        "Creatures" => {
+            let Some((_, creatures)) = document.find::<venture_content::CreatureDef>() else { return };
+            if let Some(creature) = creatures.files().get(f).and_then(|file| file.entries.get(i)) {
+                creature_preview(ui, creature);
+            }
+        }
+        _ => {}
+    }
+    let _ = c;
 }
 
 /// The World tab: placed things on the left, the chosen one's properties on
