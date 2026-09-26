@@ -75,7 +75,7 @@ are optional:
 | `colour`, `border`, `border_colour`, `corners` | the plain look, used where the theme has no picture |
 | `text`, `style` | text to show, and its style from `styles.ron` (see below) |
 | `bar` | makes it a bar (see below) |
-| `tooltip` | a tooltip (`"Title\nMore about it"`) |
+| `tooltip` | a tooltip (`"Title\nMore about it"`), which can show the game's data like `text` does |
 | `button` | `true` if it can be clicked (it lights up under the mouse) |
 | `layer` | draws it above other things: windows use 5, so names over characters' heads stay underneath |
 | `hidden` | `true` if it starts hidden (the game shows it when it's needed) |

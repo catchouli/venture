@@ -114,7 +114,8 @@ pub struct UiNode {
     pub bar_style: Option<String>,
     /// Whether it can be clicked (and so lights up under the mouse).
     pub button: bool,
-    /// A tooltip for it (the first line is the title).
+    /// A tooltip for it (the first line is the title). Like `text`, it can
+    /// show the game's data: `{name}`.
     pub tooltip: Option<String>,
     /// Draws it above other interface (such as names over characters'
     /// heads): higher is on top. Windows use 5.
@@ -421,7 +422,7 @@ fn check_node<'a>(
     if let Some(style) = node.style.as_ref().filter(|style| !styles.text.contains_key(*style)) {
         problem(format!("there's no text style called \"{style}\" in styles.ron"));
     }
-    if let Some(text) = &node.text {
+    for text in [&node.text, &node.tooltip].into_iter().flatten() {
         for name in data_names(text).into_iter().filter(|name| !UI_DATA.iter().any(|(known, _)| known == name)) {
             problem(format!("the game has no data called \"{name}\" (see docs/ui-layouts.md)"));
         }
