@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use crate::characters::nameplates::Nameplate;
 use crate::interaction::targeting::{Health, Level, Target, TargetKind, Targetable};
+use crate::ui::theme::{Piece, Themed};
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, spawn_close_button};
 
 /// Width of the frame, in pixels.
@@ -71,6 +72,7 @@ fn spawn_frame(mut commands: Commands) {
                 },
                 BackgroundColor(WINDOW_BACKGROUND),
                 BorderColor::all(BORDER_COLOUR),
+                Themed(Piece::Panel),
                 Visibility::Hidden,
             ))
             .with_children(|frame| {
@@ -90,13 +92,15 @@ fn spawn_frame(mut commands: Commands) {
                 frame
                     .spawn((
                         HealthBar,
-                        Node { width: percent(100), height: px(8), ..default() },
+                        Node { width: percent(100), height: px(10), ..default() },
                         BackgroundColor(Color::srgb(0.2, 0.05, 0.05)),
+                        Themed(Piece::BarBack),
                     ))
                     .with_child((
                         HealthFill,
                         Node { width: percent(100), height: percent(100), ..default() },
                         BackgroundColor(Color::srgb(0.75, 0.12, 0.1)),
+                        Themed(Piece::BarFill),
                     ));
                 spawn_close_button(frame, CloseButton);
             });

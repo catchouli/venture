@@ -16,13 +16,13 @@ mod rules;
 pub use messages::{
     AbilityOffer, AdminCommand, AttackResult, BodyType, CharacterSheet, ClassChoice, ClientMessage, CreatureLook,
     CreatureShape, DialogueLine, Emote, EntityId, EntityKind, EntityState, EquipSlot, HOTBAR_SLOTS, HotbarAction,
-    HotbarEntry, ItemLook, ItemStack, LookStyle, PlayerLook, QuestEntry, ServerMessage, ShopStock,
+    HotbarEntry, ItemLook, ItemStack, LookStyle, PlayerLook, QuestEntry, ServerMessage, ShopStock, SkillProgress,
 };
 pub use rules::{MAX_CHAT_CHARS, MAX_NAME_CHARS, MIN_NAME_CHARS, clean_chat_text, clean_name, is_valid_token};
 
 /// The protocol version. Increase it whenever messages change; the server
 /// turns away clients speaking a different version.
-pub const PROTOCOL_VERSION: u32 = 12;
+pub const PROTOCOL_VERSION: u32 = 13;
 
 /// The largest message a client may send, in bytes. Anything bigger is
 /// refused before decoding.

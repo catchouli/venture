@@ -17,6 +17,7 @@ use crate::dev::settings::DevSettings;
 use crate::interaction::targeting::Targetable;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::chat::NPC_NAME_COLOUR;
+use crate::ui::theme::{Piece, Themed};
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER, spawn_close_button};
 
 /// Width of the window, in pixels.
@@ -69,12 +70,13 @@ struct GoodbyeButton;
 struct CloseButton;
 
 fn spawn_window(mut commands: Commands) {
-    // A full-width row along the bottom of the screen, centring the window
-    // (below the player's character, which the camera keeps in the middle).
+    // A full-width row near the bottom of the screen (above the hotbar),
+    // centring the window below the player's character, which the camera
+    // keeps in the middle.
     commands
         .spawn(Node {
             position_type: PositionType::Absolute,
-            bottom: px(12),
+            bottom: px(80),
             width: percent(100),
             justify_content: JustifyContent::Center,
             ..default()
@@ -88,13 +90,14 @@ fn spawn_window(mut commands: Commands) {
                     width: px(WIDTH),
                     flex_direction: FlexDirection::Column,
                     row_gap: px(8),
-                    padding: UiRect::all(px(12)),
+                    padding: UiRect::all(px(crate::ui::widgets::WINDOW_PADDING)),
                     border: UiRect::all(px(1)),
                     border_radius: BorderRadius::all(px(4)),
                     ..default()
                 },
                 BackgroundColor(WINDOW_BACKGROUND),
                 BorderColor::all(BORDER_COLOUR),
+                Themed(Piece::Window),
                 WINDOW_LAYER,
                 Visibility::Hidden,
             ))
@@ -104,7 +107,9 @@ fn spawn_window(mut commands: Commands) {
                     Text::default(),
                     TextFont { font_size: FontSize::Px(16.0), ..default() },
                     TextColor(TITLE_COLOUR),
+                    TextShadow { offset: Vec2::splat(1.0), ..default() },
                 ));
+                window.spawn(crate::ui::character_window::divider());
                 window
                     .spawn((DialoguePage, Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }));
                 spawn_close_button(window, CloseButton);
@@ -154,8 +159,9 @@ fn fill_page(page: &mut ChildSpawnerCommands, lines: &[DialogueLine], options: &
     let mut add_button = |label: String, marker: Option<u32>| {
         let mut button = page.spawn((
             Button,
-            Node { padding: UiRect::axes(px(6), px(3)), margin: UiRect::top(px(2)), ..default() },
+            Node { padding: UiRect::axes(px(10), px(5)), margin: UiRect::top(px(2)), ..default() },
             BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.04)),
+            Themed(Piece::Button),
         ));
         button.with_child((Text::new(label), font.clone(), TextColor(OPTION_COLOUR)));
         match marker {

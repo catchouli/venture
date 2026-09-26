@@ -17,6 +17,7 @@ use crate::characters::model::{CharacterAssets, Gait, rebuild_body, spawn_charac
 use crate::dev::settings::DevSettings;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
+use crate::ui::theme::{Piece, Themed};
 use crate::ui::widgets::BORDER_COLOUR;
 
 /// Colour of the title.
@@ -198,6 +199,7 @@ fn open_prompt(
             },
             BackgroundColor(OPTION_COLOUR),
             BorderColor::all(BORDER_COLOUR),
+            Themed(Piece::Button),
             children![(
                 Text::new(label),
                 TextFont { font_size: FontSize::Px(15.0), ..default() },
@@ -229,6 +231,7 @@ fn open_prompt(
                         ..default()
                     },
                     BackgroundColor(Color::srgba(0.08, 0.07, 0.05, 0.92)),
+                    Themed(Piece::Window),
                 ))
                 .with_children(|panel| {
                     panel.spawn((Text::new("Welcome, traveller"), title, TextColor(TITLE_COLOUR)));
@@ -260,6 +263,7 @@ fn open_prompt(
                                         },
                                         Node { width: px(WIDTH), padding: UiRect::axes(px(8), px(6)), ..default() },
                                         BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+                                        Themed(Piece::TextField),
                                     ))
                                     .with_child((FieldText, Text::default(), body.clone()))
                                     .id();
@@ -330,20 +334,23 @@ fn choose_options(
 /// Highlights the chosen options and shows what the class is like.
 fn show_choices(
     offer: Res<Offer>,
-    mut classes: Query<(&ClassButton, &mut BackgroundColor), Without<BodyButton>>,
-    mut bodies: Query<(&BodyButton, &mut BackgroundColor), Without<ClassButton>>,
+    mut classes: Query<(&ClassButton, &mut BackgroundColor, &mut Themed), Without<BodyButton>>,
+    mut bodies: Query<(&BodyButton, &mut BackgroundColor, &mut Themed), Without<ClassButton>>,
     mut description: Single<&mut Text, With<ClassDescription>>,
     new_buttons: Query<(), Or<(Added<ClassButton>, Added<BodyButton>)>>,
 ) {
     if !offer.is_changed() && new_buttons.is_empty() {
         return;
     }
-    let colour = |chosen: bool| if chosen { CHOSEN_COLOUR } else { OPTION_COLOUR };
-    for (button, mut background) in &mut classes {
-        background.0 = colour(button.0 == offer.class);
+    let show = |chosen: bool, background: &mut BackgroundColor, themed: &mut Themed| {
+        background.0 = if chosen { CHOSEN_COLOUR } else { OPTION_COLOUR };
+        themed.0 = if chosen { Piece::ButtonChosen } else { Piece::Button };
+    };
+    for (button, mut background, mut themed) in &mut classes {
+        show(button.0 == offer.class, &mut background, &mut themed);
     }
-    for (button, mut background) in &mut bodies {
-        background.0 = colour(button.0 == offer.body);
+    for (button, mut background, mut themed) in &mut bodies {
+        show(button.0 == offer.body, &mut background, &mut themed);
     }
     description.0 = offer.classes.get(offer.class).map(|class| class.description.clone()).unwrap_or_default();
 }

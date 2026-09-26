@@ -9,6 +9,7 @@ use crate::characters::nameplates::Nameplate;
 use crate::characters::player::LocalPlayer;
 use crate::network::{ClientState, FromServer};
 use crate::ui::character_window::Sheet;
+use crate::ui::theme::{Piece, Themed};
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND};
 
 /// Width of the frame, in pixels.
@@ -90,6 +91,7 @@ fn spawn_frame(mut commands: Commands) {
             },
             BackgroundColor(WINDOW_BACKGROUND),
             BorderColor::all(BORDER_COLOUR),
+            Themed(Piece::Panel),
             Visibility::Hidden,
         ))
         .with_children(|frame| {
@@ -110,6 +112,7 @@ fn spawn_bar(frame: &mut ChildSpawnerCommands, bar: Bar, (fill, empty): (Color, 
         .spawn((
             Node { width: percent(100), height: px(height), border_radius: BorderRadius::all(px(3)), ..default() },
             BackgroundColor(empty),
+            Themed(Piece::BarBack),
         ))
         .with_children(|parent| {
             parent.spawn((
@@ -121,6 +124,7 @@ fn spawn_bar(frame: &mut ChildSpawnerCommands, bar: Bar, (fill, empty): (Color, 
                     ..default()
                 },
                 BackgroundColor(fill),
+                Themed(Piece::BarFill),
             ));
             parent
                 .spawn(Node {

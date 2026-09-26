@@ -1,0 +1,44 @@
+// The interface's look. Each piece is a PNG in this folder, drawn as a
+// nine-slice: `border` is how wide (in the picture's pixels) its corners and
+// edges are: one number for every side, or (left, right, top, bottom). The
+// corners stay as drawn, the edges stretch along (or repeat, with
+// `tile: true`), and the middle fills the rest. A piece left out keeps the
+// plain flat look. See docs/content-authoring.md for what each piece is.
+//
+// These are placeholders from tools/placeholder_ui.py: paint over them.
+(
+    pieces: {
+        "window": (image: "window.png", border: 12),
+        "header": (image: "header.png", border: 4),
+        "panel": (image: "panel.png", border: 6),
+        "chat": (image: "chat.png", border: 5),
+        "tooltip": (image: "tooltip.png", border: 5),
+        "button": (image: "button.png", border: 6),
+        "button_hover": (image: "button_hover.png", border: 6),
+        "button_pressed": (image: "button_pressed.png", border: 6),
+        "button_chosen": (image: "button_chosen.png", border: 6),
+        "slot": (image: "slot.png", border: 8),
+        "slot_hover": (image: "slot_hover.png", border: 8),
+        "tab": (image: "tab.png", border: (6, 6, 6, 0)),
+        "tab_hover": (image: "tab_hover.png", border: (6, 6, 6, 0)),
+        "tab_open": (image: "tab_open.png", border: (6, 6, 6, 0)),
+        "bar_back": (image: "bar_back.png", border: 4),
+        "bar_fill": (image: "bar_fill.png", border: 3),
+        "close": (image: "close.png"),
+        "close_hover": (image: "close_hover.png"),
+        "divider": (image: "divider.png", border: (20, 20, 0, 0)),
+        "text_field": (image: "text_field.png", border: 5),
+        "toolbar_button": (image: "toolbar_button.png", border: 8),
+        "toolbar_button_hover": (image: "toolbar_button_hover.png", border: 8),
+    },
+    // The toolbar's icon for each tab of the character window.
+    tab_icons: {
+        "stats": "tab_stats.png",
+        "skills": "tab_skills.png",
+        "abilities": "tab_abilities.png",
+        "bag": "tab_bag.png",
+        "gear": "tab_gear.png",
+        "quests": "tab_quests.png",
+        "emotes": "tab_emotes.png",
+    },
+)

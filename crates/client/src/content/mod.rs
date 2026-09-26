@@ -1,4 +1,5 @@
-//! The content pack's client files (NPC appearances, items, abilities, icons and sounds):
+//! The content pack's client files (NPC appearances, items, abilities, skills, icons,
+//! sounds and the interface's theme):
 //! downloaded from the server, and downloaded again when the server reloads
 //! its content.
 //!
@@ -13,8 +14,8 @@ use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 use venture_content::{
-    AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, parse_abilities,
-    parse_appearances, parse_game_sounds, parse_items,
+    AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, SkillDef, ThemeDef,
+    parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
 };
 use venture_protocol::ServerMessage;
 
@@ -56,6 +57,14 @@ pub struct ContentStore {
     pub sounds: HashMap<String, Handle<AudioSource>>,
     /// Which sounds the game itself plays (hits, misses, levelling up).
     pub game_sounds: GameSounds,
+    /// Skills (gathering and making), by id.
+    pub skills: HashMap<String, SkillDef>,
+    /// The interface's look.
+    pub theme: ThemeDef,
+    /// The theme's pictures, by file name within `ui/`.
+    pub ui_images: HashMap<String, Handle<Image>>,
+    /// The theme's fonts, by file name within `ui/`.
+    pub fonts: HashMap<String, Font>,
     /// The files held, by path, with their hashes (to skip unchanged files).
     files: HashMap<String, ContentFile>,
 }
@@ -85,6 +94,12 @@ enum FileData {
     /// A WAV, turned into a sound once the download is finished.
     Sound(Vec<u8>),
     GameSounds(GameSounds),
+    Skills(Vec<SkillDef>),
+    Theme(ThemeDef),
+    /// A PNG of the theme's, turned into an image once the download is finished.
+    UiImage(Vec<u8>),
+    /// A font of the theme's.
+    Font(Vec<u8>),
 }
 
 /// Where content files come from.
@@ -122,7 +137,8 @@ fn start_download_when_needed(
     mut download: ResMut<ContentDownload>,
 ) {
     let needed = events.read().any(|FromServer(message)| match message {
-        ServerMessage::Welcome { .. } => true,
+        // (Before joining too, so a new player's character creation has the interface's look.)
+        ServerMessage::Welcome { .. } | ServerMessage::CharacterNeeded { .. } => true,
         ServerMessage::ContentChanged { version } => store.version.as_ref() != Some(version),
         _ => false,
     });
@@ -199,6 +215,10 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
         Some("icons") => FileData::Icon(bytes.to_vec()),
         Some("sounds") => FileData::Sound(bytes.to_vec()),
         Some("sounds.ron") => FileData::GameSounds(parse_game_sounds(&text())?),
+        Some("skills") => FileData::Skills(parse_skills(&text())?),
+        Some("ui") if path.ends_with(".ron") => FileData::Theme(parse_theme(&text())?),
+        Some("ui") if path.ends_with(".png") => FileData::UiImage(bytes.to_vec()),
+        Some("ui") => FileData::Font(bytes.to_vec()),
         _ => return Err(format!("{path}: the client doesn't know this kind of file")),
     };
     Ok(ContentFile { hash: hash.to_string(), data })
@@ -222,6 +242,10 @@ fn finish_download(
             store.icons.clear();
             store.sounds.clear();
             store.game_sounds = GameSounds::default();
+            store.skills.clear();
+            store.theme = ThemeDef::default();
+            store.ui_images.clear();
+            store.fonts.clear();
             for (path, file) in &downloaded.files {
                 match &file.data {
                     FileData::Appearances(appearances) => {
@@ -243,6 +267,21 @@ fn finish_download(
                         store.sounds.insert(name, audio.add(AudioSource { bytes: wav.as_slice().into() }));
                     }
                     FileData::GameSounds(sounds) => store.game_sounds = sounds.clone(),
+                    FileData::Skills(skills) => {
+                        store.skills.extend(skills.iter().map(|skill| (skill.id.clone(), skill.clone())));
+                    }
+                    FileData::Theme(theme) => store.theme = theme.clone(),
+                    FileData::UiImage(png) => match decode_ui_image(png) {
+                        Ok(image) => {
+                            let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                            store.ui_images.insert(name, images.add(image));
+                        }
+                        Err(error) => warn!("Couldn't read the interface image {path}: {error}"),
+                    },
+                    FileData::Font(bytes) => {
+                        let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                        store.fonts.insert(name, Font::from_bytes(bytes.clone()));
+                    }
                 }
             }
             store.files = downloaded.files;
@@ -251,6 +290,20 @@ fn finish_download(
         }
         Err(error) => error!("Couldn't download the content: {error}"),
     }
+}
+
+/// Turns one of the theme's PNGs into an image (smoothly sampled, since frames
+/// are stretched).
+fn decode_ui_image(png: &[u8]) -> Result<Image, String> {
+    Image::from_buffer(
+        png,
+        ImageType::Extension("png"),
+        CompressedImageFormats::NONE,
+        true,
+        ImageSampler::linear(),
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .map_err(|error| error.to_string())
 }
 
 /// Turns an icon's PNG into an image. Icons are small pixel pictures, so

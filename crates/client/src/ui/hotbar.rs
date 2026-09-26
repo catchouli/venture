@@ -22,6 +22,7 @@ use crate::interaction::actions::{Action, PerformAction};
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::character_window::{BOX_COLOUR, HoverBox};
 use crate::ui::text_input::KeyboardFocus;
+use crate::ui::theme::{Piece, Themed};
 use crate::ui::tooltip::Tooltip;
 use crate::ui::vitals::Vitals;
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER};
@@ -146,13 +147,14 @@ fn spawn_bar(mut commands: Commands) {
                 .spawn((
                     Node {
                         column_gap: px(4),
-                        padding: UiRect::all(px(5)),
+                        padding: UiRect::all(px(7)),
                         border: UiRect::all(px(1)),
                         border_radius: BorderRadius::all(px(4)),
                         ..default()
                     },
                     BackgroundColor(WINDOW_BACKGROUND),
                     BorderColor::all(BORDER_COLOUR),
+                    Themed(Piece::Panel),
                 ))
                 .with_children(|bar| {
                     for (index, key) in KEYS.iter().enumerate() {
@@ -187,6 +189,7 @@ fn spawn_slot(bar: &mut ChildSpawnerCommands, index: usize, key: &str) {
             ..default()
         },
         BackgroundColor(BOX_COLOUR),
+        Themed(Piece::Slot),
     ))
     .with_children(|slot| {
         slot.spawn((

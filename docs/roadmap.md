@@ -61,8 +61,17 @@ character window, abilities to learn, equipment that shows on the character,
 creatures and spawners (rabbits and goblins), fighting (auto-attack,
 damage numbers, experience, health regeneration and respawn points), and
 abilities in use (Whack, Air Blast, Rest and the rest), with mana, cooldowns,
-a hotbar on keys 1 to 0, and placeholder sounds. Next: class advancement
-(Fighter to Warrior or Rogue, Mage to Wizard or Sage).
+a hotbar on keys 1 to 0, and placeholder sounds. Class advancement (Fighter
+to Warrior or Rogue, Mage to Wizard or Sage) is waiting on design work.
+
+## The interface
+
+A themed interface: every frame, button, slot, tab and bar is drawn from
+pictures in the content (`ui/`), with placeholders to paint over (see
+"The interface's look" in [content-authoring.md](content-authoring.md)).
+The toolbar has an icon for each tab of the character window, and there's a
+Skills tab (Fishing, Woodcutting, Mining, Blacksmithing, all at level 1 until
+the skills are designed).
 
 ## Then: the game
 

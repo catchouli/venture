@@ -336,8 +336,9 @@ scores and unspent points) lives on the server and changes only through its
 own methods, which follow the rules in `venture_rpg`. Whenever it changes,
 the server sends the player their character sheet (`Character`), including
 the secondary stats it worked out (health, mana, armour class, attack bonus,
-attack speed, damage), their abilities, the abilities their class can learn, and
-what they have equipped, so the client never repeats the rules. Players
+attack speed, damage), their abilities, the abilities their class can learn,
+what they have equipped, and their level and experience in each skill
+(gathering and making), so the client never repeats the rules. Players
 spend points with `SpendStatPoint { stat }` and `LearnAbility { ability }`;
 the server checks the level, the points and the class, and says in a
 `Notice` if it can't.

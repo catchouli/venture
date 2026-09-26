@@ -14,6 +14,7 @@ pub mod hotbar;
 pub mod shop;
 pub mod target_frame;
 pub mod text_input;
+pub mod theme;
 pub mod toolbar;
 pub mod tooltip;
 pub mod vitals;
@@ -28,6 +29,7 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             text_input::TextInputPlugin,
+            theme::ThemePlugin,
             chat::ChatPlugin,
             dialogue_window::DialogueWindowPlugin,
             character_window::CharacterWindowPlugin,

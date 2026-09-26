@@ -15,6 +15,7 @@ use crate::content::ContentStore;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::character_window::{CharacterWindow, OpenTab, Pages, Tab};
 use crate::ui::shop::OpenShop;
+use crate::ui::theme::{Piece, Themed};
 use crate::ui::tooltip::Tooltip;
 
 /// Slots per row.
@@ -271,6 +272,7 @@ fn rebuild_slots(
                     ..default()
                 },
                 BackgroundColor(SLOT_COLOUR),
+                Themed(Piece::Slot),
             ))
             .with_children(|slot| {
                 slot.spawn((
