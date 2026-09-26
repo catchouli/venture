@@ -44,7 +44,7 @@ Checks: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D 
 and `cargo fmt --check`.
 
 Controls: **left-click** the ground to run there, or run with **WASD**
-(relative to the camera). **Right-drag** or the **arrow keys** rotate and tilt
+(relative to the camera), and **Space** jumps. **Right-drag** or the **arrow keys** rotate and tilt
 the camera, and the **mouse wheel** zooms. Click a player, NPC or creature to **select**
 it; click again to **follow** a player, **talk** to an NPC or **attack** a creature. **Escape** deselects. **Enter** chats. The character window's tabs each have a key (and a button on the toolbar, top right): **C** stats,
 **K** skills, **L** abilities, **I** inventory, **G** gear, **J** quests, **O** emotes.

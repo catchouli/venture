@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use venture_protocol::{EntityId, EntityState, ServerMessage};
 use venture_simulation::{
-    Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, Movement, clamp_move_goal, plan_route, step,
+    Follow, FollowOutcome, INTERACT_DISTANCE, JUMP_SECONDS, MELEE_RANGE, Movement, clamp_move_goal, plan_route, step,
 };
 
 use crate::abilities::PendingAbility;
@@ -35,6 +35,11 @@ impl Plugin for GameplayPlugin {
     }
 }
 
+/// When a player last jumped (seconds of game time), so they can't jump
+/// again until they've landed.
+#[derive(Component)]
+struct LastJump(f32);
+
 /// How many ticks the server has run.
 #[derive(Resource, Default)]
 struct Tick(u64);
@@ -52,8 +57,12 @@ fn act_on_requests(
     creatures: Query<(), With<Creature>>,
     dead: Query<(), With<Dead>>,
     players: Query<(&Player, &NetworkId, &DisplayName)>,
+    time: Res<Time>,
+    jumps: Query<&LastJump>,
 ) {
     let find = |id: EntityId| entities.iter().find(|(_, network_id, ..)| network_id.0 == id);
+    // (Jumps this tick aren't in `jumps` yet.)
+    let mut jumped_now = Vec::new();
     for request in requests.read() {
         let player = request.player;
         let Ok((&Position(position), mut mover)) = movers.get_mut(player) else { continue };
@@ -150,6 +159,27 @@ fn act_on_requests(
                     .map(|(viewer, ..)| viewer.connection)
                     .collect();
                 link.broadcast(nearby, &ServerMessage::Emoted { id, emote: *emote });
+            }
+            PlayerAction::Jump => {
+                // One at a time: only once the last has landed.
+                let now = time.elapsed_secs();
+                if jumped_now.contains(&player) || jumps.get(player).is_ok_and(|last| now - last.0 < JUMP_SECONDS) {
+                    continue;
+                }
+                jumped_now.push(player);
+                let Ok((_, &NetworkId(id), _)) = players.get(player) else { continue };
+                // Jumping stands a resting player up, but doesn't stop them moving.
+                commands.entity(player).insert(LastJump(now)).remove::<Resting>();
+                let nearby: Vec<_> = players
+                    .iter()
+                    .filter(|(_, other, _)| {
+                        other.0 != id
+                            && find(other.0)
+                                .is_some_and(|(_, _, &Position(at), _)| distance(at, position) <= EMOTE_RANGE)
+                    })
+                    .map(|(viewer, ..)| viewer.connection)
+                    .collect();
+                link.broadcast(nearby, &ServerMessage::Jumped { id });
             }
             PlayerAction::Chat(text) => {
                 let Ok((_, &NetworkId(from), name)) = players.get(player) else { continue };

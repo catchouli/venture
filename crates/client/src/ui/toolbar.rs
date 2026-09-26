@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 
 use crate::network::ClientState;
-use crate::ui::character_window::{OpenTab, Tab};
+use crate::ui::character_window::{OpenTab, RIGHT, Tab};
 use crate::ui::theme::{Piece, Theme, Themed};
 use crate::ui::tooltip::Tooltip;
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER};
@@ -47,7 +47,13 @@ fn spawn_toolbar(mut commands: Commands) {
     commands
         .spawn((
             Toolbar,
-            Node { position_type: PositionType::Absolute, top: px(4), right: px(12), column_gap: px(4), ..default() },
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(4),
+                right: px(RIGHT),
+                column_gap: px(4),
+                ..default()
+            },
             WINDOW_LAYER,
         ))
         .with_children(|toolbar| {

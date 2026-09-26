@@ -938,6 +938,30 @@ fn waves_are_seen_by_everyone_nearby() {
 }
 
 #[test]
+fn jumps_are_seen_nearby_one_at_a_time() {
+    let mut server = TestServer::with_content("jump", content_with("[]", ""));
+    let (jumper, me) = server.join(TOKEN_A, "Jumper");
+    let (friend, _) = server.join(TOKEN_B, "Friend");
+    jumper.receive();
+    friend.receive();
+    let jumps =
+        |messages: Vec<ServerMessage>| messages.iter().filter(|m| **m == ServerMessage::Jumped { id: me }).count();
+
+    // A second jump before the first has landed is ignored.
+    jumper.send(&ClientMessage::Jump);
+    jumper.send(&ClientMessage::Jump);
+    server.run(2);
+    assert_eq!(jumps(friend.receive()), 1, "a friend nearby sees one jump");
+    assert_eq!(jumps(jumper.receive()), 0, "the jumper's own client already showed it");
+
+    // Once it has landed, they can jump again.
+    server.run((venture_simulation::JUMP_SECONDS * TICK_RATE) as usize + 1);
+    jumper.send(&ClientMessage::Jump);
+    server.run(2);
+    assert_eq!(jumps(friend.receive()), 1);
+}
+
+#[test]
 fn admins_can_change_their_body_type() {
     let mut server = TestServer::with_content("body", content_with("[]", ""));
     let (boss, messages) = create(&mut server, TOKEN_A, "Boss", "fighter");

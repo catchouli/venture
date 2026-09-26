@@ -10,5 +10,10 @@ mod movement;
 mod rules;
 
 pub use following::{FOLLOW_DISTANCE, Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, TALK_RANGE};
+
+/// How long a jump lasts, in seconds (from leaving the ground to landing).
+/// Jumps are for show: movement stays on the ground, so a character can't
+/// jump over anything. A new jump can't start until the last has landed.
+pub const JUMP_SECONDS: f32 = 0.6;
 pub use movement::{Movement, RUN_SPEED, TICK_RATE, clamp_move_goal, plan_route, steering_direction, step};
 pub use rules::Rules;

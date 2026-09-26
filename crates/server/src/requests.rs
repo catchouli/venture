@@ -149,6 +149,8 @@ pub enum PlayerAction {
     Attack(EntityId),
     /// Do an emote.
     Emote(venture_protocol::Emote),
+    /// Jump.
+    Jump,
 }
 
 /// A player's answer in a conversation with an NPC, for [`crate::dialogue`].
@@ -438,6 +440,7 @@ fn judge_player_message(
             PlayerAction::Chat(text)
         }
         ClientMessage::ReturnToTown => PlayerAction::ReturnToTown,
+        ClientMessage::Jump => PlayerAction::Jump,
         // Emotes share chat's rate limit, so they can't be spammed either.
         ClientMessage::Emote(emote) => {
             if !connection.chat.allow(now) {
