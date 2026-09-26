@@ -319,7 +319,8 @@ impl Builder<'_> {
         }
         if let Some(tooltip) = &node.tooltip {
             let shown = fill_in(tooltip, |name| self.data.get(name).map(str::to_string));
-            element.insert((tooltip_of(&shown), UiTooltip(tooltip.clone())));
+            // (Tooltips show while the mouse is over something that notices the mouse.)
+            element.insert((tooltip_of(&shown), UiTooltip(tooltip.clone()), Interaction::default()));
         }
         if let Some(layer) = node.layer {
             element.insert(GlobalZIndex(layer));
