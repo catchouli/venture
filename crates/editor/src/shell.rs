@@ -16,7 +16,7 @@ use venture_client::common::coords::to_bevy;
 
 use crate::camera::EditorCamera;
 use crate::document::Document;
-use crate::places::{EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection};
+use crate::places::{EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, marker_heights};
 
 /// How long after the last change the content is checked, in seconds.
 const CHECK_DELAY: f64 = 0.4;
@@ -446,7 +446,8 @@ fn name_markers(root: &egui::Ui, world: &mut World, rect: egui::Rect) {
         if transform.translation.distance(focus) > NAMES_WITHIN {
             continue;
         }
-        let Ok(spot) = camera.world_to_viewport(camera_place, transform.translation + Vec3::Y * 1.3) else {
+        let above = Vec3::Y * marker_heights(marker.kind).1;
+        let Ok(spot) = camera.world_to_viewport(camera_place, transform.translation + above) else {
             continue;
         };
         let Some(place) = places.list.iter().find(|place| place.kind == marker.kind && place.key == marker.key) else {

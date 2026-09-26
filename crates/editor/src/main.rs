@@ -17,6 +17,7 @@
 
 mod camera;
 mod document;
+mod looks;
 mod places;
 mod screenshot;
 mod shell;
@@ -68,6 +69,7 @@ fn main() {
     }
 
     let mut app = App::new();
+    looks::register_content_source(&mut app, &project.content);
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window { title: "Venture editor".into(), ..default() }),
         ..default()
@@ -81,6 +83,7 @@ fn main() {
     .add_plugins((
         camera::EditorCameraPlugin,
         shell::ShellPlugin,
+        looks::LooksPlugin,
         places::PlacesPlugin,
         screenshot::ScreenshotPlugin,
     ));
