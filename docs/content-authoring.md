@@ -297,7 +297,8 @@ on one shared skeleton, animated by one file of animations. They live in
 - **clips** maps the game's animation names to names in the animations file.
   The game needs `idle`, `walk`, `run`, `attack` (with a weapon), `punch`
   (without), `cast`, `sit_down`, `sitting` and `stand_up` (resting), `jump`,
-  `wave`, `hit` and `death`.
+  `wave`, `hit` and `death`. While a character moves, `attack`, `punch` and
+  `cast` play on the upper body only, over the walk or run.
 - **bodies**: each body type's model, which parts fit it (parts are made
   for masculine or feminine bodies; a part with only one model uses it on
   both), its usual hairstyle, and a paler skin texture.
