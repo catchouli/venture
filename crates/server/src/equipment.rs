@@ -78,12 +78,9 @@ impl Equipment {
             self.items().iter().filter_map(|item| items.get(*item)?.equip.as_ref()).map(|equip| equip.armour).sum();
         let weapon = self.slots.get(&EquipSlot::Weapon).and_then(|item| items.get(item)?.equip.as_ref()?.weapon);
         match weapon {
-            Some(weapon) => Gear {
-                armour,
-                weapon_ability: weapon.ability,
-                weapon_speed: weapon.speed,
-                weapon_damage: weapon.damage,
-            },
+            Some(weapon) => {
+                Gear { armour, weapon_stat: weapon.stat, weapon_speed: weapon.speed, weapon_damage: weapon.damage }
+            }
             None => Gear { armour, weapon_damage: UNARMED_DAMAGE, ..Gear::default() },
         }
     }
@@ -189,7 +186,7 @@ fn change_equipment(
 mod tests {
     use venture_content::{Equippable, WeaponDef};
     use venture_protocol::LookStyle;
-    use venture_rpg::{Ability, Dice};
+    use venture_rpg::{Dice, Stat};
 
     use super::*;
 
@@ -204,7 +201,7 @@ mod tests {
             value: 1,
             equip: Some(Equippable { slots, armour, weapon, look: look(style) }),
         };
-        let sword = WeaponDef { damage: Dice::new(1, 6), speed: 1.0, ability: Ability::Strength };
+        let sword = WeaponDef { damage: Dice::new(1, 6), speed: 1.0, stat: Stat::Strength };
         [
             item("sword", vec![EquipSlot::Weapon], 0, Some(sword), LookStyle::Sword),
             item("chestguard", vec![EquipSlot::Body], 2, None, LookStyle::Plates),

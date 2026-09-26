@@ -9,7 +9,7 @@
 ## The rule: the server decides
 
 The **server is authoritative**. Anything that matters (where characters
-are, items, inventory, trading, damage, health, experience, skills, quest
+are, items, inventory, trading, damage, health, experience, abilities, quest
 progress) happens on the server and is then sent to clients. A client only
 *asks* ("I want to move there", "I want to buy this", "attack that") and
 *shows* what the server tells it. A modified client can therefore never
@@ -245,7 +245,7 @@ Deliberately simple, so people can get into the game quickly:
   **Names are unique**, ignoring case: a taken name is turned away
   (`CharacterRejected`) and the player picks another.
 - A profile holds: name, position, class, body type, level, experience,
-  ability scores, unspent stat and skill points, Miasma, inventory and
+  stats, unspent stat and ability points, Miasma, inventory and
   quest state. Fields added over time have defaults, so older profiles still
   load (and their coins become Miasma). The server saves it when the player leaves, and every
   minute or so while they play.
@@ -336,9 +336,9 @@ scores and unspent points) lives on the server and changes only through its
 own methods, which follow the rules in `venture_rpg`. Whenever it changes,
 the server sends the player their character sheet (`Character`), including
 the secondary stats it worked out (health, mana, armour class, attack bonus,
-attack speed, damage), their skills, the skills their class can learn, and
+attack speed, damage), their abilities, the abilities their class can learn, and
 what they have equipped, so the client never repeats the rules. Players
-spend points with `SpendStatPoint { ability }` and `LearnSkill { skill }`;
+spend points with `SpendStatPoint { stat }` and `LearnAbility { ability }`;
 the server checks the level, the points and the class, and says in a
 `Notice` if it can't.
 
@@ -387,38 +387,38 @@ wakes at the nearest respawn point with full health. Creatures fighting them
 give up and heal. Out of combat for 6 seconds, health comes back by a
 twentieth of the maximum every 3 seconds.
 
-## Skills, mana and the hotbar
+## Abilities, mana and the hotbar
 
-**Using a skill:** the client sends `UseSkill { skill, target }`. The gate
-passes it to `skills.rs`, the only code that uses skills. It checks four
-things: the player knows the skill, it isn't cooling down (`Cooldowns`), they
+**Using an ability:** the client sends `UseAbility { ability, target }`. The gate
+passes it to `abilities.rs`, the only code that uses abilities. It checks four
+things: the player knows the ability, it isn't cooling down (`Cooldowns`), they
 have the mana (`Mana`, in `combat.rs`), and the target is a living creature.
-Then it tells everyone within 60 m with `SkillUsed { user, skill, target }`,
+Then it tells everyone within 60 m with `AbilityUsed { user, ability, target }`,
 which clients play (a swing, a bolt flying off, a glow, a sound):
-- A weapon skill becomes a `Strike` with the skill's dice, resolved by
+- A weapon ability becomes a `Strike` with the ability's dice, resolved by
   `combat.rs` like any attack. The player then goes on auto-attacking.
 - A spell becomes a bolt in flight on the server, which strikes when it
   arrives (distance ÷ speed later).
-- Out of range, the player first runs up (`PendingSkill`, moved by
+- Out of range, the player first runs up (`PendingAbility`, moved by
   `gameplay.rs`).
 - Heals come with `Healed { id, amount }`.
 
-`Attacked` carries the skill used, if any, so clients can show it.
-The client greys out skills that are cooling down or too expensive, and
+`Attacked` carries the ability used, if any, so clients can show it.
+The client greys out abilities that are cooling down or too expensive, and
 explains those refusals without asking. The server checks everything again
 regardless.
 
-**Resting** (the Rest skill) sits the player down (`Resting`). `sit_down` in
+**Resting** (the Rest ability) sits the player down (`Resting`). `sit_down` in
 `gameplay.rs` stops them. Any movement order, or any blow landed or taken,
 stands them up. Snapshots carry `resting` so everyone sees them sit.
 
 **Mana** comes with health in `Vitals { health, max_health, mana, max_mana }`.
 
-**The hotbar** is only a layout: ten slots of skills or actions. It's saved
+**The hotbar** is only a layout: ten slots of abilities or actions. It's saved
 with the profile and sent as `Hotbar { slots }` on joining. The client sends
 the whole bar after each change (`SetHotbar`), and `hotbar.rs` keeps only
-skills the player knows (sending back the corrected bar if it had to change
-anything). New skills go in the first empty slot, and forgotten ones come off.
+abilities the player knows (sending back the corrected bar if it had to change
+anything). New abilities go in the first empty slot, and forgotten ones come off.
 
 ## Actions and chat commands
 

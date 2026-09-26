@@ -1,10 +1,10 @@
 //! The stats tab: the character's name, class and level (with an experience
-//! bar), their five ability scores with a **+** to spend each stat point, and
+//! bar), their five stats with a **+** to spend each stat point, and
 //! the secondary stats the server worked out from them.
 
 use bevy::prelude::*;
 use venture_protocol::ClientMessage;
-use venture_rpg::{Ability, modifier};
+use venture_rpg::{Stat, modifier};
 
 use crate::characters::nameplates::Nameplate;
 use crate::characters::player::LocalPlayer;
@@ -35,7 +35,7 @@ enum Field {
     ClassAndLevel,
     Experience,
     Points,
-    Score(Ability),
+    Score(Stat),
     Secondary(Secondary),
 }
 
@@ -76,9 +76,9 @@ impl Secondary {
 #[derive(Component)]
 struct ExperienceFill;
 
-/// The button spending a stat point on an ability.
+/// The button spending a stat point on a stat.
 #[derive(Component)]
-struct PlusButton(Ability);
+struct PlusButton(Stat);
 
 fn fill_page(mut commands: Commands, pages: Res<Pages>) {
     commands.entity(pages.of(Tab::Stats)).with_children(|page| {
@@ -99,17 +99,17 @@ fn fill_page(mut commands: Commands, pages: Res<Pages>) {
             row.spawn(heading("Stats"));
             row.spawn((Field::Points, text("", 12.0, POINTS_COLOUR), Node { margin: UiRect::top(px(6)), ..default() }));
         });
-        for ability in Ability::ALL {
+        for stat in Stat::ALL {
             page.spawn(Node { align_items: AlignItems::Center, column_gap: px(8), height: px(22), ..default() })
                 .with_children(|row| {
-                    row.spawn((text(ability.short_name(), 13.0, HEADING_COLOUR), Node { width: px(40), ..default() }));
+                    row.spawn((text(stat.short_name(), 13.0, HEADING_COLOUR), Node { width: px(40), ..default() }));
                     // (Given a height, as its text starts out empty.)
                     row.spawn((
-                        Field::Score(ability),
+                        Field::Score(stat),
                         text("", 13.0, TEXT_COLOUR),
                         Node { width: px(90), height: px(18), ..default() },
                     ));
-                    row.spawn((PlusButton(ability), small_button("+")));
+                    row.spawn((PlusButton(stat), small_button("+")));
                 });
         }
 
@@ -145,8 +145,8 @@ fn show_sheet(
             Field::Points if sheet.stat_points == 1 => "1 point to spend".to_string(),
             Field::Points if sheet.stat_points > 0 => format!("{} points to spend", sheet.stat_points),
             Field::Points => String::new(),
-            Field::Score(ability) => {
-                let score = sheet.stats.score(*ability);
+            Field::Score(stat) => {
+                let score = sheet.stats.score(*stat);
                 format!("{score}  ({})", signed(modifier(score)))
             }
             Field::Secondary(Secondary::Health) => sheet.max_health.to_string(),
@@ -169,14 +169,14 @@ fn show_sheet(
     }
 }
 
-/// Clicking a **+** spends a stat point on that ability.
+/// Clicking a **+** spends a stat point on that stat.
 fn spend_on_click(
     buttons: Query<(&Interaction, &PlusButton), Changed<Interaction>>,
     mut to_server: MessageWriter<ToServer>,
 ) {
     for (interaction, button) in &buttons {
         if *interaction == Interaction::Pressed {
-            to_server.write(ToServer(ClientMessage::SpendStatPoint { ability: button.0 }));
+            to_server.write(ToServer(ClientMessage::SpendStatPoint { stat: button.0 }));
         }
     }
 }

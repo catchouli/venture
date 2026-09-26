@@ -1,10 +1,10 @@
 //! Secondary stats: the numbers worked out from a character's class, level,
-//! abilities and equipment. Shown on the stats tab, and used in fights.
+//! stats and equipment. Shown on the stats tab, and used in fights.
 
-use crate::abilities::{Abilities, Ability};
 use crate::class::ClassRules;
 use crate::dice::Dice;
 use crate::progression::proficiency_bonus;
+use crate::stats::{Stat, Stats};
 
 /// How long a character must go without fighting before their health comes
 /// back on its own, in seconds.
@@ -45,9 +45,9 @@ pub struct DerivedStats {
     pub damage: Dice,
     /// Attacks per second with their weapon.
     pub attacks_per_second: f32,
-    /// Added to attack rolls with spells (proficiency plus the casting ability's modifier).
+    /// Added to attack rolls with spells (proficiency plus the casting stat's modifier).
     pub spell_attack_bonus: i32,
-    /// Added to spells' damage and healing (the casting ability's modifier).
+    /// Added to spells' damage and healing (the casting stat's modifier).
     pub spell_bonus: i32,
 }
 
@@ -56,11 +56,11 @@ pub struct DerivedStats {
 pub struct Gear {
     /// Armour class from armour.
     pub armour: i32,
-    /// The ability the weapon attacks with (Strength for swords and staves).
-    pub weapon_ability: Ability,
+    /// The stat the weapon attacks with (Strength for swords and staves).
+    pub weapon_stat: Stat,
     /// The weapon's attacks per second, before Dexterity.
     pub weapon_speed: f32,
-    /// The weapon's damage dice, before the ability's bonus.
+    /// The weapon's damage dice, before the stat's bonus.
     pub weapon_damage: Dice,
 }
 
@@ -70,31 +70,31 @@ pub const UNARMED_DAMAGE: Dice = Dice { count: 0, sides: 1, bonus: 1 };
 impl Default for Gear {
     /// Nothing worn, fighting with fists.
     fn default() -> Self {
-        Self { armour: 0, weapon_ability: Ability::Strength, weapon_speed: 1.0, weapon_damage: UNARMED_DAMAGE }
+        Self { armour: 0, weapon_stat: Stat::Strength, weapon_speed: 1.0, weapon_damage: UNARMED_DAMAGE }
     }
 }
 
 impl DerivedStats {
     /// Works out the secondary stats.
-    pub fn of(class: &ClassRules, level: u32, abilities: &Abilities, gear: &Gear) -> Self {
+    pub fn of(class: &ClassRules, level: u32, stats: &Stats, gear: &Gear) -> Self {
         let level = level.max(1);
-        let weapon_modifier = abilities.modifier(gear.weapon_ability);
-        let casting_modifier = abilities.modifier(class.casting_ability);
+        let weapon_modifier = stats.modifier(gear.weapon_stat);
+        let casting_modifier = stats.modifier(class.casting_stat);
         Self {
-            max_health: max_health(class, level, abilities.modifier(Ability::Constitution)),
-            max_mana: max_mana(class, level, abilities.modifier(class.casting_ability)),
-            armour_class: BASE_ARMOUR_CLASS + abilities.modifier(Ability::Dexterity) + gear.armour,
+            max_health: max_health(class, level, stats.modifier(Stat::Constitution)),
+            max_mana: max_mana(class, level, stats.modifier(class.casting_stat)),
+            armour_class: BASE_ARMOUR_CLASS + stats.modifier(Stat::Dexterity) + gear.armour,
             attack_bonus: proficiency_bonus(level) + weapon_modifier,
             damage_bonus: weapon_modifier,
             damage: weapon_damage(gear.weapon_damage, weapon_modifier),
-            attacks_per_second: attacks_per_second(gear.weapon_speed, abilities.modifier(Ability::Dexterity)),
+            attacks_per_second: attacks_per_second(gear.weapon_speed, stats.modifier(Stat::Dexterity)),
             spell_attack_bonus: proficiency_bonus(level) + casting_modifier,
             spell_bonus: casting_modifier,
         }
     }
 }
 
-/// A weapon's damage with the ability's bonus added. Flat damage (such as
+/// A weapon's damage with the stat's bonus added. Flat damage (such as
 /// fists') never shows as less than 1, since every hit does at least 1 (see
 /// [`crate::combat::resolve_attack`]).
 pub fn weapon_damage(dice: Dice, ability_modifier: i32) -> Dice {
@@ -113,7 +113,7 @@ pub fn max_health(class: &ClassRules, level: u32, constitution_modifier: i32) ->
 }
 
 /// Most mana (our own): each level gives the class's mana per level plus the
-/// casting ability's modifier (never less than nothing).
+/// casting stat's modifier (never less than nothing).
 pub fn max_mana(class: &ClassRules, level: u32, casting_modifier: i32) -> u32 {
     (class.mana_per_level as i32 + casting_modifier).max(0) as u32 * level.max(1)
 }
@@ -130,7 +130,7 @@ mod tests {
     use super::*;
 
     fn fighter() -> ClassRules {
-        ClassRules { hit_die: 10, mana_per_level: 3, casting_ability: Ability::Wisdom }
+        ClassRules { hit_die: 10, mana_per_level: 3, casting_stat: Stat::Wisdom }
     }
 
     #[test]
@@ -144,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn mana_comes_from_the_class_and_casting_ability() {
+    fn mana_comes_from_the_class_and_casting_stat() {
         assert_eq!(max_mana(&fighter(), 1, 0), 3);
         assert_eq!(max_mana(&fighter(), 4, 1), 16);
         assert_eq!(max_mana(&fighter(), 4, -5), 0);
@@ -165,17 +165,16 @@ mod tests {
 
     #[test]
     fn a_starting_fighter_adds_up() {
-        let abilities = Abilities { strength: 14, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10 };
-        let gear =
-            Gear { armour: 1, weapon_ability: Ability::Strength, weapon_speed: 1.0, weapon_damage: Dice::new(1, 6) };
-        let stats = DerivedStats::of(&fighter(), 1, &abilities, &gear);
+        let scores = Stats { strength: 14, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10 };
+        let gear = Gear { armour: 1, weapon_stat: Stat::Strength, weapon_speed: 1.0, weapon_damage: Dice::new(1, 6) };
+        let stats = DerivedStats::of(&fighter(), 1, &scores, &gear);
         assert_eq!(stats.max_health, 12);
         assert_eq!(stats.armour_class, 12, "10 + 1 (DEX) + 1 (armour)");
         assert_eq!(stats.attack_bonus, 4, "+2 proficiency, +2 STR");
         assert_eq!(stats.damage_bonus, 2);
         assert_eq!(stats.damage.to_string(), "1d6+2");
         assert_eq!(stats.spell_attack_bonus, 2, "+2 proficiency, +0 WIS");
-        let unarmed = DerivedStats::of(&fighter(), 1, &abilities, &Gear::default());
+        let unarmed = DerivedStats::of(&fighter(), 1, &scores, &Gear::default());
         assert_eq!(unarmed.damage.to_string(), "3", "1 plus Strength's +2");
         assert_eq!(weapon_damage(UNARMED_DAMAGE, -1).to_string(), "1", "weak fists still do 1");
     }

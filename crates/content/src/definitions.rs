@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use venture_protocol::{BodyType, CreatureLook, EquipSlot, ItemLook};
-use venture_rpg::{Abilities, Ability, ClassRules, Dice};
+use venture_rpg::{ClassRules, Dice, Stat, Stats};
 
 /// The cut of an NPC's clothes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -132,7 +132,7 @@ pub struct ItemDef {
 /// What an equippable item does when worn.
 ///
 /// ```ron
-/// equip: Some((slots: [Weapon], weapon: Some((damage: "1d6", speed: 1.0, ability: Strength)),
+/// equip: Some((slots: [Weapon], weapon: Some((damage: "1d6", speed: 1.0, stat: Strength)),
 ///              look: (style: Sword, main: (0.7, 0.7, 0.72), trim: (0.35, 0.22, 0.12))))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -154,15 +154,15 @@ pub struct Equippable {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WeaponDef {
-    /// Its damage dice, before the ability's bonus (such as `"1d6"`).
+    /// Its damage dice, before the stat's bonus (such as `"1d6"`).
     pub damage: Dice,
     /// Attacks per second, before Dexterity.
     pub speed: f32,
-    /// The ability it attacks and does damage with.
-    pub ability: Ability,
+    /// The stat it attacks and does damage with.
+    pub stat: Stat,
 }
 
-/// A skill: something a character can do, learned from their class.
+/// An ability: something a character can do, learned from their class.
 ///
 /// ```ron
 /// (id: "whack", name: "Whack", description: "A heavy blow.", icon: "whack.png",
@@ -170,7 +170,7 @@ pub struct WeaponDef {
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SkillDef {
+pub struct AbilityDef {
     /// Unique name (saved in profiles, so don't rename lightly).
     pub id: String,
     /// The name shown to players.
@@ -185,52 +185,52 @@ pub struct SkillDef {
     /// Seconds before it can be used again.
     #[serde(default)]
     pub cooldown: f32,
-    /// How far away the target may be, in metres (0 for skills on yourself).
+    /// How far away the target may be, in metres (0 for abilities on yourself).
     #[serde(default)]
     pub range: f32,
     /// What it does.
-    pub effect: SkillEffect,
+    pub effect: AbilityEffect,
     /// The sound it makes when used: a file in `sounds/`, if any.
     #[serde(default)]
     pub sound: Option<String>,
     /// How it looks: the colour and size of its flash, bolt or glow.
     #[serde(default)]
-    pub visual: SkillVisual,
+    pub visual: AbilityVisual,
 }
 
-impl SkillDef {
+impl AbilityDef {
     /// How far away its target may be, in metres: melee reach for weapon
     /// blows (whatever `range` says), `range` for everything else.
     pub fn reach(&self) -> f32 {
         match self.effect {
-            SkillEffect::Strike { .. } => venture_simulation::MELEE_RANGE,
+            AbilityEffect::Strike { .. } => venture_simulation::MELEE_RANGE,
             _ => self.range,
         }
     }
 
     /// Whether it's used on a target (rather than on yourself).
     pub fn needs_target(&self) -> bool {
-        matches!(self.effect, SkillEffect::Strike { .. } | SkillEffect::Bolt { .. })
+        matches!(self.effect, AbilityEffect::Strike { .. } | AbilityEffect::Bolt { .. })
     }
 }
 
-/// How a skill's effect looks (placeholder effects drawn by the client).
+/// How an ability's effect looks (placeholder effects drawn by the client).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SkillVisual {
+pub struct AbilityVisual {
     /// Its colour.
     pub colour: Colour,
     /// How big it is, with 1 as normal.
     pub size: f32,
 }
 
-impl Default for SkillVisual {
+impl Default for AbilityVisual {
     fn default() -> Self {
         Self { colour: (1.0, 0.9, 0.7), size: 1.0 }
     }
 }
 
-/// The game's own sounds (as opposed to skills' sounds): files in `sounds/`,
+/// The game's own sounds (as opposed to abilities' sounds): files in `sounds/`,
 /// each optional. Read from `sounds.ron`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -259,19 +259,19 @@ impl GameSounds {
     }
 }
 
-/// What a skill does when used.
+/// What an ability does when used.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum SkillEffect {
+pub enum AbilityEffect {
     /// Sit down and recover health and mana faster, until you move.
     Rest,
     /// Hit the target with the weapon, for this damage instead of the weapon's.
     Strike {
-        /// Its damage dice, before the weapon ability's bonus.
+        /// Its damage dice, before the weapon stat's bonus.
         damage: Dice,
     },
     /// Throw a spell at the target, which flies to it.
     Bolt {
-        /// Its damage dice, before the casting ability's bonus.
+        /// Its damage dice, before the casting stat's bonus.
         damage: Dice,
         /// How fast it flies, in metres per second.
         #[serde(default = "default_bolt_speed")]
@@ -284,15 +284,15 @@ pub enum SkillEffect {
     },
 }
 
-/// A skill a class can learn: from which level, and for how many skill points.
+/// An ability a class can learn: from which level, and for how many ability points.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ClassSkill {
-    /// Which skill (a [`SkillDef`] id).
-    pub skill: String,
+pub struct ClassAbility {
+    /// Which ability (a [`AbilityDef`] id).
+    pub ability: String,
     /// The level it can be learned from.
     pub level: u32,
-    /// What it costs, in skill points.
+    /// What it costs, in ability points.
     pub cost: u32,
 }
 
@@ -388,19 +388,19 @@ pub struct NewCharacterDef {
     /// The items in their bag.
     #[serde(default)]
     pub items: Vec<ItemCount>,
-    /// The skills every character knows from the start (such as resting).
+    /// The abilities every character knows from the start (such as resting).
     #[serde(default)]
-    pub skills: Vec<String>,
+    pub abilities: Vec<String>,
 }
 
 /// A class, which players choose when they make a character.
 ///
 /// ```ron
 /// (id: "fighter", name: "Fighter", description: "...",
-///  rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
+///  rules: (hit_die: 10, mana_per_level: 3, casting_stat: Wisdom),
 ///  stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
-///  starting_equipment: ["training_sword"], starting_skills: ["whack"],
-///  skills: [(skill: "shield_bash", level: 3, cost: 1)])
+///  starting_equipment: ["training_sword"], starting_abilities: ["whack"],
+///  abilities: [(ability: "shield_bash", level: 3, cost: 1)])
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -413,17 +413,17 @@ pub struct ClassDef {
     pub description: String,
     /// Its part in the RPG rules: health and mana per level.
     pub rules: ClassRules,
-    /// The ability scores a new character of this class starts with.
-    pub stats: Abilities,
+    /// The stats a new character of this class starts with.
+    pub stats: Stats,
     /// The items a new character of this class has equipped.
     #[serde(default)]
     pub starting_equipment: Vec<String>,
-    /// The skills a new character of this class knows (on top of everyone's).
+    /// The abilities a new character of this class knows (on top of everyone's).
     #[serde(default)]
-    pub starting_skills: Vec<String>,
-    /// The skills the class can learn with skill points.
+    pub starting_abilities: Vec<String>,
+    /// The abilities the class can learn with ability points.
     #[serde(default)]
-    pub skills: Vec<ClassSkill>,
+    pub abilities: Vec<ClassAbility>,
 }
 
 /// A number of one kind of item.

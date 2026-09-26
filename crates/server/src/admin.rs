@@ -41,7 +41,7 @@ fn carry_out_admin_commands(
         let Ok((player, &NetworkId(id), mut character, equipment, admin)) = players.get_mut(request.player) else {
             continue;
         };
-        let common = &pack.new_characters.skills;
+        let common = &pack.new_characters.abilities;
         let connection = player.connection;
         let mut tell = |text: String| link.send(connection, &ServerMessage::Notice { text });
         if !admin {
@@ -72,7 +72,7 @@ fn carry_out_admin_commands(
                 };
                 character.change_class(new_class, common);
                 tell(format!(
-                    "You are now a {}. Your stats and skills are back to a {}'s, and your points are yours to spend again.",
+                    "You are now a {}. Your stats and abilities are back to a {}'s, and your points are yours to spend again.",
                     new_class.name, new_class.name
                 ));
             }

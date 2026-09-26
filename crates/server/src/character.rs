@@ -1,19 +1,19 @@
 //! Characters: each player's class, level, experience, stats, points and
-//! skills.
+//! abilities.
 //!
 //! A [`Character`] changes only through its own methods, which keep it
 //! consistent with the rules in `venture_rpg` (points come with levels, stats
-//! stay in range, skills are learned only from the class, at their level,
+//! stay in range, abilities are learned only from the class, at their level,
 //! for their cost). Players spend points through [`CharacterRequest`]s,
 //! handled here. Changed characters (or equipment) are sent to their players
 //! as their character sheet automatically.
 
 use bevy::prelude::*;
 use venture_content::{ClassDef, ContentPack};
-use venture_protocol::{BodyType, CharacterSheet, ServerMessage, SkillOffer};
-use venture_rpg::abilities::MAX_SCORE;
-use venture_rpg::progression::{experience_to_next_level, total_skill_points, total_stat_points};
-use venture_rpg::{Abilities, Ability, ClassRules, DerivedStats, Gear, LevelUp, MAX_LEVEL, Progress};
+use venture_protocol::{AbilityOffer, BodyType, CharacterSheet, ServerMessage};
+use venture_rpg::progression::{experience_to_next_level, total_ability_points, total_stat_points};
+use venture_rpg::stats::MAX_SCORE;
+use venture_rpg::{ClassRules, DerivedStats, Gear, LevelUp, MAX_LEVEL, Progress, Stat, Stats};
 
 use crate::ServerSystems;
 use crate::content::LoadedContent;
@@ -41,14 +41,14 @@ pub struct Character {
     pub body: BodyType,
     /// Their level and experience.
     pub progress: Progress,
-    /// Their ability scores (their class's starting scores plus stat points spent).
-    pub stats: Abilities,
+    /// Their stats (their class's starting scores plus stat points spent).
+    pub stats: Stats,
     /// Stat points to spend.
     pub stat_points: u32,
-    /// Skill points to spend.
-    pub skill_points: u32,
-    /// The skills they know (skill ids), in the order learned.
-    pub skills: Vec<String>,
+    /// Ability points to spend.
+    pub ability_points: u32,
+    /// The abilities they know (ability ids), in the order learned.
+    pub abilities: Vec<String>,
 }
 
 /// Players with admin powers (see [`crate::admin`]).
@@ -56,17 +56,17 @@ pub struct Character {
 pub struct Admin;
 
 impl Character {
-    /// A new level 1 character of a class, knowing `common_skills` (everyone's)
-    /// and the class's starting skills.
-    pub fn new(class: &ClassDef, body: BodyType, common_skills: &[String]) -> Self {
+    /// A new level 1 character of a class, knowing `common_abilities` (everyone's)
+    /// and the class's starting abilities.
+    pub fn new(class: &ClassDef, body: BodyType, common_abilities: &[String]) -> Self {
         Self {
             class: class.id.clone(),
             body,
             progress: Progress::default(),
             stats: class.stats,
             stat_points: 0,
-            skill_points: 0,
-            skills: starting_skills(class, common_skills),
+            ability_points: 0,
+            abilities: starting_abilities(class, common_abilities),
         }
     }
 
@@ -79,80 +79,80 @@ impl Character {
     pub fn add_experience(&mut self, amount: u64) -> LevelUp {
         let gained = self.progress.add_experience(amount);
         self.stat_points += gained.stat_points;
-        self.skill_points += gained.skill_points;
+        self.ability_points += gained.ability_points;
         gained
     }
 
     /// Sets their level (from 1 to the top). Going up keeps what they've
     /// spent and adds the points the new levels bring; going down starts
-    /// them over (stats and skills), with the points their new level has
+    /// them over (stats and abilities), with the points their new level has
     /// earned to spend.
-    pub fn set_level(&mut self, level: u32, class: &ClassDef, common_skills: &[String]) {
+    pub fn set_level(&mut self, level: u32, class: &ClassDef, common_abilities: &[String]) {
         let level = level.clamp(1, MAX_LEVEL);
         let old = self.progress.level;
         if level >= old {
             self.stat_points += total_stat_points(level) - total_stat_points(old);
-            self.skill_points += total_skill_points(level) - total_skill_points(old);
+            self.ability_points += total_ability_points(level) - total_ability_points(old);
             self.progress = Progress { level, experience: 0 };
         } else {
             self.progress = Progress { level, experience: 0 };
-            self.refund(class, common_skills);
+            self.refund(class, common_abilities);
         }
     }
 
-    /// Starts over: level 1 of their class, with its starting stats and skills.
-    pub fn reset(&mut self, class: &ClassDef, common_skills: &[String]) {
-        *self = Self::new(class, self.body, common_skills);
+    /// Starts over: level 1 of their class, with its starting stats and abilities.
+    pub fn reset(&mut self, class: &ClassDef, common_abilities: &[String]) {
+        *self = Self::new(class, self.body, common_abilities);
     }
 
-    /// Changes class, keeping their level: stats and skills start over at the
-    /// new class's, with every stat and skill point their level has earned to spend.
-    pub fn change_class(&mut self, class: &ClassDef, common_skills: &[String]) {
+    /// Changes class, keeping their level: stats and abilities start over at the
+    /// new class's, with every stat and ability point their level has earned to spend.
+    pub fn change_class(&mut self, class: &ClassDef, common_abilities: &[String]) {
         self.class = class.id.clone();
-        self.refund(class, common_skills);
+        self.refund(class, common_abilities);
     }
 
-    /// Spends a stat point on an ability.
-    pub fn spend_stat_point(&mut self, ability: Ability) -> Result<(), String> {
+    /// Spends a stat point on a stat.
+    pub fn spend_stat_point(&mut self, stat: Stat) -> Result<(), String> {
         if self.stat_points == 0 {
             return Err("You have no stat points to spend.".to_string());
         }
-        let score = self.stats.score_mut(ability);
+        let score = self.stats.score_mut(stat);
         if *score >= MAX_SCORE {
-            return Err(format!("Your {} can't go any higher.", ability.short_name()));
+            return Err(format!("Your {} can't go any higher.", stat.short_name()));
         }
         *score += 1;
         self.stat_points -= 1;
         Ok(())
     }
 
-    /// Learns one of the class's skills, if they're a high enough level and
-    /// have the skill points.
-    pub fn learn_skill(&mut self, class: &ClassDef, skill: &str) -> Result<(), String> {
-        let Some(offer) = class.skills.iter().find(|offer| offer.skill == skill) else {
-            return Err(format!("{}s can't learn that skill.", class.name));
+    /// Learns one of the class's abilities, if they're a high enough level and
+    /// have the ability points.
+    pub fn learn_ability(&mut self, class: &ClassDef, ability: &str) -> Result<(), String> {
+        let Some(offer) = class.abilities.iter().find(|offer| offer.ability == ability) else {
+            return Err(format!("{}s can't learn that ability.", class.name));
         };
-        if self.skills.iter().any(|known| known == skill) {
-            return Err("You already know that skill.".to_string());
+        if self.abilities.iter().any(|known| known == ability) {
+            return Err("You already know that ability.".to_string());
         }
         if self.level() < offer.level {
-            return Err(format!("You need to be level {} to learn that skill.", offer.level));
+            return Err(format!("You need to be level {} to learn that ability.", offer.level));
         }
-        if self.skill_points < offer.cost {
-            return Err(format!("That skill costs {} skill points.", offer.cost));
+        if self.ability_points < offer.cost {
+            return Err(format!("That ability costs {} ability points.", offer.cost));
         }
-        self.skill_points -= offer.cost;
-        self.skills.push(skill.to_string());
+        self.ability_points -= offer.cost;
+        self.abilities.push(ability.to_string());
         Ok(())
     }
 
-    /// Puts stats and skills back to the class's starting ones, and gives
+    /// Puts stats and abilities back to the class's starting ones, and gives
     /// back every point earned so far.
-    fn refund(&mut self, class: &ClassDef, common_skills: &[String]) {
+    fn refund(&mut self, class: &ClassDef, common_abilities: &[String]) {
         self.stats = class.stats;
         self.stat_points = total_stat_points(self.progress.level);
-        self.skill_points = total_skill_points(self.progress.level);
-        self.skills = starting_skills(class, common_skills);
+        self.ability_points = total_ability_points(self.progress.level);
+        self.abilities = starting_abilities(class, common_abilities);
     }
 
     /// Their secondary stats, with this gear.
@@ -164,10 +164,10 @@ impl Character {
     pub fn sheet(&self, class: &ClassDef, equipment: &Equipment, pack: &ContentPack) -> CharacterSheet {
         let derived = self.derived(class, &equipment.gear(&pack.items));
         let experience_to_next = if self.level() >= MAX_LEVEL { 0 } else { experience_to_next_level(self.level()) };
-        let class_skills = class
-            .skills
+        let class_abilities = class
+            .abilities
             .iter()
-            .map(|offer| SkillOffer { skill: offer.skill.clone(), level: offer.level, cost: offer.cost })
+            .map(|offer| AbilityOffer { ability: offer.ability.clone(), level: offer.level, cost: offer.cost })
             .collect();
         CharacterSheet {
             class: class.name.clone(),
@@ -176,7 +176,7 @@ impl Character {
             experience_to_next,
             stats: self.stats,
             stat_points: self.stat_points,
-            skill_points: self.skill_points,
+            ability_points: self.ability_points,
             max_health: derived.max_health,
             max_mana: derived.max_mana,
             armour_class: derived.armour_class,
@@ -184,22 +184,22 @@ impl Character {
             damage_bonus: derived.damage_bonus,
             attacks_per_second: derived.attacks_per_second,
             damage: derived.damage,
-            skills: self.skills.clone(),
-            class_skills,
+            abilities: self.abilities.clone(),
+            class_abilities,
             equipment: equipment.saved(),
         }
     }
 }
 
-/// Everyone's skills, then the class's starting ones (each once).
-fn starting_skills(class: &ClassDef, common_skills: &[String]) -> Vec<String> {
-    let mut skills: Vec<String> = Vec::new();
-    for skill in common_skills.iter().chain(&class.starting_skills) {
-        if !skills.contains(skill) {
-            skills.push(skill.clone());
+/// Everyone's abilities, then the class's starting ones (each once).
+fn starting_abilities(class: &ClassDef, common_abilities: &[String]) -> Vec<String> {
+    let mut abilities: Vec<String> = Vec::new();
+    for ability in common_abilities.iter().chain(&class.starting_abilities) {
+        if !abilities.contains(ability) {
+            abilities.push(ability.clone());
         }
     }
-    skills
+    abilities
 }
 
 /// A class by id, falling back to the pack's first class, or (for a pack
@@ -212,11 +212,11 @@ pub fn class_or_default(pack: &ContentPack, id: Option<&str>) -> ClassDef {
             id: "adventurer".to_string(),
             name: "Adventurer".to_string(),
             description: "Someone setting out to see the world.".to_string(),
-            rules: ClassRules { hit_die: 8, mana_per_level: 4, casting_ability: Ability::Intelligence },
-            stats: Abilities::default(),
+            rules: ClassRules { hit_die: 8, mana_per_level: 4, casting_stat: Stat::Intelligence },
+            stats: Stats::default(),
             starting_equipment: Vec::new(),
-            starting_skills: Vec::new(),
-            skills: Vec::new(),
+            starting_abilities: Vec::new(),
+            abilities: Vec::new(),
         })
 }
 
@@ -227,7 +227,7 @@ pub fn find_class<'a>(pack: &'a ContentPack, id_or_name: &str) -> Option<&'a Cla
         .find(|class| class.id.eq_ignore_ascii_case(id_or_name) || class.name.eq_ignore_ascii_case(id_or_name))
 }
 
-/// Spends players' stat and skill points as they ask, telling them if they can't.
+/// Spends players' stat and ability points as they ask, telling them if they can't.
 fn spend_points(
     mut requests: MessageReader<CharacterRequest>,
     content: Res<LoadedContent>,
@@ -237,11 +237,11 @@ fn spend_points(
     for request in requests.read() {
         let Ok((player, mut character)) = players.get_mut(request.player) else { continue };
         let outcome = match &request.action {
-            CharacterAction::SpendStatPoint(ability) => character.spend_stat_point(*ability),
-            CharacterAction::LearnSkill(skill) => {
+            CharacterAction::SpendStatPoint(stat) => character.spend_stat_point(*stat),
+            CharacterAction::LearnAbility(ability) => {
                 let class = class_or_default(&content.pack, Some(&character.class));
-                character.learn_skill(&class, skill).map(|()| {
-                    let name = content.pack.skills.get(skill).map_or(skill.as_str(), |def| def.name.as_str());
+                character.learn_ability(&class, ability).map(|()| {
+                    let name = content.pack.abilities.get(ability).map_or(ability.as_str(), |def| def.name.as_str());
                     link.send(player.connection, &ServerMessage::Notice { text: format!("You learn {name}.") });
                 })
             }
@@ -265,7 +265,7 @@ fn send_changed_sheets(
 
 #[cfg(test)]
 mod tests {
-    use venture_content::ClassSkill;
+    use venture_content::ClassAbility;
 
     use super::*;
 
@@ -274,11 +274,11 @@ mod tests {
             id: "fighter".to_string(),
             name: "Fighter".to_string(),
             description: String::new(),
-            rules: ClassRules { hit_die: 10, mana_per_level: 3, casting_ability: Ability::Wisdom },
-            stats: Abilities { strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10 },
+            rules: ClassRules { hit_die: 10, mana_per_level: 3, casting_stat: Stat::Wisdom },
+            stats: Stats { strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10 },
             starting_equipment: Vec::new(),
-            starting_skills: vec!["whack".to_string()],
-            skills: vec![ClassSkill { skill: "bash".to_string(), level: 3, cost: 2 }],
+            starting_abilities: vec!["whack".to_string()],
+            abilities: vec![ClassAbility { ability: "bash".to_string(), level: 3, cost: 2 }],
         }
     }
 
@@ -286,9 +286,9 @@ mod tests {
         ClassDef {
             id: "mage".to_string(),
             name: "Mage".to_string(),
-            stats: Abilities { strength: 8, dexterity: 12, constitution: 12, intelligence: 15, wisdom: 13 },
-            starting_skills: vec!["air_blast".to_string()],
-            skills: Vec::new(),
+            stats: Stats { strength: 8, dexterity: 12, constitution: 12, intelligence: 15, wisdom: 13 },
+            starting_abilities: vec!["air_blast".to_string()],
+            abilities: Vec::new(),
             ..fighter()
         }
     }
@@ -302,8 +302,8 @@ mod tests {
     }
 
     #[test]
-    fn new_characters_know_everyones_skills_and_their_classs() {
-        assert_eq!(new_fighter().skills, ["rest", "whack"]);
+    fn new_characters_know_everyones_abilities_and_their_classs() {
+        assert_eq!(new_fighter().abilities, ["rest", "whack"]);
     }
 
     #[test]
@@ -312,7 +312,7 @@ mod tests {
         character.stats.strength += 2; // as if they'd spent points
         character.set_level(5, &fighter(), &common());
         assert_eq!(character.level(), 5);
-        assert_eq!((character.stat_points, character.skill_points), (8, 5));
+        assert_eq!((character.stat_points, character.ability_points), (8, 5));
         assert_eq!(character.stats.strength, 17);
     }
 
@@ -324,7 +324,7 @@ mod tests {
         character.stat_points -= 4;
         character.set_level(3, &fighter(), &common());
         assert_eq!(character.stats, fighter().stats);
-        assert_eq!((character.stat_points, character.skill_points), (4, 2));
+        assert_eq!((character.stat_points, character.ability_points), (4, 2));
     }
 
     #[test]
@@ -332,14 +332,14 @@ mod tests {
         let mut character = new_fighter();
         character.set_level(6, &fighter(), &common());
         character.stats.strength += 10;
-        character.learn_skill(&fighter(), "bash").unwrap();
+        character.learn_ability(&fighter(), "bash").unwrap();
         character.change_class(&mage(), &common());
         assert_eq!(character.class, "mage");
         assert_eq!(character.level(), 6);
         assert_eq!(character.stats, mage().stats);
-        // Levels 2 to 6: 2 stat points each; a skill point each, and a bonus one at 5.
-        assert_eq!((character.stat_points, character.skill_points), (10, 6));
-        assert_eq!(character.skills, ["rest", "air_blast"]);
+        // Levels 2 to 6: 2 stat points each; an ability point each, and a bonus one at 5.
+        assert_eq!((character.stat_points, character.ability_points), (10, 6));
+        assert_eq!(character.abilities, ["rest", "air_blast"]);
     }
 
     #[test]
@@ -353,22 +353,22 @@ mod tests {
     #[test]
     fn stat_points_raise_abilities() {
         let mut character = new_fighter();
-        assert!(character.spend_stat_point(Ability::Strength).is_err(), "no points yet");
+        assert!(character.spend_stat_point(Stat::Strength).is_err(), "no points yet");
         character.set_level(2, &fighter(), &common());
-        character.spend_stat_point(Ability::Strength).unwrap();
+        character.spend_stat_point(Stat::Strength).unwrap();
         assert_eq!((character.stats.strength, character.stat_points), (16, 1));
     }
 
     #[test]
-    fn skills_are_learned_at_their_level_for_their_cost() {
+    fn abilities_are_learned_at_their_level_for_their_cost() {
         let mut character = new_fighter();
-        assert_eq!(character.learn_skill(&fighter(), "fireball").unwrap_err(), "Fighters can't learn that skill.");
+        assert_eq!(character.learn_ability(&fighter(), "fireball").unwrap_err(), "Fighters can't learn that ability.");
         character.set_level(2, &fighter(), &common());
-        assert!(character.learn_skill(&fighter(), "bash").unwrap_err().contains("level 3"));
+        assert!(character.learn_ability(&fighter(), "bash").unwrap_err().contains("level 3"));
         character.set_level(3, &fighter(), &common());
-        character.learn_skill(&fighter(), "bash").unwrap();
-        assert_eq!((character.skill_points, character.skills.len()), (0, 3));
-        assert!(character.learn_skill(&fighter(), "bash").unwrap_err().contains("already"));
+        character.learn_ability(&fighter(), "bash").unwrap();
+        assert_eq!((character.ability_points, character.abilities.len()), (0, 3));
+        assert!(character.learn_ability(&fighter(), "bash").unwrap_err().contains("already"));
     }
 
     #[test]
@@ -378,6 +378,6 @@ mod tests {
         assert_eq!(sheet.max_health, 12, "d10 + CON 14 (+2)");
         assert_eq!(sheet.attack_bonus, 4, "+2 proficiency, +2 STR");
         assert_eq!(sheet.damage.to_string(), "3", "fists: 1 + STR");
-        assert_eq!(sheet.class_skills.len(), 1);
+        assert_eq!(sheet.class_abilities.len(), 1);
     }
 }

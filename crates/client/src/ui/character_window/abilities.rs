@@ -1,9 +1,9 @@
-//! The skills tab: the **actions** every character has (attacking, talking,
-//! following), the **skills** the character knows, and the class skills they
-//! can learn with skill points (from a level, for a cost).
+//! The abilities tab: the **actions** every character has (attacking, talking,
+//! following), the **abilities** the character knows, and the class abilities they
+//! can learn with ability points (from a level, for a cost).
 //!
 //! Clicking an action does it, just like typing its chat command, and
-//! clicking a skill uses it on the selected target. Both can be dragged onto
+//! clicking an ability uses it on the selected target. Both can be dragged onto
 //! the hotbar (see [`crate::ui::hotbar`]), which does the clicking too.
 
 use bevy::prelude::*;
@@ -18,24 +18,24 @@ use crate::ui::character_window::{
 use crate::ui::hotbar::Draggable;
 use crate::ui::tooltip::Tooltip;
 
-/// Size of an action's or skill's box, in pixels.
+/// Size of an action's or ability's box, in pixels.
 const BOX_SIZE: f32 = 40.0;
 /// Size of an icon in its box, in pixels.
 const ICON_SIZE: f32 = 32.0;
-/// Colour of unspent skill points.
+/// Colour of unspent ability points.
 const POINTS_COLOUR: Color = Color::srgb(0.6, 0.9, 0.55);
-/// How faded a skill not yet learned looks.
+/// How faded an ability not yet learned looks.
 const LOCKED_TINT: Color = Color::srgba(1.0, 1.0, 1.0, 0.35);
 /// The actions shown, in order.
 const ACTIONS: [Action; 4] = [Action::Attack, Action::Talk, Action::Follow, Action::Town];
 
-/// Shows the skills tab.
-pub struct SkillsPlugin;
+/// Shows the abilities tab.
+pub struct AbilitiesPlugin;
 
-impl Plugin for SkillsPlugin {
+impl Plugin for AbilitiesPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, fill_page.after(super::spawn_window))
-            .add_systems(Update, (show_actions, show_skills, learn_on_click));
+            .add_systems(Update, (show_actions, show_abilities, learn_on_click));
     }
 }
 
@@ -43,24 +43,24 @@ impl Plugin for SkillsPlugin {
 #[derive(Component)]
 struct ActionButton(Action);
 
-/// The button learning a skill.
+/// The button learning an ability.
 #[derive(Component)]
 struct LearnButton(String);
 
-/// Where the known skills go.
+/// Where the known abilities go.
 #[derive(Component)]
-struct KnownSkills;
+struct KnownAbilities;
 
-/// Where the skills to learn go.
+/// Where the abilities to learn go.
 #[derive(Component)]
-struct SkillsToLearn;
+struct AbilitiesToLearn;
 
-/// How many skill points are left.
+/// How many ability points are left.
 #[derive(Component)]
 struct PointsText;
 
 fn fill_page(mut commands: Commands, pages: Res<Pages>) {
-    commands.entity(pages.of(Tab::Skills)).with_children(|page| {
+    commands.entity(pages.of(Tab::Abilities)).with_children(|page| {
         page.spawn(heading("Actions"));
         page.spawn(Node { column_gap: px(6), ..default() }).with_children(|row| {
             for action in ACTIONS {
@@ -75,11 +75,14 @@ fn fill_page(mut commands: Commands, pages: Res<Pages>) {
             }
         });
         page.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|row| {
-            row.spawn(heading("Skills"));
+            row.spawn(heading("Abilities"));
             row.spawn((PointsText, text("", 12.0, POINTS_COLOUR), Node { margin: UiRect::top(px(6)), ..default() }));
         });
-        page.spawn((KnownSkills, Node { flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(6), ..default() }));
-        page.spawn((SkillsToLearn, Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }));
+        page.spawn((
+            KnownAbilities,
+            Node { flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(6), ..default() },
+        ));
+        page.spawn((AbilitiesToLearn, Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }));
     });
 }
 
@@ -114,26 +117,26 @@ fn capitalised(text: &str) -> String {
     characters.next().map(|first| first.to_uppercase().chain(characters).collect()).unwrap_or_default()
 }
 
-/// Shows the skills the character knows, and the ones they can learn.
-fn show_skills(
+/// Shows the abilities the character knows, and the ones they can learn.
+fn show_abilities(
     mut commands: Commands,
     sheet: Res<Sheet>,
     content: Res<ContentStore>,
-    known: Single<Entity, With<KnownSkills>>,
-    to_learn: Single<Entity, With<SkillsToLearn>>,
+    known: Single<Entity, With<KnownAbilities>>,
+    to_learn: Single<Entity, With<AbilitiesToLearn>>,
     mut points: Single<&mut Text, With<PointsText>>,
 ) {
     if !sheet.is_changed() && !content.is_changed() {
         return;
     }
     let Some(sheet) = &sheet.0 else { return };
-    points.0 = match sheet.skill_points {
+    points.0 = match sheet.ability_points {
         0 => String::new(),
-        1 => "1 skill point to spend".to_string(),
-        points => format!("{points} skill points to spend"),
+        1 => "1 ability point to spend".to_string(),
+        points => format!("{points} ability points to spend"),
     };
-    let icon = |skill: &str| content.skills.get(skill).and_then(|def| content.icons.get(&def.icon)).cloned();
-    let details = |skill: &str| match content.skills.get(skill) {
+    let icon = |ability: &str| content.abilities.get(ability).and_then(|def| content.icons.get(&def.icon)).cloned();
+    let details = |ability: &str| match content.abilities.get(ability) {
         Some(def) => {
             let mut parts = Vec::new();
             if def.mana > 0 {
@@ -148,36 +151,37 @@ fn show_skills(
             let costs = if parts.is_empty() { String::new() } else { format!("\n{}.", parts.join(", ")) };
             Tooltip { title: def.name.clone(), body: format!("{}{costs}", def.description) }
         }
-        None => Tooltip { title: skill.to_string(), body: String::new() },
+        None => Tooltip { title: ability.to_string(), body: String::new() },
     };
 
     commands.entity(*known).despawn_children().with_children(|known| {
-        for skill in &sheet.skills {
-            let mut tooltip = details(skill);
+        for ability in &sheet.abilities {
+            let mut tooltip = details(ability);
             tooltip.body.push_str("\nClick to use it, or drag it onto the hotbar.");
-            known.spawn((Draggable(HotbarEntry::Skill(skill.clone())), icon_box(BOX_SIZE))).insert(tooltip).with_child(
-                (
-                    ImageNode::new(icon(skill).unwrap_or_default()),
+            known
+                .spawn((Draggable(HotbarEntry::Ability(ability.clone())), icon_box(BOX_SIZE)))
+                .insert(tooltip)
+                .with_child((
+                    ImageNode::new(icon(ability).unwrap_or_default()),
                     Node { width: px(ICON_SIZE), height: px(ICON_SIZE), ..default() },
-                ),
-            );
+                ));
         }
     });
 
     commands.entity(*to_learn).despawn_children().with_children(|list| {
         let unlearned: Vec<_> =
-            sheet.class_skills.iter().filter(|offer| !sheet.skills.contains(&offer.skill)).collect();
+            sheet.class_abilities.iter().filter(|offer| !sheet.abilities.contains(&offer.ability)).collect();
         if unlearned.is_empty() {
             return;
         }
         list.spawn(heading("To learn"));
         for offer in unlearned {
-            let name = content.skills.get(&offer.skill).map_or(offer.skill.as_str(), |def| def.name.as_str());
+            let name = content.abilities.get(&offer.ability).map_or(offer.ability.as_str(), |def| def.name.as_str());
             let points = if offer.cost == 1 { "1 point".to_string() } else { format!("{} points", offer.cost) };
-            let can_learn = sheet.level >= offer.level && sheet.skill_points >= offer.cost;
+            let can_learn = sheet.level >= offer.level && sheet.ability_points >= offer.cost;
             list.spawn(Node { align_items: AlignItems::Center, column_gap: px(8), ..default() }).with_children(|row| {
-                row.spawn(icon_box(BOX_SIZE)).insert(details(&offer.skill)).with_child((
-                    ImageNode::new(icon(&offer.skill).unwrap_or_default()).with_color(LOCKED_TINT),
+                row.spawn(icon_box(BOX_SIZE)).insert(details(&offer.ability)).with_child((
+                    ImageNode::new(icon(&offer.ability).unwrap_or_default()).with_color(LOCKED_TINT),
                     Node { width: px(ICON_SIZE), height: px(ICON_SIZE), ..default() },
                 ));
                 row.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, ..default() }).with_children(
@@ -187,21 +191,21 @@ fn show_skills(
                     },
                 );
                 if can_learn {
-                    row.spawn((LearnButton(offer.skill.clone()), small_button("Learn")));
+                    row.spawn((LearnButton(offer.ability.clone()), small_button("Learn")));
                 }
             });
         }
     });
 }
 
-/// Clicking **Learn** asks to learn the skill.
+/// Clicking **Learn** asks to learn the ability.
 fn learn_on_click(
     buttons: Query<(&Interaction, &LearnButton), Changed<Interaction>>,
     mut to_server: MessageWriter<ToServer>,
 ) {
     for (interaction, button) in &buttons {
         if *interaction == Interaction::Pressed {
-            to_server.write(ToServer(ClientMessage::LearnSkill { skill: button.0.clone() }));
+            to_server.write(ToServer(ClientMessage::LearnAbility { ability: button.0.clone() }));
         }
     }
 }

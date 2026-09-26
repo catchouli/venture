@@ -1,4 +1,4 @@
-//! The content pack's client files (NPC appearances, items, skills, icons and sounds):
+//! The content pack's client files (NPC appearances, items, abilities, icons and sounds):
 //! downloaded from the server, and downloaded again when the server reloads
 //! its content.
 //!
@@ -13,8 +13,8 @@ use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 use venture_content::{
-    AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, SkillDef, parse_appearances,
-    parse_game_sounds, parse_items, parse_skills,
+    AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, parse_abilities,
+    parse_appearances, parse_game_sounds, parse_items,
 };
 use venture_protocol::ServerMessage;
 
@@ -48,8 +48,8 @@ pub struct ContentStore {
     pub appearances: HashMap<String, AppearanceDef>,
     /// Items, by id.
     pub items: HashMap<String, ItemDef>,
-    /// Skills, by id.
-    pub skills: HashMap<String, SkillDef>,
+    /// Abilities, by id.
+    pub abilities: HashMap<String, AbilityDef>,
     /// Item icons, by file name within `icons/`.
     pub icons: HashMap<String, Handle<Image>>,
     /// Sounds, by file name within `sounds/`.
@@ -79,7 +79,7 @@ struct ContentFile {
 enum FileData {
     Appearances(Vec<AppearanceDef>),
     Items(Vec<ItemDef>),
-    Skills(Vec<SkillDef>),
+    Abilities(Vec<AbilityDef>),
     /// A PNG, turned into an image once the download is finished.
     Icon(Vec<u8>),
     /// A WAV, turned into a sound once the download is finished.
@@ -195,7 +195,7 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
     let data = match path.split('/').next() {
         Some("appearances") => FileData::Appearances(parse_appearances(&text())?),
         Some("items") => FileData::Items(parse_items(&text())?),
-        Some("skills") => FileData::Skills(parse_skills(&text())?),
+        Some("abilities") => FileData::Abilities(parse_abilities(&text())?),
         Some("icons") => FileData::Icon(bytes.to_vec()),
         Some("sounds") => FileData::Sound(bytes.to_vec()),
         Some("sounds.ron") => FileData::GameSounds(parse_game_sounds(&text())?),
@@ -218,7 +218,7 @@ fn finish_download(
         Ok(downloaded) => {
             store.appearances.clear();
             store.items.clear();
-            store.skills.clear();
+            store.abilities.clear();
             store.icons.clear();
             store.sounds.clear();
             store.game_sounds = GameSounds::default();
@@ -228,8 +228,8 @@ fn finish_download(
                         store.appearances.extend(appearances.iter().map(|a| (a.id.clone(), a.clone())));
                     }
                     FileData::Items(items) => store.items.extend(items.iter().map(|i| (i.id.clone(), i.clone()))),
-                    FileData::Skills(skills) => {
-                        store.skills.extend(skills.iter().map(|skill| (skill.id.clone(), skill.clone())));
+                    FileData::Abilities(abilities) => {
+                        store.abilities.extend(abilities.iter().map(|ability| (ability.id.clone(), ability.clone())));
                     }
                     FileData::Icon(png) => match decode_icon(png) {
                         Ok(image) => {

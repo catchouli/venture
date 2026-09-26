@@ -373,13 +373,13 @@ fn content_with_files(npcs: &str, script: &str, dialogue: Option<&str>, extra: &
     write("scripts/greeter.rhai", script.as_bytes());
     write("items/things.ron", ITEMS.as_bytes());
     write("classes/classes.ron", CLASSES.as_bytes());
-    write("skills/skills.ron", SKILLS.as_bytes());
+    write("abilities/abilities.ron", ABILITIES.as_bytes());
     write("shops/bakery.ron", br#"[(id: "bakery", name: "The Bakery", stock: [(item: "bread", price: 5)])]"#);
     write(
         "quests/errand.ron",
         br#"[(id: "errand", name: "An Errand", stages: [(id: "asked", journal: "Tom wants a loaf."), (id: "done", journal: "I gave Tom a loaf.")])]"#,
     );
-    write("new_characters.ron", br#"(miasma: 25, items: [(item: "bread", count: 1)], skills: ["rest"])"#);
+    write("new_characters.ron", br#"(miasma: 25, items: [(item: "bread", count: 1)], abilities: ["rest"])"#);
     // Only the start of a PNG, but that's all the content check looks at.
     write("icons/thing.png", b"\x89PNG\r\n\x1a\n");
     if let Some(dialogue) = dialogue {
@@ -396,7 +396,7 @@ fn content_with_files(npcs: &str, script: &str, dialogue: Option<&str>, extra: &
 const ITEMS: &str = r#"[
     (id: "bread", name: "Bread", description: "A loaf.", icon: "thing.png", value: 4),
     (id: "sword", name: "Sword", description: "Sharp.", icon: "thing.png", value: 10,
-     equip: Some((slots: [Weapon], weapon: Some((damage: "1d6", speed: 1.0, ability: Strength)),
+     equip: Some((slots: [Weapon], weapon: Some((damage: "1d6", speed: 1.0, stat: Strength)),
                   look: (style: Sword, main: (0.7, 0.7, 0.7), trim: (0.3, 0.2, 0.1))))),
     (id: "chestguard", name: "Chestguard", description: "Wooden.", icon: "thing.png", value: 6,
      equip: Some((slots: [Body], armour: 2, look: (style: Plates, main: (0.6, 0.4, 0.3), trim: (0.3, 0.2, 0.1))))),
@@ -406,17 +406,17 @@ const ITEMS: &str = r#"[
 
 const CLASSES: &str = r#"[
     (id: "fighter", name: "Fighter", description: "Hits things.",
-     rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
+     rules: (hit_die: 10, mana_per_level: 3, casting_stat: Wisdom),
      stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
-     starting_equipment: ["sword", "chestguard"], starting_skills: ["whack"],
-     skills: [(skill: "bash", level: 2, cost: 1)]),
+     starting_equipment: ["sword", "chestguard"], starting_abilities: ["whack"],
+     abilities: [(ability: "bash", level: 2, cost: 1)]),
     (id: "mage", name: "Mage", description: "Casts things.",
-     rules: (hit_die: 6, mana_per_level: 8, casting_ability: Intelligence),
+     rules: (hit_die: 6, mana_per_level: 8, casting_stat: Intelligence),
      stats: (strength: 8, dexterity: 12, constitution: 12, intelligence: 15, wisdom: 13),
-     starting_equipment: ["robe"], starting_skills: ["blast"]),
+     starting_equipment: ["robe"], starting_abilities: ["blast"]),
 ]"#;
 
-const SKILLS: &str = r#"[
+const ABILITIES: &str = r#"[
     (id: "rest", name: "Rest", description: "Sit down.", icon: "thing.png", effect: Rest),
     (id: "whack", name: "Whack", description: "A heavy blow.", icon: "thing.png", mana: 2, cooldown: 6.0, effect: Strike(damage: "1d8")),
     (id: "bash", name: "Bash", description: "Another blow.", icon: "thing.png", effect: Strike(damage: "1d6")),
@@ -893,7 +893,7 @@ fn only_admins_can_use_admin_commands() {
     server.run(2);
     let messages = boss.receive();
     let sheet = latest_sheet(&messages).unwrap();
-    assert_eq!((sheet.level, sheet.stat_points, sheet.skill_points), (5, 8, 5));
+    assert_eq!((sheet.level, sheet.stat_points, sheet.ability_points), (5, 8, 5));
     assert!(
         visitor.receive().iter().any(|m| matches!(m, ServerMessage::PlayerChanged { level: 5, celebrate: true, .. }))
     );
@@ -910,7 +910,7 @@ fn only_admins_can_use_admin_commands() {
     let messages = boss.receive();
     assert!(notices(&messages)[0].starts_with("There's no class called \"bard\""));
     let sheet = latest_sheet(&messages).unwrap();
-    assert_eq!((sheet.level, sheet.stat_points, sheet.skill_points), (1, 0, 0));
+    assert_eq!((sheet.level, sheet.stat_points, sheet.ability_points), (1, 0, 0));
     assert!(
         visitor.receive().iter().any(|m| matches!(m, ServerMessage::PlayerChanged { level: 1, celebrate: false, .. }))
     );
@@ -949,11 +949,11 @@ fn admins_can_change_their_body_type() {
 }
 
 #[test]
-fn classes_start_with_their_gear_and_skills() {
+fn classes_start_with_their_gear_and_abilities() {
     let mut server = TestServer::with_content("kit", content_with("[]", ""));
     let (_, messages) = create(&mut server, TOKEN_A, "Aldric", "fighter");
     let sheet = latest_sheet(&messages).unwrap();
-    assert_eq!(sheet.skills, ["rest", "whack"]);
+    assert_eq!(sheet.abilities, ["rest", "whack"]);
     assert_eq!(
         sheet.equipment,
         [(EquipSlot::Weapon, "sword".to_string()), (EquipSlot::Body, "chestguard".to_string())]
@@ -1001,23 +1001,23 @@ fn gear_comes_off_into_the_bag_and_goes_back_on() {
 }
 
 #[test]
-fn points_are_spent_on_stats_and_skills() {
+fn points_are_spent_on_stats_and_abilities() {
     let mut server = TestServer::with_content("points", content_with("[]", ""));
     let (boss, _) = create(&mut server, TOKEN_A, "Boss", "fighter");
-    boss.send(&ClientMessage::LearnSkill { skill: "bash".to_string() });
+    boss.send(&ClientMessage::LearnAbility { ability: "bash".to_string() });
     server.run(2);
-    assert_eq!(notices(&boss.receive()), ["You need to be level 2 to learn that skill."]);
+    assert_eq!(notices(&boss.receive()), ["You need to be level 2 to learn that ability."]);
 
     boss.send(&ClientMessage::Admin(AdminCommand::SetLevel { level: 2 }));
     server.run(2);
-    boss.send(&ClientMessage::SpendStatPoint { ability: venture_rpg::Ability::Constitution });
-    boss.send(&ClientMessage::LearnSkill { skill: "bash".to_string() });
+    boss.send(&ClientMessage::SpendStatPoint { stat: venture_rpg::Stat::Constitution });
+    boss.send(&ClientMessage::LearnAbility { ability: "bash".to_string() });
     server.run(2);
     let messages = boss.receive();
     assert!(notices(&messages).contains(&"You learn Bash.".to_string()));
     let sheet = latest_sheet(&messages).unwrap();
-    assert_eq!((sheet.stats.constitution, sheet.stat_points, sheet.skill_points), (15, 1, 0));
-    assert_eq!(sheet.skills, ["rest", "whack", "bash"]);
+    assert_eq!((sheet.stats.constitution, sheet.stat_points, sheet.ability_points), (15, 1, 0));
+    assert_eq!(sheet.abilities, ["rest", "whack", "bash"]);
 }
 
 /// A pack with one creature near the spawn point (at (103, 100)) and a
@@ -1113,16 +1113,16 @@ const PUNCHBAG: &str = r#"[(id: "beast", name: "Punchbag", level: 1, health: 500
     attack: (damage: "1", bonus: -20, speed: 0.2), experience: 1,
     look: (shape: Rabbit, main: (0.5, 0.4, 0.3), trim: (0.9, 0.9, 0.9)))]"#;
 
-/// Whether a batch of messages has an attack by `attacker` on `target` with this skill.
-fn attacked_with(messages: &[ServerMessage], attacker: EntityId, target: EntityId, skill: Option<&str>) -> bool {
+/// Whether a batch of messages has an attack by `attacker` on `target` with this ability.
+fn attacked_with(messages: &[ServerMessage], attacker: EntityId, target: EntityId, ability: Option<&str>) -> bool {
     messages.iter().any(|m| {
-        matches!(m, ServerMessage::Attacked { attacker: a, target: t, skill: s, .. }
-            if *a == attacker && *t == target && s.as_deref() == skill)
+        matches!(m, ServerMessage::Attacked { attacker: a, target: t, ability: s, .. }
+            if *a == attacker && *t == target && s.as_deref() == ability)
     })
 }
 
 #[test]
-fn weapon_skills_run_up_then_hit_and_cool_down() {
+fn weapon_abilities_run_up_then_hit_and_cool_down() {
     let mut server = TestServer::with_content("whack", creature_pack(PUNCHBAG));
     server.run(2);
     let (fighter, messages) = create(&mut server, TOKEN_A, "Hitter", "fighter");
@@ -1131,23 +1131,23 @@ fn weapon_skills_run_up_then_hit_and_cool_down() {
     let beast = creature_id(&mut server);
 
     // It's 3 m away, a little out of reach: run up, then whack it.
-    fighter.send(&ClientMessage::UseSkill { skill: "whack".to_string(), target: Some(beast) });
+    fighter.send(&ClientMessage::UseAbility { ability: "whack".to_string(), target: Some(beast) });
     server.run(30);
     let messages = fighter.receive();
-    let used = ServerMessage::SkillUsed { user: me, skill: "whack".to_string(), target: Some(beast) };
+    let used = ServerMessage::AbilityUsed { user: me, ability: "whack".to_string(), target: Some(beast) };
     assert!(messages.contains(&used));
     assert!(attacked_with(&messages, me, beast, Some("whack")));
     assert_eq!(latest_mana(&messages), Some((1, 3)), "it cost 2 mana");
 
-    // Then they keep attacking with the weapon, and the skill needs a rest.
+    // Then they keep attacking with the weapon, and the ability needs a rest.
     server.run(30);
     assert!(attacked_with(&fighter.receive(), me, beast, None));
-    fighter.send(&ClientMessage::UseSkill { skill: "whack".to_string(), target: Some(beast) });
+    fighter.send(&ClientMessage::UseAbility { ability: "whack".to_string(), target: Some(beast) });
     server.run(2);
     assert_eq!(notices(&fighter.receive()), ["Whack isn't ready yet."]);
 
-    // Skills they don't know are refused.
-    fighter.send(&ClientMessage::UseSkill { skill: "blast".to_string(), target: Some(beast) });
+    // Abilities they don't know are refused.
+    fighter.send(&ClientMessage::UseAbility { ability: "blast".to_string(), target: Some(beast) });
     server.run(2);
     assert_eq!(notices(&fighter.receive()), ["You don't know Blast."]);
 }
@@ -1161,10 +1161,14 @@ fn spells_fly_to_their_target_and_land_when_they_arrive() {
     let beast = creature_id(&mut server);
 
     // 3 m at 10 m/s: it lands 0.3 seconds (6 ticks) later.
-    mage.send(&ClientMessage::UseSkill { skill: "blast".to_string(), target: Some(beast) });
+    mage.send(&ClientMessage::UseAbility { ability: "blast".to_string(), target: Some(beast) });
     server.run(3);
     let messages = mage.receive();
-    assert!(messages.contains(&ServerMessage::SkillUsed { user: me, skill: "blast".to_string(), target: Some(beast) }));
+    assert!(messages.contains(&ServerMessage::AbilityUsed {
+        user: me,
+        ability: "blast".to_string(),
+        target: Some(beast)
+    }));
     assert!(!attacked_with(&messages, me, beast, Some("blast")), "still flying");
     assert_eq!(latest_mana(&messages), Some((7, 10)));
     server.run(10);
@@ -1184,7 +1188,7 @@ fn resting_sits_down_until_moving_but_not_in_a_fight() {
         })
     };
 
-    rester.send(&ClientMessage::UseSkill { skill: "rest".to_string(), target: None });
+    rester.send(&ClientMessage::UseAbility { ability: "rest".to_string(), target: None });
     server.run(3);
     assert_eq!(resting(&rester.receive()), Some(true));
     rester.send(&ClientMessage::MoveTo { x: 100.0, y: 98.0 });
@@ -1194,7 +1198,7 @@ fn resting_sits_down_until_moving_but_not_in_a_fight() {
     let beast = creature_id(&mut server);
     rester.send(&ClientMessage::Attack { target: beast });
     server.run(40);
-    rester.send(&ClientMessage::UseSkill { skill: "rest".to_string(), target: None });
+    rester.send(&ClientMessage::UseAbility { ability: "rest".to_string(), target: None });
     server.run(2);
     assert!(notices(&rester.receive()).contains(&"You can't rest in the middle of a fight.".to_string()));
 }
@@ -1212,7 +1216,7 @@ fn a_creature_dies_only_once_however_many_blows_land_together() {
     let moth = world.query_filtered::<Entity, With<venture_server::creatures::Creature>>().single(world).unwrap();
     // Five blows in one tick: (almost certainly) at least one hits, but it only dies once.
     for _ in 0..5 {
-        world.write_message(venture_server::combat::Strike { attacker: player, target: moth, skill: None });
+        world.write_message(venture_server::combat::Strike { attacker: player, target: moth, ability: None });
     }
     server.run(2);
     let defeats = notices(&hunter.receive()).into_iter().filter(|notice| notice.starts_with("You defeat")).count();
@@ -1228,20 +1232,20 @@ fn latest_hotbar(messages: &[ServerMessage]) -> Option<Vec<Option<HotbarEntry>>>
 }
 
 #[test]
-fn hotbars_start_with_attack_and_skills_keep_only_known_skills_and_are_saved() {
+fn hotbars_start_with_attack_and_abilities_keep_only_known_abilities_and_are_saved() {
     let pack = content_with("[]", "");
     let mut server = TestServer::with_content("hotbar", pack.clone());
     let (fighter, messages) = create(&mut server, TOKEN_A, "Keys", "fighter");
-    let skill = |id: &str| Some(HotbarEntry::Skill(id.to_string()));
-    let mut expected = vec![Some(HotbarEntry::Action(HotbarAction::Attack)), skill("rest"), skill("whack")];
+    let ability = |id: &str| Some(HotbarEntry::Ability(id.to_string()));
+    let mut expected = vec![Some(HotbarEntry::Action(HotbarAction::Attack)), ability("rest"), ability("whack")];
     expected.resize(10, None);
     assert_eq!(latest_hotbar(&messages), Some(expected));
 
     // Blast isn't theirs, so it comes off (and they're told).
     let wave = Some(HotbarEntry::Action(HotbarAction::Wave));
-    fighter.send(&ClientMessage::SetHotbar { slots: vec![skill("whack"), skill("blast"), wave.clone()] });
+    fighter.send(&ClientMessage::SetHotbar { slots: vec![ability("whack"), ability("blast"), wave.clone()] });
     server.run(2);
-    let mut expected = vec![skill("whack"), None, wave];
+    let mut expected = vec![ability("whack"), None, wave];
     expected.resize(10, None);
     assert_eq!(latest_hotbar(&fighter.receive()), Some(expected.clone()));
 
@@ -1255,16 +1259,16 @@ fn hotbars_start_with_attack_and_skills_keep_only_known_skills_and_are_saved() {
 }
 
 #[test]
-fn learned_skills_go_on_the_hotbar() {
+fn learned_abilities_go_on_the_hotbar() {
     let mut server = TestServer::with_content("learning", content_with("[]", ""));
     let (boss, _) = create(&mut server, TOKEN_A, "Boss", "fighter");
     boss.send(&ClientMessage::Admin(AdminCommand::SetLevel { level: 2 }));
     server.run(2);
     boss.receive();
-    boss.send(&ClientMessage::LearnSkill { skill: "bash".to_string() });
+    boss.send(&ClientMessage::LearnAbility { ability: "bash".to_string() });
     server.run(2);
     let slots = latest_hotbar(&boss.receive()).expect("a new hotbar");
-    assert_eq!(slots[3], Some(HotbarEntry::Skill("bash".to_string())));
+    assert_eq!(slots[3], Some(HotbarEntry::Ability("bash".to_string())));
 }
 
 /// The player's own id, from the welcome in a batch of messages.

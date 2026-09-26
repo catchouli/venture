@@ -54,13 +54,13 @@ variables, item use (eating), and more shops and quests as the world grows.
 
 ## Next: combat (milestone 4)
 
-Classes, levels, stats, skills, equipment, creatures and fighting: see
+Classes, levels, stats, abilities, equipment, creatures and fighting: see
 [plan-combat.md](plan-combat.md). Steps 1 to 4 are done: the RPG rules,
 classes and character creation, levels, stats, Miasma, admins, the tabbed
-character window, skills to learn, equipment that shows on the character,
+character window, abilities to learn, equipment that shows on the character,
 creatures and spawners (rabbits and goblins), fighting (auto-attack,
 damage numbers, experience, health regeneration and respawn points), and
-skills in use (Whack, Air Blast, Rest and the rest), with mana, cooldowns,
+abilities in use (Whack, Air Blast, Rest and the rest), with mana, cooldowns,
 a hotbar on keys 1 to 0, and placeholder sounds. Next: class advancement
 (Fighter to Warrior or Rogue, Mage to Wizard or Sage).
 

@@ -21,8 +21,8 @@
 //!    code that changes players in the game).
 //! 5. [`dialogue`]: runs each player's private conversations with NPCs.
 //! 6. [`shops`]: buying and selling.
-//! 7. [`creatures`], [`skills`] and [`combat`]: creatures and fighting them
-//!    (skills is the only code that uses skills; combat is the only code
+//! 7. [`creatures`], [`abilities`] and [`combat`]: creatures and fighting them
+//!    (abilities is the only code that uses abilities; combat is the only code
 //!    that damages anything).
 //!
 //! Inventories and quest logs are the exception that proves the rule: several
@@ -40,6 +40,7 @@
 // lists and query types are normal here.
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
+pub mod abilities;
 pub mod admin;
 pub mod character;
 pub mod combat;
@@ -63,7 +64,6 @@ pub mod requests;
 pub mod scripting;
 pub mod sessions;
 pub mod shops;
-pub mod skills;
 pub mod world;
 
 use std::time::Duration;
@@ -116,8 +116,8 @@ pub enum ServerSystems {
     Npcs,
     /// Creatures: spawners, and what creatures do.
     Creatures,
-    /// Using skills.
-    Skills,
+    /// Using abilities.
+    Abilities,
     /// Fights: attacks, damage, death and health.
     Combat,
     /// Conversations with NPCs.
@@ -151,7 +151,7 @@ impl GameServer {
                     ServerSystems::Gameplay,
                     ServerSystems::Npcs,
                     ServerSystems::Creatures,
-                    ServerSystems::Skills,
+                    ServerSystems::Abilities,
                     ServerSystems::Combat,
                     ServerSystems::Dialogue,
                     ServerSystems::Shops,
@@ -172,7 +172,7 @@ impl GameServer {
                 admin::AdminPlugin,
                 equipment::EquipmentPlugin,
                 creatures::CreaturesPlugin,
-                (skills::SkillsPlugin, hotbar::HotbarPlugin, combat::CombatPlugin),
+                (abilities::AbilitiesPlugin, hotbar::HotbarPlugin, combat::CombatPlugin),
                 content::ContentPlugin,
             ));
     }

@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 pub const MAX_LEVEL: u32 = 60;
 /// Stat points gained at each new level.
 const STAT_POINTS_PER_LEVEL: u32 = 2;
-/// Skill points gained at each new level...
-const SKILL_POINTS_PER_LEVEL: u32 = 1;
+/// Ability points gained at each new level...
+const ABILITY_POINTS_PER_LEVEL: u32 = 1;
 /// ...plus one more every this many levels.
-const BONUS_SKILL_POINT_EVERY: u32 = 5;
+const BONUS_ABILITY_POINT_EVERY: u32 = 5;
 
 /// Experience needed to go from `level` to the next: `round(100 × level^1.5)`.
 /// So 100 for level 1 to 2, 283 for 2 to 3, 3162 for 10 to 11.
@@ -26,12 +26,12 @@ pub fn stat_points_at(level: u32) -> u32 {
     if level <= 1 { 0 } else { STAT_POINTS_PER_LEVEL }
 }
 
-/// Skill points gained on reaching `level`.
-pub fn skill_points_at(level: u32) -> u32 {
+/// Ability points gained on reaching `level`.
+pub fn ability_points_at(level: u32) -> u32 {
     match level {
         0 | 1 => 0,
-        level if level % BONUS_SKILL_POINT_EVERY == 0 => SKILL_POINTS_PER_LEVEL + 1,
-        _ => SKILL_POINTS_PER_LEVEL,
+        level if level % BONUS_ABILITY_POINT_EVERY == 0 => ABILITY_POINTS_PER_LEVEL + 1,
+        _ => ABILITY_POINTS_PER_LEVEL,
     }
 }
 
@@ -40,9 +40,9 @@ pub fn total_stat_points(level: u32) -> u32 {
     (2..=level.min(MAX_LEVEL)).map(stat_points_at).sum()
 }
 
-/// All the skill points a character has earned by reaching `level`.
-pub fn total_skill_points(level: u32) -> u32 {
-    (2..=level.min(MAX_LEVEL)).map(skill_points_at).sum()
+/// All the ability points a character has earned by reaching `level`.
+pub fn total_ability_points(level: u32) -> u32 {
+    (2..=level.min(MAX_LEVEL)).map(ability_points_at).sum()
 }
 
 /// The proficiency bonus at a level (SRD 5.1): +2 at levels 1 to 4, +3 at 5
@@ -67,8 +67,8 @@ pub struct LevelUp {
     pub levels: u32,
     /// Stat points gained.
     pub stat_points: u32,
-    /// Skill points gained.
-    pub skill_points: u32,
+    /// Ability points gained.
+    pub ability_points: u32,
 }
 
 impl Default for Progress {
@@ -91,7 +91,7 @@ impl Progress {
             self.level += 1;
             gained.levels += 1;
             gained.stat_points += stat_points_at(self.level);
-            gained.skill_points += skill_points_at(self.level);
+            gained.ability_points += ability_points_at(self.level);
         }
         if self.level >= MAX_LEVEL {
             self.experience = 0;
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn points_come_with_each_level() {
-        assert_eq!((2..=5).map(skill_points_at).collect::<Vec<_>>(), [1, 1, 1, 2]);
+        assert_eq!((2..=5).map(ability_points_at).collect::<Vec<_>>(), [1, 1, 1, 2]);
         assert_eq!(stat_points_at(2), 2);
         assert_eq!(stat_points_at(1), 0, "nothing for the level you start at");
     }
@@ -128,7 +128,7 @@ mod tests {
     fn totals_add_up_every_level() {
         assert_eq!(total_stat_points(1), 0);
         assert_eq!(total_stat_points(10), 18);
-        assert_eq!(total_skill_points(10), 11, "9 levels, 2 of them bonus levels");
+        assert_eq!(total_ability_points(10), 11, "9 levels, 2 of them bonus levels");
     }
 
     #[test]
@@ -143,7 +143,7 @@ mod tests {
     fn experience_can_carry_over_several_levels() {
         let mut progress = Progress::default();
         let gained = progress.add_experience(100 + 283 + 10);
-        assert_eq!(gained, LevelUp { levels: 2, stat_points: 4, skill_points: 2 });
+        assert_eq!(gained, LevelUp { levels: 2, stat_points: 4, ability_points: 2 });
         assert_eq!(progress, Progress { level: 3, experience: 10 });
         assert_eq!(progress.experience_needed(), experience_to_next_level(3) - 10);
     }

@@ -72,12 +72,12 @@ impl Orders<'_, '_> {
         player.1.following = Some(Following { target, follow: Follow::default(), stop_within: None });
     }
 
-    /// Asks the server to use a skill on a creature, and predicts running up
-    /// to it: all the way for a weapon skill (which goes on attacking), or
+    /// Asks the server to use an ability on a creature, and predicts running up
+    /// to it: all the way for a weapon ability (which goes on attacking), or
     /// until within `reach` for a spell.
-    pub fn use_skill_on(&mut self, target: Entity, id: EntityId, skill: &str, reach: f32, melee: bool) {
+    pub fn use_ability_on(&mut self, target: Entity, id: EntityId, ability: &str, reach: f32, melee: bool) {
         let Some(player) = self.player.as_mut() else { return };
-        self.to_server.write(ToServer(ClientMessage::UseSkill { skill: skill.to_string(), target: Some(id) }));
+        self.to_server.write(ToServer(ClientMessage::UseAbility { ability: ability.to_string(), target: Some(id) }));
         let (transform, player) = &mut **player;
         let stop_within = (!melee).then_some(reach);
         let already_close = self.positions.get(target).is_ok_and(|target| {
@@ -89,10 +89,10 @@ impl Orders<'_, '_> {
         }
     }
 
-    /// Asks the server to use a skill on the player themself (such as
+    /// Asks the server to use an ability on the player themself (such as
     /// resting, which stops them where they are).
-    pub fn use_skill_on_self(&mut self, skill: &str, stops: bool) {
-        self.to_server.write(ToServer(ClientMessage::UseSkill { skill: skill.to_string(), target: None }));
+    pub fn use_ability_on_self(&mut self, ability: &str, stops: bool) {
+        self.to_server.write(ToServer(ClientMessage::UseAbility { ability: ability.to_string(), target: None }));
         if stops && let Some(player) = self.player.as_mut() {
             player.1.following = None;
             player.1.movement = Movement::Idle;

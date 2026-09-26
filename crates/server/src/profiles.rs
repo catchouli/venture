@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use venture_protocol::{BodyType, EquipSlot, HotbarEntry, ItemStack};
-use venture_rpg::Abilities;
+use venture_rpg::Stats;
 
 /// Everything saved about a character. Fields added since the first
 /// profiles have defaults, so older profiles still load.
@@ -39,18 +39,19 @@ pub struct Profile {
     /// Experience towards the next level.
     #[serde(default)]
     pub experience: u64,
-    /// Their ability scores (if missing, their class's starting scores).
+    /// Their stats (if missing, their class's starting scores).
     #[serde(default)]
-    pub stats: Option<Abilities>,
+    pub stats: Option<Stats>,
     /// Stat points to spend.
     #[serde(default)]
     pub stat_points: u32,
-    /// Skill points to spend.
-    #[serde(default)]
-    pub skill_points: u32,
-    /// The skills they know (if missing, their class's starting skills).
-    #[serde(default)]
-    pub skills: Option<Vec<String>>,
+    /// Ability points to spend. (Called skill points in older profiles.)
+    #[serde(default, alias = "skill_points")]
+    pub ability_points: u32,
+    /// The abilities they know (if missing, their class's starting
+    /// abilities). (Called skills in older profiles.)
+    #[serde(default, alias = "skills")]
+    pub abilities: Option<Vec<String>>,
     /// What they have equipped, slot by slot (if missing, their class's
     /// starting equipment: characters made before equipment existed get it).
     #[serde(default)]
@@ -85,8 +86,8 @@ impl Profile {
             experience: 0,
             stats: None,
             stat_points: 0,
-            skill_points: 0,
-            skills: None,
+            ability_points: 0,
+            abilities: None,
             equipment: None,
             miasma: 0,
             inventory: Vec::new(),
@@ -222,6 +223,17 @@ mod tests {
         let profile: Profile = ron::from_str(r#"(name: "Aldric", position: (1.0, 2.0))"#).unwrap();
         assert!(profile.inventory.is_empty());
         assert_eq!((profile.class, profile.level), (None, 1));
+    }
+
+    #[test]
+    fn profiles_from_before_abilities_were_called_abilities_still_load() {
+        let text = r#"(name: "Aldric", position: (1.0, 2.0), skill_points: 2, skills: Some(["rest", "whack"]),
+            hotbar: Some([Some(Skill("whack")), Some(Action(Attack)), None]))"#;
+        let profile: Profile = ron::from_str(text).unwrap();
+        assert_eq!(profile.ability_points, 2);
+        assert_eq!(profile.abilities, Some(vec!["rest".to_string(), "whack".to_string()]));
+        let hotbar = profile.hotbar.unwrap();
+        assert_eq!(hotbar[0], Some(HotbarEntry::Ability("whack".to_string())));
     }
 
     #[test]

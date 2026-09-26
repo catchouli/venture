@@ -1,7 +1,7 @@
 # Plan: characters and combat (milestone 4)
 
-Combat, and the character behind it: classes, levels, stats, skills,
-equipment, creatures and fighting them. Non-combat skills come after this.
+Combat, and the character behind it: classes, levels, stats, abilities,
+equipment, creatures and fighting them. Non-combat abilities come after this.
 
 Each step below is playable on its own and ends with a commit. Everything
 follows the existing rules: the server decides, content lives in the content
@@ -26,11 +26,11 @@ real time.**
   leave out CHA). It's well known and thoroughly play-tested, and its maths is
   small and easy to read.
 - **What we take from it:**
-  - The ability modifier: `floor((score − 10) / 2)`.
+  - The stat modifier (the SRD's ability modifier): `floor((score − 10) / 2)`.
   - Classes with a hit die: Fighter d10, Mage d6.
   - Health: full hit die + CON modifier at level 1, then the die's average
     + CON modifier per level.
-  - Attack rolls: d20 + ability modifier + proficiency, against Armour Class.
+  - Attack rolls: d20 + stat modifier + proficiency, against Armour Class.
     A natural 20 is a critical hit (damage dice twice); a natural 1 misses.
   - Damage dice for weapons and spells.
 - **What's ours**, because a tabletop game is turn-based and levels slowly:
@@ -39,7 +39,7 @@ real time.**
   - **Mana:** a class base, plus INT/WIS modifier, per level.
   - **The experience curve:** smooth and quick early on, for example
     `xp to next level = round(100 × level^1.5)`.
-  - **Points per level:** 2 stat points per level, and 1 skill point per
+  - **Points per level:** 2 stat points per level, and 1 ability point per
     level plus 1 extra every 5 levels.
 
   Each is a single, documented function, easy to retune.
@@ -51,12 +51,12 @@ real time.**
 - **The `venture_rpg` crate**, covering everything above.
 - **Classes in the content pack** (`classes/*.ron`): name, description, hit
   die and mana, and starting stats. Fighter and Mage to begin with. Starting
-  skills, starting equipment and class skill lists came in step 2.
+  abilities, starting equipment and class ability lists came in step 2.
 - **Character creation** asks for a name, a class and a body type
   (Masculine, Feminine or Androgynous; it changes the model's build), with a
   turning preview of the character. **Names are unique**, ignoring case.
 - **Profiles** gain class, body type, level, experience, stats, unspent stat
-  and skill points, and **Miasma**.
+  and ability points, and **Miasma**.
 - **Miasma** is money kept on the character, not an item in the bag. Existing
   coins are converted, and shops take and pay Miasma.
 - **The bag** grows to 50 slots and scrolls, with a "12/50" count and the
@@ -72,7 +72,7 @@ One window with tabs, each with its own key:
 | Tab | Key | What it has |
 | --- | --- | --- |
 | Stats | C | Name, class, level and experience bar. STR, DEX, CON, INT, WIS, with + buttons to spend stat points. Secondary stats: health, mana, armour class, attack bonus, damage, attack speed. |
-| Skills | K | **Actions** every character has (Attack, Talk, Follow). **Skills** from the class: learned ones to use, and locked ones with the level they unlock at and a button to learn them with skill points. |
+| Abilities | K | **Actions** every character has (Attack, Talk, Follow). **Abilities** from the class: learned ones to use, and locked ones with the level they unlock at and a button to learn them with ability points. |
 | Inventory | I | The bag (from step 1). |
 | Equipment | G | Weapon and body slots to begin with. Equip from the bag, unequip back into it. |
 | Quests | J | The journal (as now). |
@@ -122,7 +122,7 @@ numbers show every hit and miss, and the dead fall over. Players can't fight
 each other.
 
 - **The Attack action** (click a selected creature again, `/attack`, or the
-  skills tab). It works like following: the character runs into range, then
+  abilities tab). It works like following: the character runs into range, then
   auto-attacks at their attack speed until the target dies, they give another
   order, or the target gets away.
 - **The server resolves every hit** with `venture_rpg`: hit or miss, damage
@@ -147,27 +147,27 @@ each other.
   - A goblin takes about two Air Blasts, and hits back hard enough to matter at
     level 1.
 
-## Step 5: skills and the hotbar (done)
+## Step 5: abilities and the hotbar (done)
 
 As built:
-- Skills are used from the hotbar (keys 1 to 0, or clicking) or by clicking
-  them in the skills tab.
-- The hotbar starts with Attack and the character's skills, and newly
-  learned skills fill empty slots. Skills and actions (Attack, Talk, Follow,
+- Abilities are used from the hotbar (keys 1 to 0, or clicking) or by clicking
+  them in the abilities tab.
+- The hotbar starts with Attack and the character's abilities, and newly
+  learned abilities fill empty slots. Abilities and actions (Attack, Talk, Follow,
   Town, Wave) are dragged onto it; dragging a slot off the bar clears it.
 - Mana comes back all the time (a twentieth of the most every 3 seconds).
   Resting triples health and mana recovery.
-- Cooldowns show as a shrinking shade with the seconds left, and skills
+- Cooldowns show as a shrinking shade with the seconds left, and abilities
   without enough mana fade.
-- Bolts are glowing balls in the skill's colour.
+- Bolts are glowing balls in the ability's colour.
 - Sounds are synthesised placeholders (`tools/placeholder_sounds.py`).
 
 The plan:
 
-- **Using skills** on the current target, from the skills tab or the
-  **hotbar** (keys 1 to 0). Drag skills and actions from the skills tab onto
+- **Using abilities** on the current target, from the abilities tab or the
+  **hotbar** (keys 1 to 0). Drag abilities and actions from the abilities tab onto
   it; the layout is saved with the character.
-- **Skills are defined in the content pack** (`skills/*.ron`): name, icon,
+- **Abilities are defined in the content pack** (`abilities/*.ron`): name, icon,
   mana cost, cooldown, range, the effect (melee hit, projectile, rest), its
   damage in dice, and which visual effect and sound it uses.
 - **Whack:** a heavy melee hit with a flash. **Air Blast:** a slow white
@@ -188,5 +188,5 @@ so the class tree is content too.
 
 ## Later (not in this milestone)
 
-Loot and drops, more classes and skills, player-vs-player, parties, buffs and
+Loot and drops, more classes and abilities, player-vs-player, parties, buffs and
 debuffs, ranged weapons, creature abilities, and death penalties.

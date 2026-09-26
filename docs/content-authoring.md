@@ -40,10 +40,10 @@ events. Much of it should be writable by **people who aren't programmers**
 ```
 content/
   classes/*.ron        the classes players choose from
-  skills/*.ron         what skills do (sent to clients)
+  abilities/*.ron      what abilities do (sent to clients)
   appearances/*.ron    how characters look (sent to clients)
   items/*.ron          things players can carry (sent to clients)
-  icons/*.png          item, skill and action pictures (sent to clients)
+  icons/*.png          item, ability and action pictures (sent to clients)
   sounds/*.wav         sounds (sent to clients)
   sounds.ron           the game's own sounds: hits, misses, levelling up
   creatures/*.ron      creatures: stats, attack, behaviour and look
@@ -81,13 +81,13 @@ content, so a typo never takes the game down.
         id: "fighter",                  // saved in profiles, so don't rename lightly
         name: "Fighter",
         description: "Tough and strong...",   // shown when choosing a class
-        rules: (hit_die: 10, mana_per_level: 3, casting_ability: Wisdom),
+        rules: (hit_die: 10, mana_per_level: 3, casting_stat: Wisdom),
         stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
         starting_equipment: ["training_sword", "wooden_chestguard", "wooden_legguards"],
-        starting_skills: ["whack"],
-        skills: [                       // learned with skill points: from a level, for a cost
-            (skill: "cleave", level: 3, cost: 1),
-            (skill: "second_wind", level: 5, cost: 2),
+        starting_abilities: ["whack"],
+        abilities: [                       // learned with ability points: from a level, for a cost
+            (ability: "cleave", level: 3, cost: 1),
+            (ability: "second_wind", level: 5, cost: 2),
         ],
     ),
 ]
@@ -96,13 +96,13 @@ content, so a typo never takes the game down.
 Players choose a class when they make a character; the first one listed is
 the default. `rules` is the class's part in the RPG rules (see
 `crates/rpg`): `hit_die` sets health per level (SRD 5.1: d10 for a fighter,
-d6 for a wizard), and `mana_per_level` plus the `casting_ability`'s modifier
-sets mana. `stats` are a new character's ability scores. New characters wear
+d6 for a wizard), and `mana_per_level` plus the `casting_stat`'s modifier
+sets mana. `stats` are a new character's stats. New characters wear
 the `starting_equipment` (items that can be equipped; no two in the same
-slot) and know the `starting_skills`, plus everyone's skills from
-`new_characters.ron`. `skills` are the ones the class can learn later.
+slot) and know the `starting_abilities`, plus everyone's abilities from
+`new_characters.ron`. `abilities` are the ones the class can learn later.
 
-### Skills
+### Abilities
 
 ```ron
 [
@@ -130,23 +130,23 @@ slot) and know the `starting_skills`, plus everyone's skills from
 - `Rest`: sit and recover health and mana three times as fast, until you
   move or are hit. It can't be used in a fight, and using it again stands up.
 - `Strike(damage)`: a weapon blow with these dice instead of the weapon's,
-  plus the weapon's ability. It reaches as far as a melee attack (whatever
+  plus the weapon's stat. It reaches as far as a melee attack (whatever
   `range` says). The player runs up to the target first if needed, and goes
   on attacking afterwards.
 - `Bolt(damage, speed)`: a spell that flies to the target and lands when it
-  gets there, rolled with the spell attack bonus. The casting ability adds
+  gets there, rolled with the spell attack bonus. The casting stat adds
   to its damage. It needs a `range`, and the player runs into range first if
   needed.
-- `Heal(amount)`: heals the user, plus their casting ability's modifier.
+- `Heal(amount)`: heals the user, plus their casting stat's modifier.
 
 Dice are written the usual way: `"1d8"`, `"2d6+1"`. The rules are in
-`crates/rpg/src/skills.rs`. Skills are sent to clients for their names,
+`crates/rpg/src/abilities.rs`. Abilities are sent to clients for their names,
 icons, sounds and looks.
 
 ### Sounds
 
 Sounds are WAV files in `sounds/` (at most 512 KB each), sent to clients.
-Skills name theirs, and `sounds.ron` names the game's own:
+Abilities name theirs, and `sounds.ron` names the game's own:
 
 ```ron
 (hit: Some("hit.wav"), critical: Some("critical.wav"), miss: Some("miss.wav"),
@@ -190,7 +190,7 @@ Colours are sRGB red, green and blue, each from 0 to 1. `body` (`Masculine`,
         value: 8,
         equip: Some((                   // optional: makes the item wearable
             slots: [Weapon],            // Weapon, Body and/or Legs (a robe fills [Body, Legs])
-            weapon: Some((damage: "1d6", speed: 1.0, ability: Strength)),   // for Weapon items
+            weapon: Some((damage: "1d6", speed: 1.0, stat: Strength)),   // for Weapon items
             armour: 0,                  // optional: armour class it adds
             look: (style: Sword, main: (0.72, 0.74, 0.78), trim: (0.36, 0.23, 0.13)),
         )),
@@ -202,18 +202,18 @@ An item's `look` is how it shows on the character: `Plates` (chest and back),
 `LegPlates`, `Robe` (shoulders to ankles), `Sword` or `Staff` (in the right
 hand), in a main and a trim colour. They're placeholder shapes until real
 models. A weapon's `speed` is attacks per second before Dexterity, and its
-`ability` is the one it attacks and does damage with.
+`stat` is the one it attacks and does damage with.
 
 Money is **Miasma**, kept on the character rather than in the bag. Icons are small PNGs
 (32 × 32 works well, at most 64 KB). The current ones are placeholders drawn
 by `tools/placeholder_icons.py`; replace them with painted icons of the same
 name whenever they're ready.
 
-`new_characters.ron` says what every new character carries, and the skills
+`new_characters.ron` says what every new character carries, and the abilities
 everyone knows:
 
 ```ron
-(miasma: 25, items: [(item: "bread", count: 1)], skills: ["rest"])
+(miasma: 25, items: [(item: "bread", count: 1)], abilities: ["rest"])
 ```
 
 ### Creatures

@@ -12,7 +12,7 @@
 //! a [`PlayerRequest`] (for [`crate::gameplay`]), a [`DialogueRequest`] (for
 //! [`crate::dialogue`]), a [`ShopRequest`] (for [`crate::shops`]), a
 //! [`CharacterRequest`] (for [`crate::character`]), an [`EquipmentRequest`]
-//! (for [`crate::equipment`]), a [`SkillRequest`] (for [`crate::skills`]), a
+//! (for [`crate::equipment`]), a [`AbilityRequest`] (for [`crate::abilities`]), a
 //! [`HotbarRequest`] (for [`crate::hotbar`]) or an [`AdminRequest`] (for
 //! [`crate::admin`]). Too many strikes and the connection is closed.
 
@@ -37,7 +37,7 @@ const MAX_STRIKES: u32 = 10;
 const MESSAGE_BURST: f32 = 40.0;
 /// ...and per second after that.
 const MESSAGES_PER_SECOND: f32 = 20.0;
-/// The longest a content id (a class or skill) may be, in bytes.
+/// The longest a content id (a class or ability) may be, in bytes.
 const MAX_ID_BYTES: usize = 64;
 /// The most items one purchase or sale may involve.
 const MAX_TRADE_COUNT: u32 = 100;
@@ -59,7 +59,7 @@ impl Plugin for RequestsPlugin {
             .add_message::<AdminRequest>()
             .add_message::<CharacterRequest>()
             .add_message::<EquipmentRequest>()
-            .add_message::<SkillRequest>()
+            .add_message::<AbilityRequest>()
             .add_message::<HotbarRequest>()
             .add_systems(FixedUpdate, receive_messages.in_set(ServerSystems::Requests));
     }
@@ -171,10 +171,10 @@ pub struct CharacterRequest {
 
 /// How a player wants to spend points. Checked against their character.
 pub enum CharacterAction {
-    /// A stat point on an ability.
-    SpendStatPoint(venture_rpg::Ability),
-    /// Skill points on a skill (its id, at most [`MAX_ID_BYTES`] long).
-    LearnSkill(String),
+    /// A stat point on a stat.
+    SpendStatPoint(venture_rpg::Stat),
+    /// Ability points on an ability (its id, at most [`MAX_ID_BYTES`] long).
+    LearnAbility(String),
 }
 
 /// A player changing what they wear, for [`crate::equipment`].
@@ -194,14 +194,14 @@ pub enum EquipmentAction {
     Unequip(venture_protocol::EquipSlot),
 }
 
-/// A player using a skill, for [`crate::skills`].
+/// A player using an ability, for [`crate::abilities`].
 #[derive(Message)]
-pub struct SkillRequest {
+pub struct AbilityRequest {
     /// The player entity.
     pub player: Entity,
-    /// Which skill (an id at most [`MAX_ID_BYTES`] long). Not yet checked
+    /// Which ability (an id at most [`MAX_ID_BYTES`] long). Not yet checked
     /// against the content or what they know.
-    pub skill: String,
+    pub ability: String,
     /// What to use it on, if anything.
     pub target: Option<EntityId>,
 }
@@ -211,7 +211,7 @@ pub struct SkillRequest {
 pub struct HotbarRequest {
     /// The player entity.
     pub player: Entity,
-    /// What's in each slot: at most [`HOTBAR_SLOTS`], with skill ids at most
+    /// What's in each slot: at most [`HOTBAR_SLOTS`], with ability ids at most
     /// [`MAX_ID_BYTES`] long. Not yet checked against what they know.
     pub slots: Vec<Option<HotbarEntry>>,
 }
@@ -277,7 +277,7 @@ fn receive_messages(
     mut admin: MessageWriter<AdminRequest>,
     mut characters: MessageWriter<CharacterRequest>,
     mut equipment: MessageWriter<EquipmentRequest>,
-    mut skills: MessageWriter<SkillRequest>,
+    mut abilities: MessageWriter<AbilityRequest>,
     mut hotbars: MessageWriter<HotbarRequest>,
 ) {
     let now = time.elapsed_secs();
@@ -320,8 +320,8 @@ fn receive_messages(
                     Verdict::Equipment(request) => {
                         equipment.write(request);
                     }
-                    Verdict::Skill(request) => {
-                        skills.write(request);
+                    Verdict::Ability(request) => {
+                        abilities.write(request);
                     }
                     Verdict::Hotbar(request) => {
                         hotbars.write(request);
@@ -354,7 +354,7 @@ enum Verdict {
     Admin(AdminRequest),
     Character(CharacterRequest),
     Equipment(EquipmentRequest),
-    Skill(SkillRequest),
+    Ability(AbilityRequest),
     Hotbar(HotbarRequest),
     /// Answer the client directly, without changing anything.
     Reply(ServerMessage),
@@ -467,12 +467,12 @@ fn judge_player_message(
             return Verdict::Strike;
         }
         ClientMessage::Admin(command) => return Verdict::Admin(AdminRequest { player, command }),
-        ClientMessage::SpendStatPoint { ability } => {
-            return Verdict::Character(CharacterRequest { player, action: CharacterAction::SpendStatPoint(ability) });
+        ClientMessage::SpendStatPoint { stat } => {
+            return Verdict::Character(CharacterRequest { player, action: CharacterAction::SpendStatPoint(stat) });
         }
-        ClientMessage::LearnSkill { skill } if skill.len() > MAX_ID_BYTES => return Verdict::Strike,
-        ClientMessage::LearnSkill { skill } => {
-            return Verdict::Character(CharacterRequest { player, action: CharacterAction::LearnSkill(skill) });
+        ClientMessage::LearnAbility { ability } if ability.len() > MAX_ID_BYTES => return Verdict::Strike,
+        ClientMessage::LearnAbility { ability } => {
+            return Verdict::Character(CharacterRequest { player, action: CharacterAction::LearnAbility(ability) });
         }
         ClientMessage::Equip { slot } => {
             return Verdict::Equipment(EquipmentRequest { player, action: EquipmentAction::Equip(slot) });
@@ -480,11 +480,12 @@ fn judge_player_message(
         ClientMessage::Unequip { slot } => {
             return Verdict::Equipment(EquipmentRequest { player, action: EquipmentAction::Unequip(slot) });
         }
-        ClientMessage::UseSkill { skill, .. } if skill.len() > MAX_ID_BYTES => return Verdict::Strike,
-        ClientMessage::UseSkill { skill, target } => return Verdict::Skill(SkillRequest { player, skill, target }),
+        ClientMessage::UseAbility { ability, .. } if ability.len() > MAX_ID_BYTES => return Verdict::Strike,
+        ClientMessage::UseAbility { ability, target } => {
+            return Verdict::Ability(AbilityRequest { player, ability, target });
+        }
         ClientMessage::SetHotbar { slots } => {
-            let too_long =
-                |entry: &Option<HotbarEntry>| matches!(entry, Some(HotbarEntry::Skill(id)) if id.len() > MAX_ID_BYTES);
+            let too_long = |entry: &Option<HotbarEntry>| matches!(entry, Some(HotbarEntry::Ability(id)) if id.len() > MAX_ID_BYTES);
             if slots.len() > HOTBAR_SLOTS || slots.iter().any(too_long) {
                 return Verdict::Strike;
             }

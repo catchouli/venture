@@ -1,15 +1,15 @@
-//! The hotbar, at the bottom of the screen: ten slots for skills and actions,
-//! used with keys 1 to 9 and 0 or by clicking. Skills show their cooldown
+//! The hotbar, at the bottom of the screen: ten slots for abilities and actions,
+//! used with keys 1 to 9 and 0 or by clicking. Abilities show their cooldown
 //! (a shade that shrinks, and the seconds left) and fade when there isn't
 //! enough mana for them.
 //!
-//! Anything marked [`Draggable`] (skills and actions in the character
+//! Anything marked [`Draggable`] (abilities and actions in the character
 //! window, and the hotbar's own slots) can be dragged onto a slot. Dragging a
 //! slot onto another swaps them; dragging it off the bar clears it. The
 //! server keeps the layout ([`ServerMessage::Hotbar`] when joining) and is
 //! sent every change ([`ClientMessage::SetHotbar`]).
 //!
-//! A press and release without moving is a click: it uses the skill or does
+//! A press and release without moving is a click: it uses the ability or does
 //! the action, wherever it was clicked.
 
 use bevy::prelude::*;
@@ -17,8 +17,8 @@ use bevy::ui::RelativeCursorPosition;
 use venture_protocol::{ClientMessage, HOTBAR_SLOTS, HotbarEntry, ServerMessage};
 
 use crate::content::ContentStore;
+use crate::interaction::abilities::{AbilityCooldowns, UseAbility};
 use crate::interaction::actions::{Action, PerformAction};
-use crate::interaction::skills::{SkillCooldowns, UseSkill};
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::character_window::{BOX_COLOUR, HoverBox};
 use crate::ui::text_input::KeyboardFocus;
@@ -45,9 +45,9 @@ const KEYS: [KeyCode; HOTBAR_SLOTS] = [
     KeyCode::Digit9,
     KeyCode::Digit0,
 ];
-/// Colour of the shade over a skill cooling down.
+/// Colour of the shade over an ability cooling down.
 const COOLDOWN_SHADE: Color = Color::srgba(0.0, 0.0, 0.0, 0.6);
-/// Tint of a skill there isn't enough mana for.
+/// Tint of an ability there isn't enough mana for.
 const NO_MANA_TINT: Color = Color::srgb(0.45, 0.5, 0.75);
 /// Colour of the key numbers.
 const KEY_COLOUR: Color = Color::srgb(0.9, 0.85, 0.7);
@@ -202,7 +202,7 @@ fn spawn_slot(bar: &mut ChildSpawnerCommands, index: usize, key: &str) {
             TextColor(Color::WHITE),
             Node { position_type: PositionType::Absolute, ..default() },
         ));
-        // The shade grows up from the bottom, so it shrinks downwards as the skill gets ready.
+        // The shade grows up from the bottom, so it shrinks downwards as the ability gets ready.
         slot.spawn((
             CooldownShade(index),
             Node { bottom: px(0), height: percent(0), ..fill.clone() },
@@ -263,7 +263,7 @@ fn show_bar(state: Res<State<ClientState>>, mut bar: Single<&mut Visibility, Wit
 /// An entry's icon, if it has one, and its name and description.
 fn describe(entry: &HotbarEntry, content: &ContentStore) -> (Option<Handle<Image>>, String, String) {
     match entry {
-        HotbarEntry::Skill(skill) => match content.skills.get(skill) {
+        HotbarEntry::Ability(ability) => match content.abilities.get(ability) {
             Some(def) => {
                 let mut body = def.description.clone();
                 if def.mana > 0 {
@@ -271,7 +271,7 @@ fn describe(entry: &HotbarEntry, content: &ContentStore) -> (Option<Handle<Image
                 }
                 (content.icons.get(&def.icon).cloned(), def.name.clone(), body)
             }
-            None => (None, skill.clone(), String::new()),
+            None => (None, ability.clone(), String::new()),
         },
         HotbarEntry::Action(action) => {
             let action = Action::from_hotbar(*action);
@@ -314,23 +314,23 @@ fn show_slots(
     }
 }
 
-/// Shows cooldowns, and fades skills there isn't enough mana for.
+/// Shows cooldowns, and fades abilities there isn't enough mana for.
 fn show_cooldowns(
     time: Res<Time>,
     layout: Res<HotbarLayout>,
     content: Res<ContentStore>,
-    cooldowns: Res<SkillCooldowns>,
+    cooldowns: Res<AbilityCooldowns>,
     vitals: Res<Vitals>,
     mut shades: Query<(&CooldownShade, &mut Node)>,
     mut texts: Query<(&CooldownText, &mut Text)>,
     mut icons: Query<(&SlotIcon, &mut ImageNode)>,
 ) {
     let now = time.elapsed_secs();
-    let skill_in = |index: usize| match &layout.0[index] {
-        Some(HotbarEntry::Skill(skill)) => Some(skill.as_str()),
+    let ability_in = |index: usize| match &layout.0[index] {
+        Some(HotbarEntry::Ability(ability)) => Some(ability.as_str()),
         _ => None,
     };
-    let remaining = |index: usize| skill_in(index).and_then(|skill| cooldowns.remaining(skill, now));
+    let remaining = |index: usize| ability_in(index).and_then(|ability| cooldowns.remaining(ability, now));
     for (CooldownShade(index), mut node) in &mut shades {
         node.height = percent(remaining(*index).map_or(0.0, |(_, fraction)| fraction * 100.0));
     }
@@ -342,7 +342,7 @@ fn show_cooldowns(
     }
     let mana = vitals.0.map(|vitals| vitals.mana);
     for (SlotIcon(index), mut image) in &mut icons {
-        let cost = skill_in(*index).and_then(|skill| content.skills.get(skill)).map_or(0, |def| def.mana);
+        let cost = ability_in(*index).and_then(|ability| content.abilities.get(ability)).map_or(0, |def| def.mana);
         let short = mana.is_some_and(|mana| mana < cost);
         image.color = if short { NO_MANA_TINT } else { Color::WHITE };
     }
@@ -354,7 +354,7 @@ fn use_keys(
     focus: Res<KeyboardFocus>,
     state: Res<State<ClientState>>,
     layout: Res<HotbarLayout>,
-    mut skills: MessageWriter<UseSkill>,
+    mut abilities: MessageWriter<UseAbility>,
     mut actions: MessageWriter<PerformAction>,
 ) {
     if focus.is_typing() || *state.get() != ClientState::Playing {
@@ -364,16 +364,20 @@ fn use_keys(
         if keys.just_pressed(*key)
             && let Some(entry) = &layout.0[index]
         {
-            activate(entry, &mut skills, &mut actions);
+            activate(entry, &mut abilities, &mut actions);
         }
     }
 }
 
-/// Uses a skill or does an action.
-fn activate(entry: &HotbarEntry, skills: &mut MessageWriter<UseSkill>, actions: &mut MessageWriter<PerformAction>) {
+/// Uses an ability or does an action.
+fn activate(
+    entry: &HotbarEntry,
+    abilities: &mut MessageWriter<UseAbility>,
+    actions: &mut MessageWriter<PerformAction>,
+) {
     match entry {
-        HotbarEntry::Skill(skill) => {
-            skills.write(UseSkill(skill.clone()));
+        HotbarEntry::Ability(ability) => {
+            abilities.write(UseAbility(ability.clone()));
         }
         HotbarEntry::Action(action) => {
             actions.write(PerformAction(Action::from_hotbar(*action)));
@@ -415,7 +419,7 @@ fn drag_and_drop(
     slots: Query<(&Slot, &RelativeCursorPosition)>,
     ghost: Single<(&mut Node, &mut ImageNode, &mut Visibility), With<DragGhost>>,
     mut to_server: MessageWriter<ToServer>,
-    mut skills: MessageWriter<UseSkill>,
+    mut abilities: MessageWriter<UseAbility>,
     mut actions: MessageWriter<PerformAction>,
 ) {
     let (mut ghost_node, mut ghost_image, mut ghost_visibility) = ghost.into_inner();
@@ -441,7 +445,7 @@ fn drag_and_drop(
     let Some(held) = drag.0.take() else { return };
     *ghost_visibility = Visibility::Hidden;
     if !held.dragging {
-        activate(&held.entry, &mut skills, &mut actions);
+        activate(&held.entry, &mut abilities, &mut actions);
         return;
     }
     let over = slots.iter().find(|(_, position)| position.cursor_over()).map(|(Slot(index), _)| *index);

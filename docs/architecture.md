@@ -18,10 +18,10 @@ venture_worldgen ──► venture_world     (the bake tool; nothing at runtime 
 | `venture_worldgen` | The world generation engine, and the `bake` tool that writes the world to disk. |
 | `venture_navigation` | Where characters can walk (blocked cells per chunk) and pathfinding (A* plus line-of-sight smoothing). |
 | `venture_simulation` | Game rules both sides run: movement, speed and input validation. The client uses them to predict, and the server to decide. |
-| `venture_rpg` | The RPG rules: ability scores and modifiers, dice, experience and levels, points per level, health, mana, armour class, attack speed, and attack resolution. Based on the SRD 5.1 (CC BY 4.0), adapted for real time. |
+| `venture_rpg` | The RPG rules: stats and modifiers, dice, experience and levels, points per level, health, mana, armour class, attack speed, and attack resolution. Based on the SRD 5.1 (CC BY 4.0), adapted for real time. |
 | `venture_protocol` | The messages between client and server, their encoding (postcard), size limits, and shared validation rules for names, chat and tokens. |
 | `venture_content` | The content pack: class, appearance, item, shop, quest and NPC definitions, loading with every problem reported by file, script and dialogue checks (with the `scripts` feature), the client manifest, and the `check` tool. |
-| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles (with unique names), characters and admin powers, gameplay, creatures, skills and the hotbar, combat, inventories, shops, quests, NPCs, private NPC conversations (Yarn Spinner), the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
+| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles (with unique names), characters and admin powers, gameplay, creatures, abilities and the hotbar, combat, inventories, shops, quests, NPCs, private NPC conversations (Yarn Spinner), the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
 | `venture_client` | The game client: a view of the server's game, with rendering, input, prediction, actions and chat commands, chat, the dialogue window and debug tools. |
 
 **Rule:** only the client and the server depend on Bevy. The shared crates
@@ -92,18 +92,18 @@ src/
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
     admin_commands.rs  /setlevel, /reset, /setclass and /setgender, for admins
-    orders.rs          ordering the character about: run, follow, walk over to talk, attack, use skills
-    skills.rs          using skills (checks, predicting the run-up) and their cooldowns
+    orders.rs          ordering the character about: run, follow, walk over to talk, attack, use abilities
+    abilities.rs          using abilities (checks, predicting the run-up) and their cooldowns
     targeting.rs       what's hovered and selected
     clicks.rs          left clicks: select, follow, talk, attack, or run there
     move_marker.rs     the glowing move marker
   ui/                the interface
     character_window/  the character window: mod.rs (the tabs), stats.rs,
-                       skills.rs, bag.rs, equipment.rs, quests.rs, emotes.rs
+                       abilities.rs, bag.rs, equipment.rs, quests.rs, emotes.rs
     toolbar.rs (buttons for the window's tabs), chat.rs, dialogue_window.rs,
     shop.rs, character_creation.rs,
     vitals.rs (your name, level, health and mana, top left),
-    hotbar.rs (skills and actions on keys 1 to 0, dragged there from the character window),
+    hotbar.rs (abilities and actions on keys 1 to 0, dragged there from the character window),
     target_frame.rs, connection_overlay.rs, cursor.rs, text_input.rs,
     tooltip.rs, widgets.rs (shared pieces such as the close button)
   sound/             playing the content's sounds for what happens nearby
