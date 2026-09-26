@@ -7,6 +7,7 @@
 //! - [`derived`]: the secondary stats worked out from those (health, mana,
 //!   armour class, attack bonus, attack speed).
 //! - [`combat`]: resolving an attack: hit or miss, damage, critical hits.
+//! - [`skills`]: skills' attacks and healing, mana regeneration and resting.
 //!
 //! The server uses these to decide what happens; the client uses them to show
 //! the same numbers. The crate has no engine or networking code, and every
@@ -33,6 +34,7 @@ pub mod combat;
 pub mod derived;
 pub mod dice;
 pub mod progression;
+pub mod skills;
 
 pub use abilities::{Abilities, Ability, modifier};
 pub use class::ClassRules;
@@ -40,3 +42,4 @@ pub use combat::{AttackOutcome, hit_chance, resolve_attack};
 pub use derived::{DerivedStats, Gear, UNARMED_DAMAGE};
 pub use dice::Dice;
 pub use progression::{LevelUp, MAX_LEVEL, Progress};
+pub use skills::Power;

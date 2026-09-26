@@ -7,7 +7,9 @@
 //! content/
 //!   appearances/*.ron   how characters look (sent to clients)
 //!   items/*.ron         things players can carry (sent to clients)
-//!   icons/*.png         item pictures (sent to clients)
+//!   icons/*.png         item and skill pictures (sent to clients)
+//!   sounds/*.wav        sounds (sent to clients)
+//!   sounds.ron          the game's own sounds: hits, misses, levelling up (sent to clients)
 //!   new_characters.ron  what new characters start with (server only)
 //!   classes/*.ron       the classes players choose from (server only)
 //!   creatures/*.ron     creatures that can be fought (server only)
@@ -37,11 +39,12 @@ mod load;
 pub mod script_hooks;
 
 pub use client::{
-    CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_appearances, parse_items, parse_skills,
+    CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_appearances, parse_game_sounds,
+    parse_items, parse_skills,
 };
 pub use definitions::{
-    AppearanceDef, ClassDef, ClassSkill, Colour, CreatureAttack, CreatureDef, Equippable, ItemCount, ItemDef,
-    NewCharacterDef, NpcDef, OutfitStyle, Placement, QuestDef, QuestStage, RespawnPoint, ShopDef, ShopItem, SkillDef,
-    SkillEffect, SpawnerDef, WeaponDef,
+    AppearanceDef, ClassDef, ClassSkill, Colour, CreatureAttack, CreatureDef, Equippable, GameSounds, ItemCount,
+    ItemDef, NewCharacterDef, NpcDef, OutfitStyle, Placement, QuestDef, QuestStage, RespawnPoint, ShopDef, ShopItem,
+    SkillDef, SkillEffect, SkillVisual, SpawnerDef, WeaponDef,
 };
 pub use load::{ContentError, ContentPack};

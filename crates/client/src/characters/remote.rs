@@ -83,6 +83,7 @@ fn follow_server_events(
     mut others: Query<&mut RemoteEntity>,
     mut players: Query<(&mut Level, &mut PlayerAppearance)>,
     mut healths: Query<&mut Health>,
+    mut gaits: Query<&mut Gait, Without<LocalPlayer>>,
 ) {
     let now = time.elapsed_secs();
     let my_id = me.map(|me| me.id);
@@ -144,6 +145,11 @@ fn follow_server_events(
                     let Some(&entity) = remotes.0.get(&state.id) else { continue };
                     if let (Some(fraction), Ok(mut health)) = (state.health, healths.get_mut(entity)) {
                         health.current = fraction;
+                    }
+                    if let Ok(mut gait) = gaits.get_mut(entity)
+                        && gait.resting != state.resting
+                    {
+                        gait.resting = state.resting;
                     }
                     let Ok(mut other) = others.get_mut(entity) else { continue };
                     other.samples.push_back((now, (state.x, state.y)));

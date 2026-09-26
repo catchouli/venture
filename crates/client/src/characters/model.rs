@@ -6,7 +6,7 @@
 //! The character faces +Z in its own space. Its origin is on the ground
 //! between its feet. Proportions follow a real adult (about 7.5 heads tall).
 
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use bevy::prelude::*;
 use venture_content::{AppearanceDef, Colour, OutfitStyle};
@@ -22,6 +22,12 @@ const BLEND_RATE: f32 = 8.0;
 const SWING_SECONDS: f32 = 0.45;
 /// How long a wave lasts, in seconds.
 const WAVE_SECONDS: f32 = 1.8;
+/// How quickly characters sit down and stand up (higher is quicker).
+const SIT_RATE: f32 = 6.0;
+/// How far the hips drop when sitting, in metres.
+const SIT_DROP: f32 = 0.8;
+/// How high the hip joints are when standing, in metres.
+const HIP_HEIGHT: f32 = 0.92;
 /// How long a wave takes to blend in and out, in seconds.
 const WAVE_BLEND_SECONDS: f32 = 0.3;
 
@@ -47,6 +53,10 @@ pub struct Gait {
     waving: Option<f32>,
     /// Seconds into a swing, if the character is swinging a weapon.
     swinging: Option<f32>,
+    /// Whether the character is sitting down to rest. Set from snapshots.
+    pub resting: bool,
+    /// How far down they are, from `0.0` (standing) to `1.0` (sitting).
+    sitting: f32,
 }
 
 impl Gait {
@@ -511,7 +521,7 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
         let hip = commands
             .spawn((
                 joint(JointKind::Hip(side)),
-                Transform::from_xyz(build.hip_x * x, 0.92, 0.0),
+                Transform::from_xyz(build.hip_x * x, HIP_HEIGHT, 0.0),
                 Visibility::default(),
             ))
             .with_children(|hip| {
@@ -609,6 +619,8 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
         if let Some(time) = gait.swinging {
             gait.swinging = Some(time + dt).filter(|&time| time < SWING_SECONDS);
         }
+        let target = if gait.resting { 1.0 } else { 0.0 };
+        gait.sitting += (target - gait.sitting) * (SIT_RATE * dt).min(1.0);
     }
 
     let breathing = (time.elapsed_secs() * 2.0).sin();
@@ -616,20 +628,25 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
         let Ok(gait) = gaits.get(joint.owner) else { continue };
         let (run, phase) = (gait.running, gait.phase);
         let (wave, wave_time) = gait.wave_amount();
+        // Sitting lowers the body to the ground and lays the legs out in front.
+        let sit = gait.sitting;
+        let drop = SIT_DROP * sit;
         transform.rotation = match joint.kind {
             JointKind::Body => {
                 // Bob up at each footfall, lean into the run and twist with the stride.
-                transform.translation.y = 0.95 + run * (0.04 * phase.cos().abs() - 0.03) + 0.004 * breathing;
-                Quat::from_rotation_x(0.16 * run) * Quat::from_rotation_y(0.12 * phase.sin() * run)
+                transform.translation.y = 0.95 + run * (0.04 * phase.cos().abs() - 0.03) + 0.004 * breathing - drop;
+                Quat::from_rotation_x(0.16 * run - 0.08 * sit) * Quat::from_rotation_y(0.12 * phase.sin() * run)
             }
             JointKind::Hip(side) => {
+                transform.translation.y = HIP_HEIGHT - drop;
                 let leg = phase + side.phase_offset();
-                Quat::from_rotation_x(-0.75 * leg.sin() * run)
+                Quat::from_rotation_x(-0.75 * leg.sin() * run - FRAC_PI_2 * sit)
+                    * Quat::from_rotation_z(side.sign() * 0.12 * sit)
             }
             JointKind::Knee(side) => {
                 // Bends most while the leg swings forward, and slightly when standing.
                 let leg = phase + side.phase_offset();
-                Quat::from_rotation_x(run * (0.2 + 1.1 * leg.cos().max(0.0)) + 0.03)
+                Quat::from_rotation_x(run * (0.2 + 1.1 * leg.cos().max(0.0)) + 0.03 + 0.25 * sit)
             }
             JointKind::Shoulder(side) => {
                 // Arms swing against the leg on the same side, and hang slightly
@@ -638,7 +655,7 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
                 let raise = if side == Side::Right { 1.9 * wave } else { 0.0 };
                 // A swing takes over the right arm.
                 let swing = gait.swing_angle().filter(|_| side == Side::Right);
-                let forward = swing.unwrap_or(0.6 * leg.sin() * run);
+                let forward = swing.unwrap_or(0.6 * leg.sin() * run - 0.35 * sit);
                 Quat::from_rotation_z(side.sign() * (0.08 + raise)) * Quat::from_rotation_x(forward)
             }
             JointKind::Elbow(side) => {

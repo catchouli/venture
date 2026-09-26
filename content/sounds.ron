@@ -1,0 +1,9 @@
+// The game's own sounds: files in sounds/ (placeholders made by
+// tools/placeholder_sounds.py). Skills name their own sounds in skills/.
+(
+    hit: Some("hit.wav"),
+    critical: Some("critical.wav"),
+    miss: Some("miss.wav"),
+    death: Some("death.wav"),
+    level_up: Some("level_up.wav"),
+)

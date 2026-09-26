@@ -68,6 +68,33 @@ pub enum AttackResult {
     Critical(u32),
 }
 
+/// How many slots the hotbar has (keys 1 to 9, then 0).
+pub const HOTBAR_SLOTS: usize = 10;
+
+/// What's in a hotbar slot.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HotbarEntry {
+    /// A skill (its id).
+    Skill(String),
+    /// An action.
+    Action(HotbarAction),
+}
+
+/// An action that can go on the hotbar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HotbarAction {
+    /// Attack the selected creature.
+    Attack,
+    /// Follow the selected player.
+    Follow,
+    /// Talk to the selected NPC.
+    Talk,
+    /// Wave.
+    Wave,
+    /// Go back to town.
+    Town,
+}
+
 /// Commands from a client. Each is a *request*; the server decides what happens.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ClientMessage {
@@ -173,6 +200,18 @@ pub enum ClientMessage {
         /// Which slot.
         slot: EquipSlot,
     },
+    /// Use a skill, on a target if it needs one (running into range first).
+    UseSkill {
+        /// Which skill (its id).
+        skill: String,
+        /// What to use it on, if anything.
+        target: Option<EntityId>,
+    },
+    /// Rearrange the hotbar (at most [`HOTBAR_SLOTS`] slots), saved with the character.
+    SetHotbar {
+        /// What's in each slot, from key 1.
+        slots: Vec<Option<HotbarEntry>>,
+    },
 }
 
 /// A gesture a character can make.
@@ -244,6 +283,31 @@ pub enum ServerMessage {
         target: EntityId,
         /// How it went.
         result: AttackResult,
+        /// The skill it was done with, if any (for its look and sound).
+        skill: Option<String>,
+    },
+    /// Someone used a skill (sent to everyone nearby, and them): the client
+    /// plays it (a swing, a bolt flying off, a glow, sitting down). Any damage
+    /// follows as [`ServerMessage::Attacked`], when it lands.
+    SkillUsed {
+        /// Who used it.
+        user: EntityId,
+        /// Which skill (its id).
+        skill: String,
+        /// What they used it on, if anything.
+        target: Option<EntityId>,
+    },
+    /// Something was healed (sent to everyone nearby).
+    Healed {
+        /// What was healed.
+        id: EntityId,
+        /// By how much.
+        amount: u32,
+    },
+    /// The player's hotbar, sent when they join.
+    Hotbar {
+        /// What's in each slot, from key 1.
+        slots: Vec<Option<HotbarEntry>>,
     },
     /// Something died (sent to everyone nearby). A creature is removed a
     /// moment later; a player wakes up at a respawn point.
@@ -257,6 +321,10 @@ pub enum ServerMessage {
         health: u32,
         /// Most health.
         max_health: u32,
+        /// Mana left.
+        mana: u32,
+        /// Most mana.
+        max_mana: u32,
     },
     /// Someone nearby did an emote (sent to them too).
     Emoted {
@@ -378,6 +446,8 @@ pub struct EntityState {
     pub moving: bool,
     /// How healthy it is, from 0 to 1 (creatures only; players' health is private).
     pub health: Option<f32>,
+    /// Whether it's sitting down to rest.
+    pub resting: bool,
 }
 
 /// One line of a conversation in a [`ServerMessage::Dialogue`].

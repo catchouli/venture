@@ -45,6 +45,10 @@ pub struct DerivedStats {
     pub damage: Dice,
     /// Attacks per second with their weapon.
     pub attacks_per_second: f32,
+    /// Added to attack rolls with spells (proficiency plus the casting ability's modifier).
+    pub spell_attack_bonus: i32,
+    /// Added to spells' damage and healing (the casting ability's modifier).
+    pub spell_bonus: i32,
 }
 
 /// What a character's equipment adds (the weapon's and armour's parts).
@@ -75,6 +79,7 @@ impl DerivedStats {
     pub fn of(class: &ClassRules, level: u32, abilities: &Abilities, gear: &Gear) -> Self {
         let level = level.max(1);
         let weapon_modifier = abilities.modifier(gear.weapon_ability);
+        let casting_modifier = abilities.modifier(class.casting_ability);
         Self {
             max_health: max_health(class, level, abilities.modifier(Ability::Constitution)),
             max_mana: max_mana(class, level, abilities.modifier(class.casting_ability)),
@@ -83,6 +88,8 @@ impl DerivedStats {
             damage_bonus: weapon_modifier,
             damage: weapon_damage(gear.weapon_damage, weapon_modifier),
             attacks_per_second: attacks_per_second(gear.weapon_speed, abilities.modifier(Ability::Dexterity)),
+            spell_attack_bonus: proficiency_bonus(level) + casting_modifier,
+            spell_bonus: casting_modifier,
         }
     }
 }
@@ -167,6 +174,7 @@ mod tests {
         assert_eq!(stats.attack_bonus, 4, "+2 proficiency, +2 STR");
         assert_eq!(stats.damage_bonus, 2);
         assert_eq!(stats.damage.to_string(), "1d6+2");
+        assert_eq!(stats.spell_attack_bonus, 2, "+2 proficiency, +0 WIS");
         let unarmed = DerivedStats::of(&fighter(), 1, &abilities, &Gear::default());
         assert_eq!(unarmed.damage.to_string(), "3", "1 plus Strength's +2");
         assert_eq!(weapon_damage(UNARMED_DAMAGE, -1).to_string(), "1", "weak fists still do 1");

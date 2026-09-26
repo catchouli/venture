@@ -8,12 +8,13 @@ use venture_simulation::{
     Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, Movement, clamp_move_goal, plan_route, step,
 };
 
-use crate::combat::{Attacking, Health};
+use crate::combat::{Attacking, Health, Resting};
 use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position};
 use crate::link::Link;
 use crate::npcs::{Npc, NpcInteraction};
 use crate::requests::{PlayerAction, PlayerRequest};
+use crate::skills::PendingSkill;
 use crate::world::ServerWorld;
 use crate::{GameRules, ServerSystems};
 
@@ -27,7 +28,7 @@ impl Plugin for GameplayPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Tick>().add_systems(
             FixedUpdate,
-            (act_on_requests, update_followers, update_attackers, simulate, send_snapshot)
+            (act_on_requests, sit_down, update_followers, update_attackers, update_casters, simulate, send_snapshot)
                 .chain()
                 .in_set(ServerSystems::Gameplay),
         );
@@ -62,9 +63,9 @@ fn act_on_requests(
                 link.send(me.connection, &ServerMessage::Notice { text });
             }
         };
-        // Any new order replaces following and walking over to talk.
+        // Any new order replaces following, walking over to talk, fighting and resting.
         let mut stop_following = || {
-            commands.entity(player).remove::<(Following, PendingInteraction, Attacking)>();
+            commands.entity(player).remove::<(Following, PendingInteraction, Attacking, PendingSkill, Resting)>();
         };
         match &request.action {
             PlayerAction::MoveTo(goal) => {
@@ -223,6 +224,44 @@ fn update_attackers(
     }
 }
 
+/// Players who have just sat down to rest stop whatever they were doing.
+fn sit_down(mut commands: Commands, mut resters: Query<(Entity, &mut Mover), Added<Resting>>) {
+    for (entity, mut mover) in &mut resters {
+        mover.0 = Movement::Idle;
+        commands.entity(entity).remove::<(Following, PendingInteraction, Attacking, PendingSkill)>();
+    }
+}
+
+/// Runs players into range of the target of a skill they're waiting to use
+/// (see [`crate::skills`], which uses it once they're close enough). Players
+/// also attacking the target are already being kept in reach.
+fn update_casters(
+    mut commands: Commands,
+    world: Res<ServerWorld>,
+    rules: Res<GameRules>,
+    targets: Query<&Position, Without<Dead>>,
+    mut casters: Query<(Entity, &mut PendingSkill, &Position, &mut Mover), Without<Attacking>>,
+) {
+    for (entity, mut pending, &Position(position), mut mover) in &mut casters {
+        let Ok(&Position(target)) = targets.get(pending.target) else {
+            mover.0 = Movement::Idle;
+            commands.entity(entity).remove::<PendingSkill>();
+            continue;
+        };
+        if distance(position, target) <= pending.reach {
+            mover.0 = Movement::Idle;
+            continue;
+        }
+        let outcome = pending
+            .follow
+            .update(position, target, &mut mover.0, rules.0.max_move_distance, |x, y| world.is_blocked(x, y));
+        if outcome == FollowOutcome::Stop {
+            mover.0 = Movement::Idle;
+            commands.entity(entity).remove::<PendingSkill>();
+        }
+    }
+}
+
 /// Moves everything for one tick.
 fn simulate(time: Res<Time>, world: Res<ServerWorld>, mut movers: Query<(&mut Position, &mut Mover)>) {
     let dt = time.delta_secs();
@@ -236,7 +275,7 @@ fn send_snapshot(
     mut tick: ResMut<Tick>,
     mut link: ResMut<Link>,
     players: Query<&Player>,
-    entities: Query<(&NetworkId, &Position, &Mover, Option<&Health>, Has<Creature>)>,
+    entities: Query<(&NetworkId, &Position, &Mover, Option<&Health>, Has<Creature>, Has<Resting>)>,
 ) {
     tick.0 += 1;
     if players.is_empty() {
@@ -244,10 +283,10 @@ fn send_snapshot(
     }
     let states: Vec<EntityState> = entities
         .iter()
-        .map(|(&NetworkId(id), &Position((x, y)), mover, health, creature)| {
+        .map(|(&NetworkId(id), &Position((x, y)), mover, health, creature, resting)| {
             // Only creatures' health is shown to everyone; players' is private.
             let health = health.filter(|_| creature).map(Health::fraction);
-            EntityState { id, x, y, moving: mover.0.is_moving(), health }
+            EntityState { id, x, y, moving: mover.0.is_moving(), health, resting }
         })
         .collect();
     let everyone: Vec<_> = players.iter().map(|player| player.connection).collect();

@@ -12,6 +12,10 @@
 //! A creature that dies gives its killer experience, and is removed shortly
 //! after. A player who dies wakes up at the nearest respawn point (see
 //! `respawn_points.ron` in the content), with full health.
+//!
+//! Players also have [`Mana`], which skills spend (see [`crate::skills`]) and
+//! which comes back on its own. Resting ([`Resting`]) speeds up both, until
+//! the player moves or is hit.
 
 use std::collections::HashMap;
 
@@ -20,7 +24,8 @@ use venture_content::ContentPack;
 use venture_navigation::Point;
 use venture_protocol::{AttackResult, ServerMessage};
 use venture_rpg::derived::{OUT_OF_COMBAT_SECONDS, REGENERATION_SECONDS, health_regeneration};
-use venture_rpg::{AttackOutcome, Dice, resolve_attack};
+use venture_rpg::skills::{REST_REGENERATION_SECONDS, mana_regeneration};
+use venture_rpg::{AttackOutcome, Dice, Power, resolve_attack};
 use venture_simulation::{MELEE_RANGE, Movement};
 
 use crate::ServerSystems;
@@ -31,6 +36,7 @@ use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteracti
 use crate::equipment::{Equipment, player_look};
 use crate::link::Link;
 use crate::npcs::resolve_placement;
+use crate::skills::PendingSkill;
 use crate::world::ServerWorld;
 
 /// Players within this distance (in metres) see a fight: attacks and deaths.
@@ -45,7 +51,7 @@ impl Plugin for CombatPlugin {
             .add_message::<KnockedOut>()
             .add_systems(
                 FixedUpdate,
-                (fit_health_to_character, auto_attack, resolve_strikes, regenerate)
+                (fit_vitals_to_character, auto_attack, resolve_strikes, regenerate)
                     .chain()
                     .in_set(ServerSystems::Combat),
             )
@@ -92,6 +98,18 @@ impl Health {
         self.attacker
     }
 
+    /// Whether it has fought recently (too recently to rest).
+    pub fn in_combat(&self) -> bool {
+        self.since_fighting < OUT_OF_COMBAT_SECONDS
+    }
+
+    /// Heals some health (never past the most). Returns how much it healed.
+    pub fn heal(&mut self, amount: u32) -> u32 {
+        let healed = amount.min(self.max - self.current);
+        self.current += healed;
+        healed
+    }
+
     /// Back to full health, forgetting who it was fighting (a creature going home).
     pub fn restore(&mut self) {
         self.current = self.max;
@@ -114,6 +132,48 @@ impl Health {
     }
 }
 
+/// A player's mana, which skills spend.
+#[derive(Component, Clone, Debug, PartialEq)]
+pub struct Mana {
+    current: u32,
+    max: u32,
+    /// Seconds towards its next regeneration.
+    regeneration: f32,
+}
+
+impl Mana {
+    /// Full mana.
+    pub fn full(max: u32) -> Self {
+        Self { current: max, max, regeneration: 0.0 }
+    }
+
+    /// Mana left.
+    pub fn current(&self) -> u32 {
+        self.current
+    }
+
+    /// Spends mana, if there's enough. Returns whether there was.
+    pub fn spend(&mut self, amount: u32) -> bool {
+        let enough = self.current >= amount;
+        if enough {
+            self.current -= amount;
+        }
+        enough
+    }
+
+    /// Changes the most mana (a new level, new stats), keeping what's left in range.
+    fn set_max(&mut self, max: u32) {
+        self.max = max;
+        self.current = self.current.min(max);
+    }
+}
+
+/// A player sitting down to rest: health and mana come back faster. Set by
+/// [`crate::skills`] (the Rest skill); ended by moving (see
+/// [`crate::gameplay`]) or by fighting.
+#[derive(Component)]
+pub struct Resting;
+
 /// A player attacking a creature: they run into reach (see
 /// [`crate::gameplay`]), then attack at their attack speed until it dies or
 /// they do something else.
@@ -133,25 +193,48 @@ pub struct Attacking {
 pub struct KnockedOut(pub Entity);
 
 /// One attack, to be rolled and applied.
-#[derive(Message, Clone, Copy, Debug)]
+#[derive(Message, Clone, Debug)]
 pub struct Strike {
     /// Who attacks.
     pub attacker: Entity,
     /// What they attack.
     pub target: Entity,
+    /// The skill it's done with, if any (otherwise it's an ordinary attack).
+    pub skill: Option<SkillHit>,
 }
 
-/// Keeps players' most health in line with their level, stats and gear.
-fn fit_health_to_character(
+/// A skill's attack, in a [`Strike`].
+#[derive(Clone, Debug)]
+pub struct SkillHit {
+    /// Which skill (its id).
+    pub skill: String,
+    /// Its damage dice, before the ability's bonus.
+    pub damage: Dice,
+    /// What powers it: the weapon or magic.
+    pub power: Power,
+}
+
+/// Keeps players' most health and mana in line with their level, stats and gear.
+fn fit_vitals_to_character(
     content: Res<LoadedContent>,
-    mut players: Query<(&Character, &Equipment, &mut Health), Or<(Changed<Character>, Changed<Equipment>)>>,
+    mut players: Query<(&Character, &Equipment, &mut Health, &mut Mana), Or<(Changed<Character>, Changed<Equipment>)>>,
 ) {
-    for (character, equipment, mut health) in &mut players {
+    for (character, equipment, mut health, mut mana) in &mut players {
         let max = max_health(character, equipment, &content.pack);
         if health.max != max {
             health.set_max(max);
         }
+        let max = max_mana(character, equipment, &content.pack);
+        if mana.max != max {
+            mana.set_max(max);
+        }
     }
+}
+
+/// A player's most mana, from their class, level, stats and gear.
+pub fn max_mana(character: &Character, equipment: &Equipment, pack: &ContentPack) -> u32 {
+    let class = class_or_default(pack, Some(&character.class));
+    character.derived(&class, &equipment.gear(&pack.items)).max_mana
 }
 
 /// A player's most health, from their class, level, stats and gear.
@@ -175,16 +258,18 @@ fn auto_attack(
         if distance(position, target) > MELEE_RANGE || attacking.cooldown > 0.0 {
             continue;
         }
-        strikes.write(Strike { attacker: player, target: attacking.target });
+        strikes.write(Strike { attacker: player, target: attacking.target, skill: None });
         let class = class_or_default(&content.pack, Some(&character.class));
         let speed = character.derived(&class, &equipment.gear(&content.pack.items)).attacks_per_second;
         attacking.cooldown = 1.0 / speed;
     }
 }
 
-/// What an attacker hits with: its attack bonus, its damage dice (bonus included).
+/// What an attacker hits with: its attack bonus, its damage dice (bonus
+/// included). A skill uses its own dice (see `venture_rpg::skills`).
 fn attack_of(
     attacker: Entity,
+    skill: Option<&SkillHit>,
     players: &Query<(&mut Character, &Equipment, &Player)>,
     creatures: &Query<&Creature>,
     pack: &ContentPack,
@@ -192,7 +277,10 @@ fn attack_of(
     if let Ok((character, equipment, _)) = players.get(attacker) {
         let class = class_or_default(pack, Some(&character.class));
         let derived = character.derived(&class, &equipment.gear(&pack.items));
-        return Some((derived.attack_bonus, derived.damage));
+        return Some(match skill {
+            Some(skill) => derived.skill_attack(skill.damage, skill.power),
+            None => (derived.attack_bonus, derived.damage),
+        });
     }
     let creature = creatures.get(attacker).ok()?;
     Some((creature.def.attack.bonus, creature.def.attack.damage))
@@ -220,6 +308,7 @@ struct Fights<'w, 's> {
     world: Res<'w, ServerWorld>,
     link: ResMut<'w, Link>,
     healths: Query<'w, 's, &'static mut Health>,
+    manas: Query<'w, 's, &'static mut Mana>,
     creatures: Query<'w, 's, &'static Creature>,
     dead: Query<'w, 's, (), With<Dead>>,
     identities: Query<'w, 's, (&'static NetworkId, &'static DisplayName, &'static Position)>,
@@ -230,13 +319,20 @@ struct Fights<'w, 's> {
 
 /// Rolls each attack, applies it, and deals with deaths.
 fn resolve_strikes(mut strikes: MessageReader<Strike>, mut fights: Fights) {
-    for &Strike { attacker, target } in strikes.read() {
-        if fights.dead.contains(attacker) || fights.dead.contains(target) {
+    for Strike { attacker, target, skill } in strikes.read() {
+        let (attacker, target) = (*attacker, *target);
+        // (Something killed earlier this tick isn't marked dead yet, but has no health.)
+        let knocked_down = |entity| fights.healths.get(entity).is_ok_and(|health| health.current == 0);
+        if fights.dead.contains(attacker)
+            || fights.dead.contains(target)
+            || knocked_down(attacker)
+            || knocked_down(target)
+        {
             continue;
         }
         let pack = &fights.content.pack;
         let (Some((bonus, damage)), Some(armour_class)) = (
-            attack_of(attacker, &fights.characters, &fights.creatures, pack),
+            attack_of(attacker, skill.as_ref(), &fights.characters, &fights.creatures, pack),
             armour_class_of(target, &fights.characters, &fights.creatures, pack),
         ) else {
             continue;
@@ -258,7 +354,11 @@ fn resolve_strikes(mut strikes: MessageReader<Strike>, mut fights: Fights) {
             AttackOutcome::Hit(amount) => AttackResult::Hit(amount),
             AttackOutcome::Critical(amount) => AttackResult::Critical(amount),
         };
-        fights.tell_nearby(at, &ServerMessage::Attacked { attacker: attacker_id, target: target_id, result });
+        let skill = skill.as_ref().map(|skill| skill.skill.clone());
+        fights.tell_nearby(at, &ServerMessage::Attacked { attacker: attacker_id, target: target_id, result, skill });
+        // Fighting ends a rest, for both sides.
+        fights.commands.entity(attacker).remove::<Resting>();
+        fights.commands.entity(target).remove::<Resting>();
 
         if let Ok(mut attacker_health) = fights.healths.get_mut(attacker) {
             attacker_health.since_fighting = 0.0;
@@ -306,14 +406,19 @@ impl Fights<'_, '_> {
         if gained.levels == 0 {
             return;
         }
-        // A new level: full health, and everyone sees the celebration.
+        // A new level: full health and mana, and everyone sees the celebration.
         let level = character.level();
         let pack = &self.content.pack;
         let max = max_health(&character, equipment, pack);
+        let most_mana = max_mana(&character, equipment, pack);
         let look = player_look(&character, equipment, &pack.items);
         if let Ok(mut health) = self.healths.get_mut(killer) {
             health.set_max(max);
             health.current = max;
+        }
+        if let Ok(mut mana) = self.manas.get_mut(killer) {
+            mana.set_max(most_mana);
+            mana.current = most_mana;
         }
         self.link.send(connection, &ServerMessage::Notice { text: format!("You reached level {level}!") });
         let Ok((&NetworkId(id), ..)) = self.identities.get(killer) else { return };
@@ -325,12 +430,21 @@ impl Fights<'_, '_> {
     fn player_died(&mut self, player: Entity, killer_name: &str) {
         let Ok((_, _, &Position(at))) = self.identities.get(player) else { return };
         let (name, respawn) = nearest_respawn_point(&self.content.pack, &self.world, at);
-        self.commands.entity(player).insert(Position(respawn)).remove::<(Attacking, Following, PendingInteraction)>();
+        self.commands.entity(player).insert(Position(respawn)).remove::<(
+            Attacking,
+            Following,
+            PendingInteraction,
+            PendingSkill,
+            Resting,
+        )>();
         self.commands.entity(player).insert(Mover(Movement::Idle));
         self.knocked_out.write(KnockedOut(player));
         if let Ok(mut health) = self.healths.get_mut(player) {
             health.current = health.max;
             health.attacker = None;
+        }
+        if let Ok(mut mana) = self.manas.get_mut(player) {
+            mana.current = mana.max;
         }
         if let Ok((_, _, owner)) = self.characters.get(player) {
             let text = format!("You were knocked out by {killer_name}. You wake up at {name}.");
@@ -349,37 +463,51 @@ pub fn nearest_respawn_point(pack: &ContentPack, world: &ServerWorld, at: Point)
         .unwrap_or_else(|| ("the town square".to_string(), world.manifest.spawn_point))
 }
 
-/// Health comes back slowly to anything that hasn't fought for a while.
-fn regenerate(time: Res<Time>, mut healths: Query<&mut Health, Without<Dead>>) {
+/// Health comes back slowly to anything that hasn't fought for a while, and
+/// mana all the time; both come back faster while resting.
+fn regenerate(time: Res<Time>, mut vitals: Query<(&mut Health, Option<&mut Mana>, Has<Resting>), Without<Dead>>) {
     let dt = time.delta_secs();
-    for mut health in &mut healths {
+    for (mut health, mana, resting) in &mut vitals {
+        let every = if resting { REST_REGENERATION_SECONDS } else { REGENERATION_SECONDS };
         health.since_fighting += dt;
-        if health.since_fighting < OUT_OF_COMBAT_SECONDS || health.current >= health.max {
+        if let Some(mut mana) = mana {
+            if mana.current >= mana.max {
+                mana.regeneration = 0.0;
+            } else {
+                mana.regeneration += dt;
+                if mana.regeneration >= every {
+                    mana.regeneration = 0.0;
+                    mana.current = (mana.current + mana_regeneration(mana.max)).min(mana.max);
+                }
+            }
+        }
+        if health.in_combat() || health.current >= health.max {
             health.regeneration = 0.0;
             continue;
         }
         health.regeneration += dt;
-        if health.regeneration >= REGENERATION_SECONDS {
+        if health.regeneration >= every {
             health.regeneration = 0.0;
             health.current = (health.current + health_regeneration(health.max)).min(health.max);
         }
     }
 }
 
-/// Sends players their health when it changes. (Health's timers tick every
-/// frame, so what was last sent is remembered, rather than relying on change
-/// detection.)
+/// Sends players their health and mana when they change. (Their timers tick
+/// every frame, so what was last sent is remembered, rather than relying on
+/// change detection.)
 fn send_vitals(
     mut link: ResMut<Link>,
-    players: Query<(Entity, &Player, &Health)>,
-    mut sent: Local<HashMap<Entity, (u32, u32)>>,
+    players: Query<(Entity, &Player, &Health, &Mana)>,
+    mut sent: Local<HashMap<Entity, [u32; 4]>>,
 ) {
     sent.retain(|player, _| players.contains(*player));
-    for (entity, player, health) in &players {
-        let vitals = (health.current, health.max);
+    for (entity, player, health, mana) in &players {
+        let vitals = [health.current, health.max, mana.current, mana.max];
         if sent.get(&entity) != Some(&vitals) {
             sent.insert(entity, vitals);
-            link.send(player.connection, &ServerMessage::Vitals { health: vitals.0, max_health: vitals.1 });
+            let [health, max_health, mana, max_mana] = vitals;
+            link.send(player.connection, &ServerMessage::Vitals { health, max_health, mana, max_mana });
         }
     }
 }

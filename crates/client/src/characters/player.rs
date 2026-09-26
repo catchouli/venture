@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{ClientMessage, EntityId, PlayerLook, ServerMessage};
-use venture_simulation::{Follow, FollowOutcome, INTERACT_DISTANCE, Movement, Rules, step};
+use venture_simulation::{Follow, FollowOutcome, Movement, Rules, step};
 
 use crate::camera::{CameraHeading, CameraMode, wasd_direction};
 use crate::characters::model::{CharacterAssets, Gait, rebuild_body, spawn_character};
@@ -80,9 +80,10 @@ pub struct Following {
     pub target: Entity,
     /// The state of the chase.
     pub follow: Follow,
-    /// Whether this is walking over to talk to an NPC, which ends on arrival
-    /// (the server then starts the conversation).
-    pub talk_on_arrival: bool,
+    /// Whether this ends once within this distance (in metres): walking over
+    /// to talk to an NPC, or into range for a spell (the server then starts
+    /// the conversation, or casts it).
+    pub stop_within: Option<f32>,
 }
 
 /// The server's game rules, received when joining.
@@ -244,7 +245,7 @@ fn predict_following(
         return;
     };
     let (position, target) = (from_bevy(transform.translation), from_bevy(target.translation));
-    if chase.talk_on_arrival && (target.0 - position.0).hypot(target.1 - position.1) <= INTERACT_DISTANCE {
+    if chase.stop_within.is_some_and(|reach| (target.0 - position.0).hypot(target.1 - position.1) <= reach) {
         *following = None;
         *movement = Movement::Idle;
         return;
@@ -290,15 +291,16 @@ fn correct_towards_server(
     time: Res<Time>,
     mut events: MessageReader<FromServer>,
     mut server_position: Local<Option<(Point, bool)>>,
-    player: Option<Single<(&mut Transform, &mut LocalPlayer)>>,
+    player: Option<Single<(&mut Transform, &mut LocalPlayer, &mut Gait)>>,
 ) {
     let Some(player) = player else { return };
-    let (mut transform, mut player) = player.into_inner();
+    let (mut transform, mut player, mut gait) = player.into_inner();
     for FromServer(message) in events.read() {
         if let ServerMessage::Snapshot { entities, .. } = message
             && let Some(me) = entities.iter().find(|state| state.id == player.id)
         {
             *server_position = Some(((me.x, me.y), me.moving));
+            gait.resting = me.resting;
         }
     }
     let Some(((server_x, server_y), server_moving)) = *server_position else { return };

@@ -3,11 +3,12 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::client::{ClientContent, parse_appearances, parse_items, parse_skills};
+use crate::client::{ClientContent, parse_appearances, parse_game_sounds, parse_items, parse_skills};
 use crate::definitions::CreatureDef;
 use crate::definitions::{
-    AppearanceDef, ClassDef, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS,
-    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef,
+    AppearanceDef, ClassDef, GameSounds, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS,
+    MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef, RespawnPoint, ShopDef,
+    SkillDef, SkillEffect, SpawnerDef,
 };
 use venture_protocol::EquipSlot;
 use venture_rpg::MAX_LEVEL;
@@ -16,6 +17,10 @@ use venture_rpg::MAX_LEVEL;
 const NEW_CHARACTERS_FILE: &str = "new_characters.ron";
 /// The file listing where players wake up after dying.
 const RESPAWN_POINTS_FILE: &str = "respawn_points.ron";
+/// The file naming the game's own sounds (hits, misses, levelling up).
+const SOUNDS_FILE: &str = "sounds.ron";
+/// The largest a sound file may be, in bytes.
+const MAX_SOUND_BYTES: usize = 512 * 1024;
 /// The largest an icon file may be, in bytes.
 const MAX_ICON_BYTES: usize = 64 * 1024;
 /// The first bytes of every PNG file.
@@ -51,6 +56,8 @@ pub struct ContentPack {
     pub quests: BTreeMap<String, QuestDef>,
     /// Skills, by id.
     pub skills: BTreeMap<String, SkillDef>,
+    /// The game's own sounds.
+    pub sounds: GameSounds,
     /// Creatures, by id.
     pub creatures: BTreeMap<String, CreatureDef>,
     /// Spawners, in file order.
@@ -107,6 +114,30 @@ impl ContentPack {
             client_files.push((to_slashes(&relative), bytes));
         }
 
+        let mut sounds = HashSet::new();
+        for (relative, bytes) in read_binary_files(folder, "sounds", "wav", &mut errors) {
+            if !(bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WAVE".as_slice())) {
+                errors.push(error(&relative, "this isn't a WAV sound".to_string()));
+            } else if bytes.len() > MAX_SOUND_BYTES {
+                errors.push(error(&relative, format!("sounds must be at most {} KB", MAX_SOUND_BYTES / 1024)));
+            }
+            sounds.insert(file_name(&relative));
+            client_files.push((to_slashes(&relative), bytes));
+        }
+        if let Ok(text) = std::fs::read_to_string(folder.join(SOUNDS_FILE)) {
+            let file = Path::new(SOUNDS_FILE);
+            match parse_game_sounds(&text) {
+                Ok(game_sounds) => {
+                    for sound in game_sounds.files().filter(|sound| !sounds.contains(*sound)) {
+                        errors.push(error(file, format!("there's no sound called \"{sound}\" in sounds/")));
+                    }
+                    pack.sounds = game_sounds;
+                    client_files.push((SOUNDS_FILE.to_string(), text.into_bytes()));
+                }
+                Err(message) => errors.push(error(file, message)),
+            }
+        }
+
         for (relative, text) in read_files(folder, "items", "ron", &mut errors) {
             match parse_items(&text) {
                 Ok(items) => {
@@ -127,7 +158,7 @@ impl ContentPack {
             match parse_skills(&text) {
                 Ok(skills) => {
                     for skill in skills {
-                        check_skill(&skill, &icons, &relative, &mut errors);
+                        check_skill(&skill, &icons, &sounds, &relative, &mut errors);
                         if pack.skills.contains_key(&skill.id) {
                             errors.push(error(&relative, format!("there's already a skill called \"{}\"", skill.id)));
                         }
@@ -352,7 +383,13 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
     }
 }
 
-fn check_skill(skill: &SkillDef, icons: &HashSet<String>, file: &Path, errors: &mut Vec<ContentError>) {
+fn check_skill(
+    skill: &SkillDef,
+    icons: &HashSet<String>,
+    sounds: &HashSet<String>,
+    file: &Path,
+    errors: &mut Vec<ContentError>,
+) {
     let mut problem = |message: String| errors.push(error(file, format!("skill \"{}\": {message}", skill.id)));
     if skill.name.trim().is_empty() {
         problem("it needs a name".to_string());
@@ -362,6 +399,21 @@ fn check_skill(skill: &SkillDef, icons: &HashSet<String>, file: &Path, errors: &
     }
     if !(skill.cooldown >= 0.0 && skill.cooldown.is_finite() && skill.range >= 0.0 && skill.range.is_finite()) {
         problem("its cooldown and range must be 0 or more".to_string());
+    }
+    if let Some(sound) = skill.sound.as_ref().filter(|sound| !sounds.contains(*sound)) {
+        problem(format!("there's no sound called \"{sound}\" in sounds/"));
+    }
+    if let SkillEffect::Bolt { speed, .. } = skill.effect
+        && !(speed > 0.0 && speed.is_finite())
+    {
+        problem("its bolt's speed must be more than 0".to_string());
+    }
+    if skill.needs_target() && skill.reach() <= 0.0 {
+        problem("it's used on a target, so it needs a range".to_string());
+    }
+    let (r, g, b) = skill.visual.colour;
+    if ![r, g, b, skill.visual.size].iter().all(|value| value.is_finite() && *value >= 0.0) {
+        problem("its visual's colour and size must be 0 or more".to_string());
     }
 }
 

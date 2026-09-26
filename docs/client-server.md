@@ -387,6 +387,39 @@ wakes at the nearest respawn point with full health. Creatures fighting them
 give up and heal. Out of combat for 6 seconds, health comes back by a
 twentieth of the maximum every 3 seconds.
 
+## Skills, mana and the hotbar
+
+**Using a skill:** the client sends `UseSkill { skill, target }`. The gate
+passes it to `skills.rs`, the only code that uses skills. It checks four
+things: the player knows the skill, it isn't cooling down (`Cooldowns`), they
+have the mana (`Mana`, in `combat.rs`), and the target is a living creature.
+Then it tells everyone within 60 m with `SkillUsed { user, skill, target }`,
+which clients play (a swing, a bolt flying off, a glow, a sound):
+- A weapon skill becomes a `Strike` with the skill's dice, resolved by
+  `combat.rs` like any attack. The player then goes on auto-attacking.
+- A spell becomes a bolt in flight on the server, which strikes when it
+  arrives (distance ÷ speed later).
+- Out of range, the player first runs up (`PendingSkill`, moved by
+  `gameplay.rs`).
+- Heals come with `Healed { id, amount }`.
+
+`Attacked` carries the skill used, if any, so clients can show it.
+The client greys out skills that are cooling down or too expensive, and
+explains those refusals without asking. The server checks everything again
+regardless.
+
+**Resting** (the Rest skill) sits the player down (`Resting`). `sit_down` in
+`gameplay.rs` stops them. Any movement order, or any blow landed or taken,
+stands them up. Snapshots carry `resting` so everyone sees them sit.
+
+**Mana** comes with health in `Vitals { health, max_health, mana, max_mana }`.
+
+**The hotbar** is only a layout: ten slots of skills or actions. It's saved
+with the profile and sent as `Hotbar { slots }` on joining. The client sends
+the whole bar after each change (`SetHotbar`), and `hotbar.rs` keeps only
+skills the player knows (sending back the corrected bar if it had to change
+anything). New skills go in the first empty slot, and forgotten ones come off.
+
 ## Actions and chat commands
 
 The things a player can do are **actions**, defined in one place on the
@@ -398,7 +431,7 @@ same, and a new action is added once.
 A chat message starting with `/` names an action and is never sent as chat:
 - `/follow`: follow the selected player;
 - `/talk`: talk to the selected NPC;
-- `/attack`: attack the selected creature (or click it again);
+- `/attack`: attack the selected creature (or click it again, or use it from the hotbar);
 - `/wave`: wave hello (the server shows it to everyone within 40 m, as an
   `Emoted` message; emotes share chat's rate limit);
 - `/town`: go back to the starting town's square;

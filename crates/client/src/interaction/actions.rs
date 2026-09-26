@@ -11,7 +11,7 @@
 //! in chat. They're only predicted locally when they will work.
 
 use bevy::prelude::*;
-use venture_protocol::{ClientMessage, Emote};
+use venture_protocol::{ClientMessage, Emote, HotbarAction};
 
 use crate::interaction::admin_commands::ADMIN_COMMANDS;
 use crate::interaction::orders::Orders;
@@ -77,6 +77,48 @@ impl Action {
     /// The action with this name (ignoring case), if there is one.
     pub fn named(name: &str) -> Option<Action> {
         Action::ALL.into_iter().find(|action| action.name().eq_ignore_ascii_case(name))
+    }
+
+    /// The action as it goes on the hotbar (not all of them can).
+    pub fn on_hotbar(self) -> Option<HotbarAction> {
+        match self {
+            Action::Attack => Some(HotbarAction::Attack),
+            Action::Follow => Some(HotbarAction::Follow),
+            Action::Talk => Some(HotbarAction::Talk),
+            Action::Wave => Some(HotbarAction::Wave),
+            Action::Town => Some(HotbarAction::Town),
+            Action::Help => None,
+        }
+    }
+
+    /// The action a hotbar slot does.
+    pub fn from_hotbar(action: HotbarAction) -> Action {
+        match action {
+            HotbarAction::Attack => Action::Attack,
+            HotbarAction::Follow => Action::Follow,
+            HotbarAction::Talk => Action::Talk,
+            HotbarAction::Wave => Action::Wave,
+            HotbarAction::Town => Action::Town,
+        }
+    }
+
+    /// Its picture: an icon file in the content's `icons/`, if it has one.
+    pub fn icon(self) -> Option<&'static str> {
+        match self {
+            Action::Attack => Some("action_attack.png"),
+            Action::Talk => Some("action_talk.png"),
+            Action::Follow => Some("action_follow.png"),
+            Action::Wave => Some("emote_wave.png"),
+            Action::Town => Some("action_town.png"),
+            Action::Help => None,
+        }
+    }
+
+    /// Its name with a capital letter, for tooltips ("Attack").
+    pub fn title(self) -> String {
+        let mut title = self.name().to_string();
+        title[..1].make_ascii_uppercase();
+        title
     }
 }
 
@@ -147,6 +189,9 @@ mod tests {
         assert_eq!(Action::named("fly"), None);
         for action in Action::ALL {
             assert_eq!(Action::named(action.name()), Some(action), "names are unique");
+            if let Some(on_hotbar) = action.on_hotbar() {
+                assert_eq!(Action::from_hotbar(on_hotbar), action, "hotbar actions go both ways");
+            }
         }
     }
 }

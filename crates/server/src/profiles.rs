@@ -15,7 +15,7 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use venture_protocol::{BodyType, EquipSlot, ItemStack};
+use venture_protocol::{BodyType, EquipSlot, HotbarEntry, ItemStack};
 use venture_rpg::Abilities;
 
 /// Everything saved about a character. Fields added since the first
@@ -64,6 +64,9 @@ pub struct Profile {
     /// Their quests: (quest id, stage reached), in the order they started them.
     #[serde(default)]
     pub quests: Vec<(String, String)>,
+    /// Their hotbar, from key 1 (if missing, the starting one).
+    #[serde(default)]
+    pub hotbar: Option<Vec<Option<HotbarEntry>>>,
 }
 
 fn first_level() -> u32 {
@@ -88,6 +91,7 @@ impl Profile {
             miasma: 0,
             inventory: Vec::new(),
             quests: Vec::new(),
+            hotbar: None,
         }
     }
 }

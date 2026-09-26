@@ -12,15 +12,17 @@
 //! a [`PlayerRequest`] (for [`crate::gameplay`]), a [`DialogueRequest`] (for
 //! [`crate::dialogue`]), a [`ShopRequest`] (for [`crate::shops`]), a
 //! [`CharacterRequest`] (for [`crate::character`]), an [`EquipmentRequest`]
-//! (for [`crate::equipment`]) or an [`AdminRequest`] (for [`crate::admin`]). Too many strikes and the
-//! connection is closed.
+//! (for [`crate::equipment`]), a [`SkillRequest`] (for [`crate::skills`]), a
+//! [`HotbarRequest`] (for [`crate::hotbar`]) or an [`AdminRequest`] (for
+//! [`crate::admin`]). Too many strikes and the connection is closed.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{
-    AdminCommand, ClientMessage, EntityId, PROTOCOL_VERSION, ServerMessage, clean_chat_text, clean_name, is_valid_token,
+    AdminCommand, ClientMessage, EntityId, HOTBAR_SLOTS, HotbarEntry, PROTOCOL_VERSION, ServerMessage, clean_chat_text,
+    clean_name, is_valid_token,
 };
 use venture_simulation::steering_direction;
 
@@ -57,6 +59,8 @@ impl Plugin for RequestsPlugin {
             .add_message::<AdminRequest>()
             .add_message::<CharacterRequest>()
             .add_message::<EquipmentRequest>()
+            .add_message::<SkillRequest>()
+            .add_message::<HotbarRequest>()
             .add_systems(FixedUpdate, receive_messages.in_set(ServerSystems::Requests));
     }
 }
@@ -190,6 +194,28 @@ pub enum EquipmentAction {
     Unequip(venture_protocol::EquipSlot),
 }
 
+/// A player using a skill, for [`crate::skills`].
+#[derive(Message)]
+pub struct SkillRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// Which skill (an id at most [`MAX_ID_BYTES`] long). Not yet checked
+    /// against the content or what they know.
+    pub skill: String,
+    /// What to use it on, if anything.
+    pub target: Option<EntityId>,
+}
+
+/// A player rearranging their hotbar, for [`crate::hotbar`].
+#[derive(Message)]
+pub struct HotbarRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// What's in each slot: at most [`HOTBAR_SLOTS`], with skill ids at most
+    /// [`MAX_ID_BYTES`] long. Not yet checked against what they know.
+    pub slots: Vec<Option<HotbarEntry>>,
+}
+
 /// An admin command, for [`crate::admin`] (which checks the player is an admin).
 #[derive(Message)]
 pub struct AdminRequest {
@@ -251,6 +277,8 @@ fn receive_messages(
     mut admin: MessageWriter<AdminRequest>,
     mut characters: MessageWriter<CharacterRequest>,
     mut equipment: MessageWriter<EquipmentRequest>,
+    mut skills: MessageWriter<SkillRequest>,
+    mut hotbars: MessageWriter<HotbarRequest>,
 ) {
     let now = time.elapsed_secs();
     while let Some(event) = link.next_event() {
@@ -292,6 +320,12 @@ fn receive_messages(
                     Verdict::Equipment(request) => {
                         equipment.write(request);
                     }
+                    Verdict::Skill(request) => {
+                        skills.write(request);
+                    }
+                    Verdict::Hotbar(request) => {
+                        hotbars.write(request);
+                    }
                     Verdict::Reply(message) => link.send(id, &message),
                     Verdict::Ignore => {}
                     Verdict::Strike => {
@@ -320,6 +354,8 @@ enum Verdict {
     Admin(AdminRequest),
     Character(CharacterRequest),
     Equipment(EquipmentRequest),
+    Skill(SkillRequest),
+    Hotbar(HotbarRequest),
     /// Answer the client directly, without changing anything.
     Reply(ServerMessage),
     Ignore,
@@ -443,6 +479,16 @@ fn judge_player_message(
         }
         ClientMessage::Unequip { slot } => {
             return Verdict::Equipment(EquipmentRequest { player, action: EquipmentAction::Unequip(slot) });
+        }
+        ClientMessage::UseSkill { skill, .. } if skill.len() > MAX_ID_BYTES => return Verdict::Strike,
+        ClientMessage::UseSkill { skill, target } => return Verdict::Skill(SkillRequest { player, skill, target }),
+        ClientMessage::SetHotbar { slots } => {
+            let too_long =
+                |entry: &Option<HotbarEntry>| matches!(entry, Some(HotbarEntry::Skill(id)) if id.len() > MAX_ID_BYTES);
+            if slots.len() > HOTBAR_SLOTS || slots.iter().any(too_long) {
+                return Verdict::Strike;
+            }
+            return Verdict::Hotbar(HotbarRequest { player, slots });
         }
         ClientMessage::Hello { .. } | ClientMessage::CreateCharacter { .. } => return Verdict::Strike,
     };

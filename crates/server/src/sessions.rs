@@ -6,11 +6,12 @@ use venture_navigation::Point;
 use venture_protocol::{BodyType, ClassChoice, EntityKind, ServerMessage};
 
 use crate::character::{Admin, Character, class_or_default};
-use crate::combat::{Health, max_health};
+use crate::combat::{Health, Mana, max_health, max_mana};
 use crate::content::LoadedContent;
 use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
 use crate::equipment::{Equipment, player_look};
+use crate::hotbar::Hotbar;
 use crate::inventory::{Change, Inventory};
 use crate::link::{ConnectionId, Link};
 use crate::names::random_name;
@@ -18,6 +19,7 @@ use crate::npcs::Npc;
 use crate::profiles::{Profile, ProfileKey, ProfileStore};
 use crate::quests::QuestLog;
 use crate::requests::{Connections, SessionRequest, Stage};
+use crate::skills::Cooldowns;
 use crate::world::ServerWorld;
 use crate::{Admins, GameRules, ServerSystems};
 
@@ -64,6 +66,7 @@ type SavedParts = (
     &'static QuestLog,
     &'static Character,
     &'static Equipment,
+    &'static Hotbar,
 );
 
 /// The resources joining and leaving need.
@@ -190,6 +193,8 @@ impl Sessions<'_, '_> {
         };
         let look = player_look(&character, &equipment, &pack.items);
         let health = Health::full(max_health(&character, &equipment, pack));
+        let mana = Mana::full(max_mana(&character, &equipment, pack));
+        let hotbar = Hotbar::from_saved(saved.hotbar.take(), &character);
         let inventory = Inventory::from_saved(saved.inventory, saved.miasma);
         let quests = QuestLog::from_saved(saved.quests);
         let admin = self.admins.0.iter().any(|admin| admin.eq_ignore_ascii_case(&name.0));
@@ -200,7 +205,8 @@ impl Sessions<'_, '_> {
         let welcome =
             ServerMessage::Welcome { you: id, name: name.0.clone(), position: position.0, rules, admin, look };
         self.link.send(connection, &welcome);
-        for (_, &NetworkId(other), (_, other_name, &other_position, _, _, other_character, other_equipment)) in
+        self.link.send(connection, &hotbar.message());
+        for (_, &NetworkId(other), (_, other_name, &other_position, _, _, other_character, other_equipment, _)) in
             &self.players
         {
             let other_look = player_look(other_character, other_equipment, &self.content.pack.items);
@@ -228,6 +234,7 @@ impl Sessions<'_, '_> {
             position,
             Mover::default(),
             (inventory, quests, character, equipment, health),
+            (mana, hotbar, Cooldowns::default()),
         ));
         if admin {
             player.insert(Admin);
@@ -336,7 +343,7 @@ fn save_all(store: &ProfileStore, players: &Query<SavedParts>) {
 
 /// What to save about a player.
 fn profile_of(
-    (_, name, &Position(position), inventory, quests, character, equipment): (
+    (_, name, &Position(position), inventory, quests, character, equipment, hotbar): (
         &Player,
         &DisplayName,
         &Position,
@@ -344,6 +351,7 @@ fn profile_of(
         &QuestLog,
         &Character,
         &Equipment,
+        &Hotbar,
     ),
 ) -> Profile {
     let mut profile = Profile::new(name.0.clone(), position);
@@ -352,6 +360,7 @@ fn profile_of(
     profile.inventory = inventory.slots().to_vec();
     profile.miasma = inventory.miasma();
     profile.quests = quests.saved();
+    profile.hotbar = Some(hotbar.slots().to_vec());
     profile
 }
 

@@ -304,6 +304,18 @@ def emote_wave():
     ]
 
 
+def action_town():
+    wall, roof = (226, 214, 190), (170, 70, 50)
+    return [
+        tile((56, 70, 60)),
+        (rounded_box(16, 21, 9, 6, 1), wall),  # a house
+        (polygon([(5, 16), (16, 6), (27, 16)]), roof),
+        (detail(rounded_box(16, 23.5, 2.2, 3.5, 0.8)), (110, 70, 40)),  # its door
+        (detail(rounded_box(10.5, 20, 1.8, 1.8, 0.4)), (120, 160, 200)),  # a window
+        (detail(rounded_box(21.5, 20, 1.8, 1.8, 0.4)), (120, 160, 200)),
+    ]
+
+
 ICONS = {
     "miasma.png": miasma,
     "bread.png": bread,
@@ -326,6 +338,7 @@ ICONS = {
     "action_talk.png": action_talk,
     "action_follow.png": action_follow,
     "emote_wave.png": emote_wave,
+    "action_town.png": action_town,
 }
 
 

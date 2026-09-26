@@ -1,4 +1,4 @@
-//! The content pack's client files (NPC appearances, items, skills and their icons):
+//! The content pack's client files (NPC appearances, items, skills, icons and sounds):
 //! downloaded from the server, and downloaded again when the server reloads
 //! its content.
 //!
@@ -13,8 +13,8 @@ use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 use venture_content::{
-    AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, ItemDef, SkillDef, parse_appearances, parse_items,
-    parse_skills,
+    AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, SkillDef, parse_appearances,
+    parse_game_sounds, parse_items, parse_skills,
 };
 use venture_protocol::ServerMessage;
 
@@ -52,6 +52,10 @@ pub struct ContentStore {
     pub skills: HashMap<String, SkillDef>,
     /// Item icons, by file name within `icons/`.
     pub icons: HashMap<String, Handle<Image>>,
+    /// Sounds, by file name within `sounds/`.
+    pub sounds: HashMap<String, Handle<AudioSource>>,
+    /// Which sounds the game itself plays (hits, misses, levelling up).
+    pub game_sounds: GameSounds,
     /// The files held, by path, with their hashes (to skip unchanged files).
     files: HashMap<String, ContentFile>,
 }
@@ -78,6 +82,9 @@ enum FileData {
     Skills(Vec<SkillDef>),
     /// A PNG, turned into an image once the download is finished.
     Icon(Vec<u8>),
+    /// A WAV, turned into a sound once the download is finished.
+    Sound(Vec<u8>),
+    GameSounds(GameSounds),
 }
 
 /// Where content files come from.
@@ -190,6 +197,8 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
         Some("items") => FileData::Items(parse_items(&text())?),
         Some("skills") => FileData::Skills(parse_skills(&text())?),
         Some("icons") => FileData::Icon(bytes.to_vec()),
+        Some("sounds") => FileData::Sound(bytes.to_vec()),
+        Some("sounds.ron") => FileData::GameSounds(parse_game_sounds(&text())?),
         _ => return Err(format!("{path}: the client doesn't know this kind of file")),
     };
     Ok(ContentFile { hash: hash.to_string(), data })
@@ -200,6 +209,7 @@ fn finish_download(
     mut download: ResMut<ContentDownload>,
     mut store: ResMut<ContentStore>,
     mut images: ResMut<Assets<Image>>,
+    mut audio: ResMut<Assets<AudioSource>>,
 ) {
     let Some(task) = download.0.as_mut() else { return };
     let Some(result) = check_ready(task) else { return };
@@ -210,6 +220,8 @@ fn finish_download(
             store.items.clear();
             store.skills.clear();
             store.icons.clear();
+            store.sounds.clear();
+            store.game_sounds = GameSounds::default();
             for (path, file) in &downloaded.files {
                 match &file.data {
                     FileData::Appearances(appearances) => {
@@ -226,6 +238,11 @@ fn finish_download(
                         }
                         Err(error) => warn!("Couldn't read the icon {path}: {error}"),
                     },
+                    FileData::Sound(wav) => {
+                        let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                        store.sounds.insert(name, audio.add(AudioSource { bytes: wav.as_slice().into() }));
+                    }
+                    FileData::GameSounds(sounds) => store.game_sounds = sounds.clone(),
                 }
             }
             store.files = downloaded.files;

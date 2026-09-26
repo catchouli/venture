@@ -2,19 +2,20 @@
 //! following), the **skills** the character knows, and the class skills they
 //! can learn with skill points (from a level, for a cost).
 //!
-//! Clicking an action does it, just like typing its chat command. (Using
-//! skills comes with fighting: see `docs/plan-combat.md`.)
+//! Clicking an action does it, just like typing its chat command, and
+//! clicking a skill uses it on the selected target. Both can be dragged onto
+//! the hotbar (see [`crate::ui::hotbar`]), which does the clicking too.
 
 use bevy::prelude::*;
-use venture_protocol::ClientMessage;
+use venture_protocol::{ClientMessage, HotbarEntry};
 
 use crate::content::ContentStore;
-use crate::interaction::actions::{Action, PerformAction};
+use crate::interaction::actions::Action;
 use crate::network::ToServer;
 use crate::ui::character_window::{
     Pages, QUIET_COLOUR, Sheet, TEXT_COLOUR, Tab, heading, icon_box, small_button, text,
 };
-use crate::ui::chat::SystemMessage;
+use crate::ui::hotbar::Draggable;
 use crate::ui::tooltip::Tooltip;
 
 /// Size of an action's or skill's box, in pixels.
@@ -26,7 +27,7 @@ const POINTS_COLOUR: Color = Color::srgb(0.6, 0.9, 0.55);
 /// How faded a skill not yet learned looks.
 const LOCKED_TINT: Color = Color::srgba(1.0, 1.0, 1.0, 0.35);
 /// The actions shown, in order.
-const ACTIONS: [Action; 3] = [Action::Attack, Action::Talk, Action::Follow];
+const ACTIONS: [Action; 4] = [Action::Attack, Action::Talk, Action::Follow, Action::Town];
 
 /// Shows the skills tab.
 pub struct SkillsPlugin;
@@ -34,17 +35,13 @@ pub struct SkillsPlugin;
 impl Plugin for SkillsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, fill_page.after(super::spawn_window))
-            .add_systems(Update, (show_actions, show_skills, use_on_click, learn_on_click));
+            .add_systems(Update, (show_actions, show_skills, learn_on_click));
     }
 }
 
 /// An action's box.
 #[derive(Component)]
 struct ActionButton(Action);
-
-/// A known skill's box.
-#[derive(Component)]
-struct SkillButton(String);
 
 /// The button learning a skill.
 #[derive(Component)]
@@ -62,23 +59,16 @@ struct SkillsToLearn;
 #[derive(Component)]
 struct PointsText;
 
-/// The content icon for an action.
-fn action_icon(action: Action) -> &'static str {
-    match action {
-        Action::Attack => "action_attack.png",
-        Action::Talk => "action_talk.png",
-        Action::Follow => "action_follow.png",
-        Action::Wave => "emote_wave.png",
-        _ => "",
-    }
-}
-
 fn fill_page(mut commands: Commands, pages: Res<Pages>) {
     commands.entity(pages.of(Tab::Skills)).with_children(|page| {
         page.spawn(heading("Actions"));
         page.spawn(Node { column_gap: px(6), ..default() }).with_children(|row| {
             for action in ACTIONS {
-                row.spawn((ActionButton(action), icon_box(BOX_SIZE))).with_child((
+                let mut button = row.spawn((ActionButton(action), icon_box(BOX_SIZE)));
+                if let Some(on_hotbar) = action.on_hotbar() {
+                    button.insert(Draggable(HotbarEntry::Action(on_hotbar)));
+                }
+                button.with_child((
                     ImageNode::default(),
                     Node { width: px(ICON_SIZE), height: px(ICON_SIZE), ..default() },
                 ));
@@ -105,10 +95,12 @@ fn show_actions(
     }
     for (button, children, mut tooltip) in &mut actions {
         let name = button.0.name();
-        let mut title = name.to_string();
-        title[..1].make_ascii_uppercase();
-        *tooltip = Tooltip { title, body: format!("{} (/{name})", capitalised(button.0.description())) };
-        if let (Some(&child), Some(icon)) = (children.first(), content.icons.get(action_icon(button.0)))
+        let body = format!(
+            "{} (/{name}).\nDrag it onto the hotbar to use it with a key.",
+            capitalised(button.0.description())
+        );
+        *tooltip = Tooltip { title: button.0.title(), body };
+        if let (Some(&child), Some(icon)) = (children.first(), button.0.icon().and_then(|icon| content.icons.get(icon)))
             && let Ok(mut image) = icons.get_mut(child)
         {
             image.image = icon.clone();
@@ -162,11 +154,13 @@ fn show_skills(
     commands.entity(*known).despawn_children().with_children(|known| {
         for skill in &sheet.skills {
             let mut tooltip = details(skill);
-            tooltip.body.push_str("\n(Using skills comes with fighting.)");
-            known.spawn((SkillButton(skill.clone()), icon_box(BOX_SIZE))).insert(tooltip).with_child((
-                ImageNode::new(icon(skill).unwrap_or_default()),
-                Node { width: px(ICON_SIZE), height: px(ICON_SIZE), ..default() },
-            ));
+            tooltip.body.push_str("\nClick to use it, or drag it onto the hotbar.");
+            known.spawn((Draggable(HotbarEntry::Skill(skill.clone())), icon_box(BOX_SIZE))).insert(tooltip).with_child(
+                (
+                    ImageNode::new(icon(skill).unwrap_or_default()),
+                    Node { width: px(ICON_SIZE), height: px(ICON_SIZE), ..default() },
+                ),
+            );
         }
     });
 
@@ -198,27 +192,6 @@ fn show_skills(
             });
         }
     });
-}
-
-/// Clicking an action does it; clicking a skill (for now) explains they come with fighting.
-fn use_on_click(
-    content: Res<ContentStore>,
-    actions: Query<(&Interaction, &ActionButton), Changed<Interaction>>,
-    skills: Query<(&Interaction, &SkillButton), Changed<Interaction>>,
-    mut perform: MessageWriter<PerformAction>,
-    mut system: MessageWriter<SystemMessage>,
-) {
-    for (interaction, button) in &actions {
-        if *interaction == Interaction::Pressed {
-            perform.write(PerformAction(button.0));
-        }
-    }
-    for (interaction, button) in &skills {
-        if *interaction == Interaction::Pressed {
-            let name = content.skills.get(&button.0).map_or(button.0.as_str(), |skill| skill.name.as_str());
-            system.write(SystemMessage(format!("You'll be able to use {name} once there's something to fight.")));
-        }
-    }
 }
 
 /// Clicking **Learn** asks to learn the skill.
