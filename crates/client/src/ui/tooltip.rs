@@ -9,8 +9,8 @@ use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND};
 
 /// How far from the mouse the box sits, in pixels.
 const OFFSET: Vec2 = Vec2::new(16.0, 16.0);
-/// The widest the box grows before wrapping, in pixels.
-const MAX_WIDTH: f32 = 260.0;
+/// The widest the box's text grows before wrapping, in pixels.
+const TEXT_WIDTH: f32 = 240.0;
 /// Colour of the title.
 const TITLE_COLOUR: Color = Color::srgb(0.96, 0.9, 0.75);
 /// Colour of the text below it.
@@ -52,7 +52,6 @@ fn spawn_box(mut commands: Commands) {
             TooltipBox,
             Node {
                 position_type: PositionType::Absolute,
-                max_width: px(MAX_WIDTH),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(3),
                 padding: UiRect::axes(px(9), px(6)),
@@ -73,12 +72,17 @@ fn spawn_box(mut commands: Commands) {
                 Text::default(),
                 TextFont { font_size: FontSize::Px(14.0), ..default() },
                 TextColor(TITLE_COLOUR),
+                // (The text itself is given the width limit, so its height is
+                // worked out for the lines it wraps onto; a limit only on the
+                // box leaves the text spilling out of the bottom.)
+                Node { max_width: px(TEXT_WIDTH), ..default() },
             ));
             tooltip.spawn((
                 TooltipBody,
                 Text::default(),
                 TextFont { font_size: FontSize::Px(13.0), ..default() },
                 TextColor(BODY_COLOUR),
+                Node { max_width: px(TEXT_WIDTH), ..default() },
             ));
         });
 }
@@ -87,11 +91,11 @@ fn spawn_box(mut commands: Commands) {
 fn show_tooltip(
     window: Single<&Window>,
     hovered: Query<(&Interaction, &Tooltip, &InheritedVisibility)>,
-    tooltip_box: Single<(&mut Node, &mut Visibility), With<TooltipBox>>,
+    tooltip_box: Single<(&mut Node, &mut Visibility, &ComputedNode), With<TooltipBox>>,
     mut title: Single<&mut Text, (With<TooltipTitle>, Without<TooltipBody>)>,
     mut body: Single<(&mut Text, &mut Node), (With<TooltipBody>, Without<TooltipTitle>, Without<TooltipBox>)>,
 ) {
-    let (mut node, mut visibility) = tooltip_box.into_inner();
+    let (mut node, mut visibility, computed) = tooltip_box.into_inner();
     let shown = hovered.iter().find(|(interaction, tooltip, visible)| {
         **interaction != Interaction::None && visible.get() && !tooltip.title.is_empty()
     });
@@ -108,12 +112,16 @@ fn show_tooltip(
         body_text.0.clone_from(&tooltip.body);
     }
     body_node.display = if tooltip.body.is_empty() { Display::None } else { Display::Flex };
-    // Keep it on screen: flip to the mouse's other side near the right or bottom edge.
+    // Keep it on screen: flip to the mouse's other side near the right or
+    // bottom edge. (It's always placed by its top left corner, using its size
+    // as last laid out: placing it by its right edge makes the text wrap at a
+    // different width than its box was sized for, so the text spills out.)
+    let size = computed.size() * computed.inverse_scale_factor();
     let position = cursor + OFFSET;
-    let flip_x = position.x + MAX_WIDTH > window.width();
-    let flip_y = position.y + 80.0 > window.height();
-    (node.left, node.right) =
-        if flip_x { (Val::Auto, px(window.width() - cursor.x + OFFSET.x)) } else { (px(position.x), Val::Auto) };
-    (node.top, node.bottom) =
-        if flip_y { (Val::Auto, px(window.height() - cursor.y + OFFSET.y)) } else { (px(position.y), Val::Auto) };
+    let left = if position.x + size.x > window.width() { cursor.x - OFFSET.x - size.x } else { position.x };
+    let top = if position.y + size.y > window.height() { cursor.y - OFFSET.y - size.y } else { position.y };
+    node.left = px(left.max(0.0));
+    node.top = px(top.max(0.0));
+    node.right = Val::Auto;
+    node.bottom = Val::Auto;
 }
