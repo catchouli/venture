@@ -1,5 +1,5 @@
-//! The player frame, in the top-left corner: the player's name, level and
-//! health. The server sends health whenever it changes
+//! The player frame, in the top-left corner: the player's name, level,
+//! health and mana. The server sends health and mana whenever they change
 //! ([`ServerMessage::Vitals`]); the level comes from the character sheet.
 
 use bevy::prelude::*;
@@ -13,8 +13,10 @@ use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND};
 
 /// Width of the frame, in pixels.
 const WIDTH: f32 = 220.0;
-/// Colour of the health bar.
-const HEALTH_COLOUR: Color = Color::srgb(0.75, 0.15, 0.12);
+/// Colour of the health bar, and of its empty part.
+const HEALTH_COLOURS: (Color, Color) = (Color::srgb(0.75, 0.15, 0.12), Color::srgb(0.2, 0.05, 0.05));
+/// Colour of the mana bar, and of its empty part.
+const MANA_COLOURS: (Color, Color) = (Color::srgb(0.18, 0.35, 0.8), Color::srgb(0.05, 0.08, 0.2));
 /// Colour of the name.
 const NAME_COLOUR: Color = Color::srgb(0.96, 0.9, 0.75);
 
@@ -30,9 +32,22 @@ impl Plugin for VitalsPlugin {
     }
 }
 
-/// The player's health, as the server last said: (health, most health).
+/// The player's health and mana, as the server last said.
 #[derive(Resource, Default)]
-pub struct Vitals(pub Option<(u32, u32)>);
+pub struct Vitals(pub Option<PlayerVitals>);
+
+/// Health and mana, now and at most.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PlayerVitals {
+    /// Health left.
+    pub health: u32,
+    /// Most health.
+    pub max_health: u32,
+    /// Mana left.
+    pub mana: u32,
+    /// Most mana.
+    pub max_mana: u32,
+}
 
 /// The frame.
 #[derive(Component)]
@@ -42,13 +57,20 @@ struct PlayerFrame;
 #[derive(Component)]
 struct NameText;
 
-/// The health bar's fill.
-#[derive(Component)]
-struct HealthFill;
+/// Which bar something belongs to.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Bar {
+    Health,
+    Mana,
+}
 
-/// The health numbers.
+/// A bar's fill.
 #[derive(Component)]
-struct HealthText;
+struct BarFill(Bar);
+
+/// A bar's numbers.
+#[derive(Component)]
+struct BarText(Bar);
 
 fn spawn_frame(mut commands: Commands) {
     commands
@@ -77,46 +99,53 @@ fn spawn_frame(mut commands: Commands) {
                 TextFont { font_size: FontSize::Px(14.0), ..default() },
                 TextColor(NAME_COLOUR),
             ));
-            frame
-                .spawn((
-                    Node { width: percent(100), height: px(14), border_radius: BorderRadius::all(px(3)), ..default() },
-                    BackgroundColor(Color::srgb(0.2, 0.05, 0.05)),
-                ))
-                .with_children(|bar| {
-                    bar.spawn((
-                        HealthFill,
-                        Node {
-                            width: percent(100),
-                            height: percent(100),
-                            border_radius: BorderRadius::all(px(3)),
-                            ..default()
-                        },
-                        BackgroundColor(HEALTH_COLOUR),
-                    ));
-                    // The numbers, centred over the bar.
-                    bar.spawn(Node {
-                        position_type: PositionType::Absolute,
-                        width: percent(100),
-                        height: percent(100),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    })
-                    .with_child((
-                        HealthText,
-                        Text::default(),
-                        TextFont { font_size: FontSize::Px(11.0), ..default() },
-                        TextColor(Color::WHITE),
-                        TextShadow { offset: Vec2::splat(1.0), ..default() },
-                    ));
-                });
+            spawn_bar(frame, Bar::Health, HEALTH_COLOURS, 14.0);
+            spawn_bar(frame, Bar::Mana, MANA_COLOURS, 12.0);
+        });
+}
+
+/// A bar with its numbers centred over it.
+fn spawn_bar(frame: &mut ChildSpawnerCommands, bar: Bar, (fill, empty): (Color, Color), height: f32) {
+    frame
+        .spawn((
+            Node { width: percent(100), height: px(height), border_radius: BorderRadius::all(px(3)), ..default() },
+            BackgroundColor(empty),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                BarFill(bar),
+                Node {
+                    width: percent(100),
+                    height: percent(100),
+                    border_radius: BorderRadius::all(px(3)),
+                    ..default()
+                },
+                BackgroundColor(fill),
+            ));
+            parent
+                .spawn(Node {
+                    position_type: PositionType::Absolute,
+                    width: percent(100),
+                    height: percent(100),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                })
+                .with_child((
+                    BarText(bar),
+                    Text::default(),
+                    TextFont { font_size: FontSize::Px(height - 3.0), ..default() },
+                    TextColor(Color::WHITE),
+                    TextShadow { offset: Vec2::splat(1.0), ..default() },
+                ));
         });
 }
 
 fn record_vitals(mut events: MessageReader<FromServer>, mut vitals: ResMut<Vitals>) {
     for FromServer(message) in events.read() {
-        if let ServerMessage::Vitals { health, max_health } = message {
-            vitals.0 = Some((*health, *max_health));
+        if let ServerMessage::Vitals { health, max_health, mana, max_mana } = message {
+            vitals.0 =
+                Some(PlayerVitals { health: *health, max_health: *max_health, mana: *mana, max_mana: *max_mana });
         }
     }
 }
@@ -128,9 +157,9 @@ fn show_frame(
     sheet: Res<Sheet>,
     player: Option<Single<&Nameplate, With<LocalPlayer>>>,
     mut frame: Single<&mut Visibility, With<PlayerFrame>>,
-    mut name: Single<&mut Text, (With<NameText>, Without<HealthText>)>,
-    mut fill: Single<&mut Node, With<HealthFill>>,
-    mut numbers: Single<&mut Text, (With<HealthText>, Without<NameText>)>,
+    mut name: Single<&mut Text, (With<NameText>, Without<BarText>)>,
+    mut fills: Query<(&BarFill, &mut Node)>,
+    mut numbers: Query<(&BarText, &mut Text), Without<NameText>>,
 ) {
     let playing = *state.get() == ClientState::Playing;
     **frame = if playing { Visibility::Inherited } else { Visibility::Hidden };
@@ -139,11 +168,21 @@ fn show_frame(
     if name.0 != label {
         name.0 = label;
     }
-    let Some((health, max)) = vitals.0 else { return };
-    fill.width = percent(health as f32 / max.max(1) as f32 * 100.0);
-    let text = format!("{health} / {max}");
-    if numbers.0 != text {
-        numbers.0 = text;
+    let Some(vitals) = vitals.0 else { return };
+    let amounts = |bar| match bar {
+        Bar::Health => (vitals.health, vitals.max_health),
+        Bar::Mana => (vitals.mana, vitals.max_mana),
+    };
+    for (BarFill(bar), mut node) in &mut fills {
+        let (now, most) = amounts(*bar);
+        node.width = percent(now as f32 / most.max(1) as f32 * 100.0);
+    }
+    for (BarText(bar), mut text) in &mut numbers {
+        let (now, most) = amounts(*bar);
+        let wanted = format!("{now} / {most}");
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
     }
 }
 

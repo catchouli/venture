@@ -15,14 +15,14 @@ mod rules;
 
 pub use messages::{
     AdminCommand, AttackResult, BodyType, CharacterSheet, ClassChoice, ClientMessage, CreatureLook, CreatureShape,
-    DialogueLine, Emote, EntityId, EntityKind, EntityState, EquipSlot, ItemLook, ItemStack, LookStyle, PlayerLook,
-    QuestEntry, ServerMessage, ShopStock, SkillOffer,
+    DialogueLine, Emote, EntityId, EntityKind, EntityState, EquipSlot, HOTBAR_SLOTS, HotbarAction, HotbarEntry,
+    ItemLook, ItemStack, LookStyle, PlayerLook, QuestEntry, ServerMessage, ShopStock, SkillOffer,
 };
 pub use rules::{MAX_CHAT_CHARS, MAX_NAME_CHARS, MIN_NAME_CHARS, clean_chat_text, clean_name, is_valid_token};
 
 /// The protocol version. Increase it whenever messages change; the server
 /// turns away clients speaking a different version.
-pub const PROTOCOL_VERSION: u32 = 11;
+pub const PROTOCOL_VERSION: u32 = 12;
 
 /// The largest message a client may send, in bytes. Anything bigger is
 /// refused before decoding.
@@ -86,7 +86,14 @@ mod tests {
 
         let event = ServerMessage::Snapshot {
             tick: 42,
-            entities: vec![EntityState { id: EntityId(7), x: 1.0, y: 2.0, moving: true, health: Some(0.5) }],
+            entities: vec![EntityState {
+                id: EntityId(7),
+                x: 1.0,
+                y: 2.0,
+                moving: true,
+                health: Some(0.5),
+                resting: false,
+            }],
         };
         assert_eq!(ServerMessage::decode(&event.encode()).unwrap(), event);
     }

@@ -20,6 +20,9 @@
 //!   automated run (and take the screenshot there).
 //! - `VENTURE_SAY=text`: say this in chat once in the game (several messages
 //!   can be separated with `|`).
+//! - `VENTURE_USE=air_blast`: use these skills (ids, separated with `|`) once
+//!   in the game, on the selected target (after `VENTURE_SELECT_NEAREST` has
+//!   picked one, if set).
 //! - `VENTURE_OPEN=bag,journal`: open these windows once in the game.
 //! - `VENTURE_CHOOSE=1,2`: pick these replies (numbered from 1), one per
 //!   dialogue page, as conversations offer them.
@@ -47,6 +50,8 @@ pub struct DevSettings {
     pub automated: bool,
     /// Messages to say in chat once in the game.
     pub say: Vec<String>,
+    /// Skills to use once in the game.
+    pub use_skills: Vec<String>,
     /// Whether to select the character (player or NPC) nearest yours once one is in sight.
     pub select_nearest: bool,
     /// Windows to open once in the game (`bag`, `journal`).
@@ -77,6 +82,9 @@ impl DevSettings {
                 || std::env::var_os("VENTURE_AUTOMATED").is_some(),
             say: std::env::var("VENTURE_SAY")
                 .map(|say| say.split('|').map(str::to_string).collect())
+                .unwrap_or_default(),
+            use_skills: std::env::var("VENTURE_USE")
+                .map(|skills| skills.split('|').map(str::to_string).collect())
                 .unwrap_or_default(),
             select_nearest: std::env::var_os("VENTURE_SELECT_NEAREST").is_some(),
             open: std::env::var("VENTURE_OPEN")

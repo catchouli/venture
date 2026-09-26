@@ -147,7 +147,22 @@ each other.
   - A goblin takes about two Air Blasts, and hits back hard enough to matter at
     level 1.
 
-## Step 5: skills and the hotbar
+## Step 5: skills and the hotbar (done)
+
+As built:
+- Skills are used from the hotbar (keys 1 to 0, or clicking) or by clicking
+  them in the skills tab.
+- The hotbar starts with Attack and the character's skills, and newly
+  learned skills fill empty slots. Skills and actions (Attack, Talk, Follow,
+  Town, Wave) are dragged onto it; dragging a slot off the bar clears it.
+- Mana comes back all the time (a twentieth of the most every 3 seconds).
+  Resting triples health and mana recovery.
+- Cooldowns show as a shrinking shade with the seconds left, and skills
+  without enough mana fade.
+- Bolts are glowing balls in the skill's colour.
+- Sounds are synthesised placeholders (`tools/placeholder_sounds.py`).
+
+The plan:
 
 - **Using skills** on the current target, from the skills tab or the
   **hotbar** (keys 1 to 0). Drag skills and actions from the skills tab onto

@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{ClientMessage, EntityId};
-use venture_simulation::{Follow, Movement, clamp_move_goal, plan_route};
+use venture_simulation::{Follow, INTERACT_DISTANCE, Movement, clamp_move_goal, plan_route};
 
 use crate::characters::player::{Following, GameRules, LocalPlayer};
 use crate::common::coords::{from_bevy, to_bevy};
@@ -25,6 +25,7 @@ pub struct Orders<'w, 's> {
     markers: Query<'w, 's, Entity, With<MoveMarker>>,
     to_server: MessageWriter<'w, ToServer>,
     player: Option<Single<'w, 's, (&'static Transform, &'static mut LocalPlayer)>>,
+    positions: Query<'w, 's, &'static Transform, Without<LocalPlayer>>,
 }
 
 impl Orders<'_, '_> {
@@ -52,14 +53,15 @@ impl Orders<'_, '_> {
     pub fn follow(&mut self, target: Entity, id: EntityId) {
         let Some(player) = self.player.as_mut() else { return };
         self.to_server.write(ToServer(ClientMessage::Follow { target: id }));
-        player.1.following = Some(Following { target, follow: Follow::default(), talk_on_arrival: false });
+        player.1.following = Some(Following { target, follow: Follow::default(), stop_within: None });
     }
 
     /// Asks the server to talk to an NPC (walking over first), and predicts the walk.
     pub fn talk_to(&mut self, target: Entity, id: EntityId) {
         let Some(player) = self.player.as_mut() else { return };
         self.to_server.write(ToServer(ClientMessage::Interact { target: id }));
-        player.1.following = Some(Following { target, follow: Follow::default(), talk_on_arrival: true });
+        player.1.following =
+            Some(Following { target, follow: Follow::default(), stop_within: Some(INTERACT_DISTANCE) });
     }
 
     /// Asks the server to attack a creature (running into reach first), and
@@ -67,7 +69,34 @@ impl Orders<'_, '_> {
     pub fn attack(&mut self, target: Entity, id: EntityId) {
         let Some(player) = self.player.as_mut() else { return };
         self.to_server.write(ToServer(ClientMessage::Attack { target: id }));
-        player.1.following = Some(Following { target, follow: Follow::default(), talk_on_arrival: false });
+        player.1.following = Some(Following { target, follow: Follow::default(), stop_within: None });
+    }
+
+    /// Asks the server to use a skill on a creature, and predicts running up
+    /// to it: all the way for a weapon skill (which goes on attacking), or
+    /// until within `reach` for a spell.
+    pub fn use_skill_on(&mut self, target: Entity, id: EntityId, skill: &str, reach: f32, melee: bool) {
+        let Some(player) = self.player.as_mut() else { return };
+        self.to_server.write(ToServer(ClientMessage::UseSkill { skill: skill.to_string(), target: Some(id) }));
+        let (transform, player) = &mut **player;
+        let stop_within = (!melee).then_some(reach);
+        let already_close = self.positions.get(target).is_ok_and(|target| {
+            let (from, to) = (from_bevy(transform.translation), from_bevy(target.translation));
+            (to.0 - from.0).hypot(to.1 - from.1) <= reach
+        });
+        if melee || !already_close {
+            player.following = Some(Following { target, follow: Follow::default(), stop_within });
+        }
+    }
+
+    /// Asks the server to use a skill on the player themself (such as
+    /// resting, which stops them where they are).
+    pub fn use_skill_on_self(&mut self, skill: &str, stops: bool) {
+        self.to_server.write(ToServer(ClientMessage::UseSkill { skill: skill.to_string(), target: None }));
+        if stops && let Some(player) = self.player.as_mut() {
+            player.1.following = None;
+            player.1.movement = Movement::Idle;
+        }
     }
 
     /// Whether the player is an admin.

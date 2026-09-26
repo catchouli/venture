@@ -19,6 +19,10 @@ pub enum OutfitStyle {
 /// A colour as sRGB red, green and blue, each from 0 to 1.
 pub type Colour = (f32, f32, f32);
 
+fn default_bolt_speed() -> f32 {
+    12.0
+}
+
 /// How a character looks.
 ///
 /// ```ron
@@ -186,6 +190,73 @@ pub struct SkillDef {
     pub range: f32,
     /// What it does.
     pub effect: SkillEffect,
+    /// The sound it makes when used: a file in `sounds/`, if any.
+    #[serde(default)]
+    pub sound: Option<String>,
+    /// How it looks: the colour and size of its flash, bolt or glow.
+    #[serde(default)]
+    pub visual: SkillVisual,
+}
+
+impl SkillDef {
+    /// How far away its target may be, in metres: melee reach for weapon
+    /// blows (whatever `range` says), `range` for everything else.
+    pub fn reach(&self) -> f32 {
+        match self.effect {
+            SkillEffect::Strike { .. } => venture_simulation::MELEE_RANGE,
+            _ => self.range,
+        }
+    }
+
+    /// Whether it's used on a target (rather than on yourself).
+    pub fn needs_target(&self) -> bool {
+        matches!(self.effect, SkillEffect::Strike { .. } | SkillEffect::Bolt { .. })
+    }
+}
+
+/// How a skill's effect looks (placeholder effects drawn by the client).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SkillVisual {
+    /// Its colour.
+    pub colour: Colour,
+    /// How big it is, with 1 as normal.
+    pub size: f32,
+}
+
+impl Default for SkillVisual {
+    fn default() -> Self {
+        Self { colour: (1.0, 0.9, 0.7), size: 1.0 }
+    }
+}
+
+/// The game's own sounds (as opposed to skills' sounds): files in `sounds/`,
+/// each optional. Read from `sounds.ron`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GameSounds {
+    /// An attack that hits.
+    #[serde(default)]
+    pub hit: Option<String>,
+    /// A critical hit.
+    #[serde(default)]
+    pub critical: Option<String>,
+    /// An attack that misses.
+    #[serde(default)]
+    pub miss: Option<String>,
+    /// Something dying.
+    #[serde(default)]
+    pub death: Option<String>,
+    /// The player reaching a new level.
+    #[serde(default)]
+    pub level_up: Option<String>,
+}
+
+impl GameSounds {
+    /// Every sound file named.
+    pub fn files(&self) -> impl Iterator<Item = &String> {
+        [&self.hit, &self.critical, &self.miss, &self.death, &self.level_up].into_iter().flatten()
+    }
 }
 
 /// What a skill does when used.
@@ -202,6 +273,9 @@ pub enum SkillEffect {
     Bolt {
         /// Its damage dice, before the casting ability's bonus.
         damage: Dice,
+        /// How fast it flies, in metres per second.
+        #[serde(default = "default_bolt_speed")]
+        speed: f32,
     },
     /// Heal yourself.
     Heal {

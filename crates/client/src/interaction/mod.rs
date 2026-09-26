@@ -1,12 +1,13 @@
 //! Interacting with the world: selecting characters, clicking the ground to
 //! run there (and the marker left where you clicked), giving the character
-//! orders, and the actions a player can take.
+//! orders, the actions a player can take, and using skills.
 
 pub mod actions;
 pub mod admin_commands;
 pub mod clicks;
 pub mod move_marker;
 pub mod orders;
+pub mod skills;
 pub mod targeting;
 
 use bevy::prelude::*;
@@ -21,6 +22,7 @@ impl Plugin for InteractionPlugin {
             targeting::TargetingPlugin,
             clicks::ClickPlugin,
             move_marker::MoveMarkerPlugin,
+            skills::SkillUsePlugin,
         ));
     }
 }

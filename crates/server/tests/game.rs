@@ -7,7 +7,8 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use venture_content::ContentPack;
 use venture_protocol::{
-    AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, PROTOCOL_VERSION, ServerMessage,
+    AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, HotbarAction, HotbarEntry,
+    PROTOCOL_VERSION, ServerMessage,
 };
 use venture_server::content::LoadedContent;
 use venture_server::entities::NetworkId;
@@ -417,9 +418,9 @@ const CLASSES: &str = r#"[
 
 const SKILLS: &str = r#"[
     (id: "rest", name: "Rest", description: "Sit down.", icon: "thing.png", effect: Rest),
-    (id: "whack", name: "Whack", description: "A heavy blow.", icon: "thing.png", mana: 2, effect: Strike(damage: "1d8")),
+    (id: "whack", name: "Whack", description: "A heavy blow.", icon: "thing.png", mana: 2, cooldown: 6.0, effect: Strike(damage: "1d8")),
     (id: "bash", name: "Bash", description: "Another blow.", icon: "thing.png", effect: Strike(damage: "1d6")),
-    (id: "blast", name: "Blast", description: "Whoosh.", icon: "thing.png", effect: Bolt(damage: "1d8")),
+    (id: "blast", name: "Blast", description: "Whoosh.", icon: "thing.png", mana: 3, range: 15.0, effect: Bolt(damage: "1d8", speed: 10.0)),
 ]"#;
 
 /// A different number each call, so test content folders don't collide.
@@ -1094,9 +1095,176 @@ fn aggressive_creatures_attack_and_knocked_out_players_wake_at_the_nearest_respa
 /// The latest vitals in a batch of messages: (health, most health).
 fn latest_vitals(messages: &[ServerMessage]) -> Option<(u32, u32)> {
     messages.iter().rev().find_map(|m| match m {
-        ServerMessage::Vitals { health, max_health } => Some((*health, *max_health)),
+        ServerMessage::Vitals { health, max_health, .. } => Some((*health, *max_health)),
         _ => None,
     })
+}
+
+/// The latest mana in a batch of messages: (mana, most mana).
+fn latest_mana(messages: &[ServerMessage]) -> Option<(u32, u32)> {
+    messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Vitals { mana, max_mana, .. } => Some((*mana, *max_mana)),
+        _ => None,
+    })
+}
+
+/// A creature that's easy to hit and hard to kill, and barely fights back.
+const PUNCHBAG: &str = r#"[(id: "beast", name: "Punchbag", level: 1, health: 500, armour_class: 0,
+    attack: (damage: "1", bonus: -20, speed: 0.2), experience: 1,
+    look: (shape: Rabbit, main: (0.5, 0.4, 0.3), trim: (0.9, 0.9, 0.9)))]"#;
+
+/// Whether a batch of messages has an attack by `attacker` on `target` with this skill.
+fn attacked_with(messages: &[ServerMessage], attacker: EntityId, target: EntityId, skill: Option<&str>) -> bool {
+    messages.iter().any(|m| {
+        matches!(m, ServerMessage::Attacked { attacker: a, target: t, skill: s, .. }
+            if *a == attacker && *t == target && s.as_deref() == skill)
+    })
+}
+
+#[test]
+fn weapon_skills_run_up_then_hit_and_cool_down() {
+    let mut server = TestServer::with_content("whack", creature_pack(PUNCHBAG));
+    server.run(2);
+    let (fighter, messages) = create(&mut server, TOKEN_A, "Hitter", "fighter");
+    let me = welcome_id(&messages);
+    assert_eq!(latest_mana(&messages), Some((3, 3)));
+    let beast = creature_id(&mut server);
+
+    // It's 3 m away, a little out of reach: run up, then whack it.
+    fighter.send(&ClientMessage::UseSkill { skill: "whack".to_string(), target: Some(beast) });
+    server.run(30);
+    let messages = fighter.receive();
+    let used = ServerMessage::SkillUsed { user: me, skill: "whack".to_string(), target: Some(beast) };
+    assert!(messages.contains(&used));
+    assert!(attacked_with(&messages, me, beast, Some("whack")));
+    assert_eq!(latest_mana(&messages), Some((1, 3)), "it cost 2 mana");
+
+    // Then they keep attacking with the weapon, and the skill needs a rest.
+    server.run(30);
+    assert!(attacked_with(&fighter.receive(), me, beast, None));
+    fighter.send(&ClientMessage::UseSkill { skill: "whack".to_string(), target: Some(beast) });
+    server.run(2);
+    assert_eq!(notices(&fighter.receive()), ["Whack isn't ready yet."]);
+
+    // Skills they don't know are refused.
+    fighter.send(&ClientMessage::UseSkill { skill: "blast".to_string(), target: Some(beast) });
+    server.run(2);
+    assert_eq!(notices(&fighter.receive()), ["You don't know Blast."]);
+}
+
+#[test]
+fn spells_fly_to_their_target_and_land_when_they_arrive() {
+    let mut server = TestServer::with_content("blast", creature_pack(PUNCHBAG));
+    server.run(2);
+    let (mage, messages) = create(&mut server, TOKEN_A, "Caster", "mage");
+    let me = welcome_id(&messages);
+    let beast = creature_id(&mut server);
+
+    // 3 m at 10 m/s: it lands 0.3 seconds (6 ticks) later.
+    mage.send(&ClientMessage::UseSkill { skill: "blast".to_string(), target: Some(beast) });
+    server.run(3);
+    let messages = mage.receive();
+    assert!(messages.contains(&ServerMessage::SkillUsed { user: me, skill: "blast".to_string(), target: Some(beast) }));
+    assert!(!attacked_with(&messages, me, beast, Some("blast")), "still flying");
+    assert_eq!(latest_mana(&messages), Some((7, 10)));
+    server.run(10);
+    assert!(attacked_with(&mage.receive(), me, beast, Some("blast")));
+}
+
+#[test]
+fn resting_sits_down_until_moving_but_not_in_a_fight() {
+    let mut server = TestServer::with_content("rest", creature_pack(PUNCHBAG));
+    server.run(2);
+    let (rester, messages) = create(&mut server, TOKEN_A, "Sleepy", "fighter");
+    let me = welcome_id(&messages);
+    let resting = |messages: &[ServerMessage]| {
+        messages.iter().rev().find_map(|m| match m {
+            ServerMessage::Snapshot { entities, .. } => entities.iter().find(|e| e.id == me).map(|e| e.resting),
+            _ => None,
+        })
+    };
+
+    rester.send(&ClientMessage::UseSkill { skill: "rest".to_string(), target: None });
+    server.run(3);
+    assert_eq!(resting(&rester.receive()), Some(true));
+    rester.send(&ClientMessage::MoveTo { x: 100.0, y: 98.0 });
+    server.run(3);
+    assert_eq!(resting(&rester.receive()), Some(false), "moving stands them up");
+
+    let beast = creature_id(&mut server);
+    rester.send(&ClientMessage::Attack { target: beast });
+    server.run(40);
+    rester.send(&ClientMessage::UseSkill { skill: "rest".to_string(), target: None });
+    server.run(2);
+    assert!(notices(&rester.receive()).contains(&"You can't rest in the middle of a fight.".to_string()));
+}
+
+#[test]
+fn a_creature_dies_only_once_however_many_blows_land_together() {
+    let frail = r#"[(id: "beast", name: "Moth", level: 1, health: 1, armour_class: 0,
+        attack: (damage: "1", bonus: 0, speed: 0.1), experience: 5,
+        look: (shape: Rabbit, main: (0.5, 0.4, 0.3), trim: (0.9, 0.9, 0.9)))]"#;
+    let mut server = TestServer::with_content("overkill", creature_pack(frail));
+    server.run(2);
+    let (hunter, _) = create(&mut server, TOKEN_A, "Swatter", "fighter");
+    let world = server.app.world_mut();
+    let player = world.query_filtered::<Entity, With<venture_server::entities::Player>>().single(world).unwrap();
+    let moth = world.query_filtered::<Entity, With<venture_server::creatures::Creature>>().single(world).unwrap();
+    // Five blows in one tick: (almost certainly) at least one hits, but it only dies once.
+    for _ in 0..5 {
+        world.write_message(venture_server::combat::Strike { attacker: player, target: moth, skill: None });
+    }
+    server.run(2);
+    let defeats = notices(&hunter.receive()).into_iter().filter(|notice| notice.starts_with("You defeat")).count();
+    assert_eq!(defeats, 1);
+}
+
+/// The latest hotbar in a batch of messages.
+fn latest_hotbar(messages: &[ServerMessage]) -> Option<Vec<Option<HotbarEntry>>> {
+    messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Hotbar { slots } => Some(slots.clone()),
+        _ => None,
+    })
+}
+
+#[test]
+fn hotbars_start_with_attack_and_skills_keep_only_known_skills_and_are_saved() {
+    let pack = content_with("[]", "");
+    let mut server = TestServer::with_content("hotbar", pack.clone());
+    let (fighter, messages) = create(&mut server, TOKEN_A, "Keys", "fighter");
+    let skill = |id: &str| Some(HotbarEntry::Skill(id.to_string()));
+    let mut expected = vec![Some(HotbarEntry::Action(HotbarAction::Attack)), skill("rest"), skill("whack")];
+    expected.resize(10, None);
+    assert_eq!(latest_hotbar(&messages), Some(expected));
+
+    // Blast isn't theirs, so it comes off (and they're told).
+    let wave = Some(HotbarEntry::Action(HotbarAction::Wave));
+    fighter.send(&ClientMessage::SetHotbar { slots: vec![skill("whack"), skill("blast"), wave.clone()] });
+    server.run(2);
+    let mut expected = vec![skill("whack"), None, wave];
+    expected.resize(10, None);
+    assert_eq!(latest_hotbar(&fighter.receive()), Some(expected.clone()));
+
+    fighter.disconnect();
+    server.run(2);
+    let mut server = TestServer::start(server.shut_down(), pack);
+    let client = server.connect();
+    client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
+    server.run(2);
+    assert_eq!(latest_hotbar(&client.receive()), Some(expected), "kept");
+}
+
+#[test]
+fn learned_skills_go_on_the_hotbar() {
+    let mut server = TestServer::with_content("learning", content_with("[]", ""));
+    let (boss, _) = create(&mut server, TOKEN_A, "Boss", "fighter");
+    boss.send(&ClientMessage::Admin(AdminCommand::SetLevel { level: 2 }));
+    server.run(2);
+    boss.receive();
+    boss.send(&ClientMessage::LearnSkill { skill: "bash".to_string() });
+    server.run(2);
+    let slots = latest_hotbar(&boss.receive()).expect("a new hotbar");
+    assert_eq!(slots[3], Some(HotbarEntry::Skill("bash".to_string())));
 }
 
 /// The player's own id, from the welcome in a batch of messages.

@@ -21,8 +21,9 @@
 //!    code that changes players in the game).
 //! 5. [`dialogue`]: runs each player's private conversations with NPCs.
 //! 6. [`shops`]: buying and selling.
-//! 7. [`creatures`] and [`combat`]: creatures and fighting them (combat is the
-//!    only code that damages anything).
+//! 7. [`creatures`], [`skills`] and [`combat`]: creatures and fighting them
+//!    (skills is the only code that uses skills; combat is the only code
+//!    that damages anything).
 //!
 //! Inventories and quest logs are the exception that proves the rule: several
 //! modules may change them (shops, dialogue), but only through their own
@@ -49,6 +50,7 @@ pub mod dialogue;
 pub mod entities;
 pub mod equipment;
 pub mod gameplay;
+pub mod hotbar;
 #[cfg(feature = "http")]
 pub mod http;
 pub mod inventory;
@@ -61,6 +63,7 @@ pub mod requests;
 pub mod scripting;
 pub mod sessions;
 pub mod shops;
+pub mod skills;
 pub mod world;
 
 use std::time::Duration;
@@ -113,6 +116,8 @@ pub enum ServerSystems {
     Npcs,
     /// Creatures: spawners, and what creatures do.
     Creatures,
+    /// Using skills.
+    Skills,
     /// Fights: attacks, damage, death and health.
     Combat,
     /// Conversations with NPCs.
@@ -146,6 +151,7 @@ impl GameServer {
                     ServerSystems::Gameplay,
                     ServerSystems::Npcs,
                     ServerSystems::Creatures,
+                    ServerSystems::Skills,
                     ServerSystems::Combat,
                     ServerSystems::Dialogue,
                     ServerSystems::Shops,
@@ -166,7 +172,7 @@ impl GameServer {
                 admin::AdminPlugin,
                 equipment::EquipmentPlugin,
                 creatures::CreaturesPlugin,
-                combat::CombatPlugin,
+                (skills::SkillsPlugin, hotbar::HotbarPlugin, combat::CombatPlugin),
                 content::ContentPlugin,
             ));
     }

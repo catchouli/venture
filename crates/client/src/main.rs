@@ -10,7 +10,7 @@
 //!
 //! The code is grouped by concern, one folder (and one plugin) per concern:
 //! [`network`], [`content`], [`world`], [`characters`], [`camera`], [`interaction`],
-//! [`ui`], [`dev`], plus [`common`] helpers.
+//! [`ui`], [`sound`], [`dev`], plus [`common`] helpers.
 
 // Bevy systems receive everything they use as parameters, so long parameter
 // lists and query types are normal here.
@@ -23,6 +23,7 @@ mod content;
 mod dev;
 mod interaction;
 mod network;
+mod sound;
 mod ui;
 mod world;
 
@@ -49,6 +50,7 @@ fn main() {
             camera::CameraPlugin,
             interaction::InteractionPlugin,
             ui::UiPlugin,
+            sound::SoundPlugin,
             dev::DevPlugin,
         ))
         .run();

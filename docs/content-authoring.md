@@ -43,7 +43,9 @@ content/
   skills/*.ron         what skills do (sent to clients)
   appearances/*.ron    how characters look (sent to clients)
   items/*.ron          things players can carry (sent to clients)
-  icons/*.png          item pictures (sent to clients)
+  icons/*.png          item, skill and action pictures (sent to clients)
+  sounds/*.wav         sounds (sent to clients)
+  sounds.ron           the game's own sounds: hits, misses, levelling up
   creatures/*.ron      creatures: stats, attack, behaviour and look
   spawners/*.ron       where creatures live
   respawn_points.ron   where knocked-out players wake up
@@ -111,17 +113,48 @@ slot) and know the `starting_skills`, plus everyone's skills from
         icon: "whack.png",              // a PNG in icons/
         mana: 2,                        // optional: what it costs
         cooldown: 6.0,                  // optional: seconds before it can be used again
-        range: 2.5,                     // optional: metres to the target (0 for yourself)
         effect: Strike(damage: "1d8"),
+        sound: Some("whack.wav"),       // optional: a WAV in sounds/, played when it's used
+        visual: (colour: (1.0, 0.75, 0.35), size: 1.6),  // optional: its flash, bolt or glow
+    ),
+    (
+        id: "air_blast",
+        // ...
+        range: 15.0,                    // metres to the target, for bolts
+        effect: Bolt(damage: "1d6", speed: 10.0),  // speed in m/s (12 if not given)
     ),
 ]
 ```
 
-`effect` is `Rest` (sit and recover faster), `Strike(damage)` (a weapon blow
-with these dice instead of the weapon's), `Bolt(damage)` (a spell that flies
-to the target) or `Heal(amount)`. Dice are written the usual way: `"1d8"`,
-`"2d6+1"`. Skills are sent to clients (for their names, icons and
-descriptions); using them comes with fighting (see `docs/plan-combat.md`).
+`effect` is one of:
+- `Rest`: sit and recover health and mana three times as fast, until you
+  move or are hit. It can't be used in a fight, and using it again stands up.
+- `Strike(damage)`: a weapon blow with these dice instead of the weapon's,
+  plus the weapon's ability. It reaches as far as a melee attack (whatever
+  `range` says). The player runs up to the target first if needed, and goes
+  on attacking afterwards.
+- `Bolt(damage, speed)`: a spell that flies to the target and lands when it
+  gets there, rolled with the spell attack bonus. The casting ability adds
+  to its damage. It needs a `range`, and the player runs into range first if
+  needed.
+- `Heal(amount)`: heals the user, plus their casting ability's modifier.
+
+Dice are written the usual way: `"1d8"`, `"2d6+1"`. The rules are in
+`crates/rpg/src/skills.rs`. Skills are sent to clients for their names,
+icons, sounds and looks.
+
+### Sounds
+
+Sounds are WAV files in `sounds/` (at most 512 KB each), sent to clients.
+Skills name theirs, and `sounds.ron` names the game's own:
+
+```ron
+(hit: Some("hit.wav"), critical: Some("critical.wav"), miss: Some("miss.wav"),
+ death: Some("death.wav"), level_up: Some("level_up.wav"))
+```
+
+The current sounds are placeholders made by `python3 tools/placeholder_sounds.py`.
+Real recordings can replace them file for file.
 
 ### Appearances
 

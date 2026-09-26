@@ -3,9 +3,13 @@
 // everyone starts with the ones in new_characters.ron.
 //
 // effect: Rest (sit and recover), Strike(damage) (a weapon blow, with these
-// dice instead of the weapon's), Bolt(damage) (a spell that flies to the
-// target), or Heal(amount). mana is what it costs, cooldown (seconds) how long
-// before it can be used again, range (metres) how far away the target can be.
+// dice instead of the weapon's, plus the weapon's ability), Bolt(damage, speed)
+// (a spell that flies to the target at speed metres per second, 12 if not
+// given; the casting ability adds to its damage), or Heal(amount). mana is what
+// it costs, cooldown (seconds) how long before it can be used again, range
+// (metres) how far away a bolt's target can be (blows always reach as far as a
+// melee attack). sound is a file in sounds/; visual is the colour and size of
+// its flash, bolt or glow.
 [
     (
         id: "rest",
@@ -13,6 +17,7 @@
         description: "Sit down and catch your breath. Health and mana come back faster until you move.",
         icon: "rest.png",
         effect: Rest,
+        sound: Some("rest.wav"),
     ),
     (
         id: "whack",
@@ -21,8 +26,9 @@
         icon: "whack.png",
         mana: 2,
         cooldown: 6.0,
-        range: 2.5,
         effect: Strike(damage: "1d8"),
+        sound: Some("whack.wav"),
+        visual: (colour: (1.0, 0.75, 0.35), size: 1.6),
     ),
     (
         id: "air_blast",
@@ -32,7 +38,9 @@
         mana: 3,
         cooldown: 2.5,
         range: 15.0,
-        effect: Bolt(damage: "1d6"),
+        effect: Bolt(damage: "1d6", speed: 10.0),
+        sound: Some("air_blast.wav"),
+        visual: (colour: (0.92, 0.96, 1.0), size: 1.0),
     ),
     (
         id: "cleave",
@@ -41,8 +49,9 @@
         icon: "cleave.png",
         mana: 4,
         cooldown: 8.0,
-        range: 2.5,
         effect: Strike(damage: "1d10"),
+        sound: Some("cleave.wav"),
+        visual: (colour: (1.0, 0.5, 0.3), size: 1.9),
     ),
     (
         id: "second_wind",
@@ -52,6 +61,8 @@
         mana: 5,
         cooldown: 30.0,
         effect: Heal(amount: "2d6"),
+        sound: Some("heal.wav"),
+        visual: (colour: (0.5, 1.0, 0.5), size: 1.0),
     ),
     (
         id: "frost_shard",
@@ -61,7 +72,9 @@
         mana: 5,
         cooldown: 4.0,
         range: 15.0,
-        effect: Bolt(damage: "1d10"),
+        effect: Bolt(damage: "1d10", speed: 16.0),
+        sound: Some("frost_shard.wav"),
+        visual: (colour: (0.6, 0.85, 1.0), size: 0.8),
     ),
     (
         id: "arcane_bolt",
@@ -71,6 +84,8 @@
         mana: 8,
         cooldown: 6.0,
         range: 18.0,
-        effect: Bolt(damage: "2d8"),
+        effect: Bolt(damage: "2d8", speed: 9.0),
+        sound: Some("arcane_bolt.wav"),
+        visual: (colour: (0.8, 0.45, 1.0), size: 1.3),
     ),
 ]

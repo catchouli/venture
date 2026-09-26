@@ -1,5 +1,5 @@
 //! The interface drawn over the game: chat, the dialogue window, the toolbar,
-//! the player frame (health), the character window (stats, skills, bag,
+//! the hotbar, the player frame (health and mana), the character window (stats, skills, bag,
 //! equipment, quests and emotes),
 //! shops, character creation, the target frame, the connection overlay, text
 //! fields, tooltips and the cursor.
@@ -10,6 +10,7 @@ pub mod chat;
 pub mod connection_overlay;
 pub mod cursor;
 pub mod dialogue_window;
+pub mod hotbar;
 pub mod shop;
 pub mod target_frame;
 pub mod text_input;
@@ -31,6 +32,7 @@ impl Plugin for UiPlugin {
             dialogue_window::DialogueWindowPlugin,
             character_window::CharacterWindowPlugin,
             toolbar::ToolbarPlugin,
+            hotbar::HotbarPlugin,
             shop::ShopPlugin,
             tooltip::TooltipPlugin,
             vitals::VitalsPlugin,
