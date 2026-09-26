@@ -61,6 +61,7 @@ free camera for flying around (**WASD** to move, **Shift** to go faster).
 | [Architecture](docs/architecture.md) | Crates, how they depend on each other, client/server plans, platforms |
 | [World model](docs/world-model.md) | Units, coordinates, chunks, terrain, and how caves and buildings will fit in |
 | [World generation engine](docs/world-generation-engine.md) | How worlds are generated, and how authored content is layered on top |
+| [World authoring](docs/world-authoring.md) | The plan for authoring the world: a world edit app, drawn roads, forests, and standalone tree and building generators |
 | [Client and server](docs/client-server.md) | Server authority, movement prediction, streaming, profiles, LAN hosting |
 | [Plan: client/server](docs/plan-client-server.md) | Milestones 1 to 3, step by step |
 | [Plan: combat](docs/plan-combat.md) | Milestone 4: classes, levels, stats, skills, equipment and fighting |
