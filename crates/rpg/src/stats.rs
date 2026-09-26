@@ -10,6 +10,7 @@ pub const MAX_SCORE: i32 = 99;
 
 /// One of the five stats.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum Stat {
     /// Strength: melee hits and damage.
     Strength,
@@ -46,6 +47,7 @@ impl Stat {
 /// (strength: 14, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10)
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct Stats {
     /// Strength.

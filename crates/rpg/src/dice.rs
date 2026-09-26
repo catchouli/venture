@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 /// In content files it's written as text: `"1d6"`, `"2d4+1"`, `"1d8-1"`, or
 /// just a number like `"3"`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(try_from = "String", into = "String")]
 pub struct Dice {
     /// How many dice.

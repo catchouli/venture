@@ -6492,6 +6492,7 @@ dependencies = [
 name = "venture_content"
 version = "0.1.0"
 dependencies = [
+ "bevy_reflect",
  "rhai",
  "ron",
  "serde",
@@ -6513,6 +6514,7 @@ dependencies = [
 name = "venture_protocol"
 version = "0.1.0"
 dependencies = [
+ "bevy_reflect",
  "postcard",
  "serde",
  "venture_rpg",
@@ -6523,6 +6525,7 @@ dependencies = [
 name = "venture_rpg"
 version = "0.1.0"
 dependencies = [
+ "bevy_reflect",
  "serde",
 ]
 
