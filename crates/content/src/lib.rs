@@ -7,7 +7,7 @@
 //! content/
 //!   appearances/*.ron   how characters look (sent to clients)
 //!   items/*.ron         things players can carry (sent to clients)
-//!   icons/*.png         item and skill pictures (sent to clients)
+//!   icons/*.png         item and ability pictures (sent to clients)
 //!   sounds/*.wav        sounds (sent to clients)
 //!   sounds.ron          the game's own sounds: hits, misses, levelling up (sent to clients)
 //!   new_characters.ron  what new characters start with (server only)
@@ -15,7 +15,7 @@
 //!   creatures/*.ron     creatures that can be fought (server only)
 //!   spawners/*.ron      where creatures live (server only)
 //!   respawn_points.ron  where players wake up after dying (server only)
-//!   skills/*.ron        what skills do (sent to clients)
+//!   abilities/*.ron        what abilities do (sent to clients)
 //!   npcs/*.ron          who lives where (server only)
 //!   shops/*.ron         what shops sell (server only)
 //!   quests/*.ron        quests and their stages (server only)
@@ -39,12 +39,12 @@ mod load;
 pub mod script_hooks;
 
 pub use client::{
-    CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_appearances, parse_game_sounds,
-    parse_items, parse_skills,
+    CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_abilities, parse_appearances,
+    parse_game_sounds, parse_items,
 };
 pub use definitions::{
-    AppearanceDef, ClassDef, ClassSkill, Colour, CreatureAttack, CreatureDef, Equippable, GameSounds, ItemCount,
-    ItemDef, NewCharacterDef, NpcDef, OutfitStyle, Placement, QuestDef, QuestStage, RespawnPoint, ShopDef, ShopItem,
-    SkillDef, SkillEffect, SkillVisual, SpawnerDef, WeaponDef,
+    AbilityDef, AbilityEffect, AbilityVisual, AppearanceDef, ClassAbility, ClassDef, Colour, CreatureAttack,
+    CreatureDef, Equippable, GameSounds, ItemCount, ItemDef, NewCharacterDef, NpcDef, OutfitStyle, Placement, QuestDef,
+    QuestStage, RespawnPoint, ShopDef, ShopItem, SpawnerDef, WeaponDef,
 };
 pub use load::{ContentError, ContentPack};

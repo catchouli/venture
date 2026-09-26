@@ -1,5 +1,5 @@
 //! The character window: everything about the player's own character, in
-//! tabs. Each tab has a key: Stats (**C**), Skills (**K**), Bag (**I**),
+//! tabs. Each tab has a key: Stats (**C**), Abilities (**K**), Bag (**I**),
 //! Equipment (**G**), Quests (**J**) and Emotes (**O**). Pressing a tab's key
 //! opens the window on that tab, or closes it if it's already showing.
 //!
@@ -7,11 +7,11 @@
 //! latest [`CharacterSheet`] from the server). Each tab is its own module,
 //! which fills in its page.
 
+pub mod abilities;
 pub mod bag;
 pub mod emotes;
 pub mod equipment;
 pub mod quests;
-pub mod skills;
 pub mod stats;
 
 use std::collections::HashMap;
@@ -38,7 +38,7 @@ pub const HEADING_COLOUR: Color = Color::srgb(0.96, 0.9, 0.75);
 pub const TEXT_COLOUR: Color = Color::srgb(0.85, 0.85, 0.82);
 /// Colour of quieter text within pages.
 pub const QUIET_COLOUR: Color = Color::srgb(0.6, 0.6, 0.56);
-/// Background of a clickable box (a slot, a skill) within pages.
+/// Background of a clickable box (a slot, an ability) within pages.
 pub const BOX_COLOUR: Color = Color::srgba(1.0, 1.0, 1.0, 0.05);
 /// Background of a clickable box under the mouse.
 pub const BOX_HOVER_COLOUR: Color = Color::srgba(1.0, 1.0, 1.0, 0.14);
@@ -55,7 +55,7 @@ impl Plugin for CharacterWindowPlugin {
             .add_systems(OnExit(ClientState::Playing), (close_window, forget_sheet))
             .add_plugins((
                 stats::StatsPlugin,
-                skills::SkillsPlugin,
+                abilities::AbilitiesPlugin,
                 bag::BagPlugin,
                 equipment::EquipmentPlugin,
                 quests::QuestsPlugin,
@@ -69,8 +69,8 @@ impl Plugin for CharacterWindowPlugin {
 pub enum Tab {
     /// Name, class, level, stats.
     Stats,
-    /// Actions and skills.
-    Skills,
+    /// Actions and abilities.
+    Abilities,
     /// The inventory.
     Bag,
     /// What's worn.
@@ -83,13 +83,13 @@ pub enum Tab {
 
 impl Tab {
     /// Every tab, in the order they're shown.
-    pub const ALL: [Tab; 6] = [Tab::Stats, Tab::Skills, Tab::Bag, Tab::Equipment, Tab::Quests, Tab::Emotes];
+    pub const ALL: [Tab; 6] = [Tab::Stats, Tab::Abilities, Tab::Bag, Tab::Equipment, Tab::Quests, Tab::Emotes];
 
     /// Its label.
     pub fn label(self) -> &'static str {
         match self {
             Tab::Stats => "Stats",
-            Tab::Skills => "Skills",
+            Tab::Abilities => "Abilities",
             Tab::Bag => "Bag",
             Tab::Equipment => "Gear",
             Tab::Quests => "Quests",
@@ -101,7 +101,7 @@ impl Tab {
     pub fn key(self) -> KeyCode {
         match self {
             Tab::Stats => KeyCode::KeyC,
-            Tab::Skills => KeyCode::KeyK,
+            Tab::Abilities => KeyCode::KeyK,
             Tab::Bag => KeyCode::KeyI,
             Tab::Equipment => KeyCode::KeyG,
             Tab::Quests => KeyCode::KeyJ,
@@ -113,7 +113,7 @@ impl Tab {
     pub fn key_name(self) -> &'static str {
         match self {
             Tab::Stats => "C",
-            Tab::Skills => "K",
+            Tab::Abilities => "K",
             Tab::Bag => "I",
             Tab::Equipment => "G",
             Tab::Quests => "J",
@@ -125,7 +125,7 @@ impl Tab {
     fn dev_name(self) -> &'static str {
         match self {
             Tab::Stats => "stats",
-            Tab::Skills => "skills",
+            Tab::Abilities => "abilities",
             Tab::Bag => "bag",
             Tab::Equipment => "equipment",
             Tab::Quests => "quests",
@@ -176,7 +176,7 @@ impl Pages {
     }
 }
 
-/// A clickable box within a page (a slot, a skill, a button), lit up under the mouse.
+/// A clickable box within a page (a slot, an ability, a button), lit up under the mouse.
 #[derive(Component)]
 pub struct HoverBox;
 

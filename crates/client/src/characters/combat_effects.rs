@@ -1,6 +1,6 @@
 //! What a fight looks like: attackers swing, damage numbers (or "Miss") float
-//! up from whatever was hit, hits flash, and the dead fall over. Skills add
-//! their own looks (from their `visual` in the content): a weapon skill's
+//! up from whatever was hit, hits flash, and the dead fall over. Abilities add
+//! their own looks (from their `visual` in the content): a weapon ability's
 //! bigger, coloured flash; a spell's bolt flying to its target; a healing
 //! glow and a green number.
 //!
@@ -12,7 +12,7 @@ use std::f32::consts::FRAC_PI_2;
 
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
-use venture_content::{SkillDef, SkillEffect, SkillVisual};
+use venture_content::{AbilityDef, AbilityEffect, AbilityVisual};
 use venture_protocol::{AttackResult, EntityId, ServerMessage};
 
 use crate::characters::model::Gait;
@@ -105,7 +105,7 @@ fn make_flash_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     commands.insert_resource(FlashMesh(meshes.add(Sphere::new(1.0).mesh().ico(2).expect("valid subdivision"))));
 }
 
-/// Plays each attack, skill, heal and death the server reports.
+/// Plays each attack, ability, heal and death the server reports.
 fn show_fights(
     mut commands: Commands,
     mut events: MessageReader<FromServer>,
@@ -131,10 +131,10 @@ fn show_fights(
     };
     for FromServer(message) in events.read() {
         match message {
-            ServerMessage::Attacked { attacker, target: hit, result, skill } => {
-                let def = skill.as_ref().and_then(|skill| content.skills.get(skill));
+            ServerMessage::Attacked { attacker, target: hit, result, ability } => {
+                let def = ability.as_ref().and_then(|ability| content.abilities.get(ability));
                 // Spells were cast when they set off; blows swing as they land.
-                let swings = def.is_none_or(|def| matches!(def.effect, SkillEffect::Strike { .. }));
+                let swings = def.is_none_or(|def| matches!(def.effect, AbilityEffect::Strike { .. }));
                 if swings && let Some(mut gait) = find(*attacker).and_then(|entity| gaits.get_mut(entity).ok()) {
                     gait.swing();
                 }
@@ -145,12 +145,12 @@ fn show_fights(
                     AttackResult::Hit(amount) => (amount.to_string(), DAMAGE_COLOUR, 18.0),
                     AttackResult::Critical(amount) => (format!("{amount}!"), CRITICAL_COLOUR, 24.0),
                 };
-                // Skills' numbers are a little bigger.
+                // Abilities' numbers are a little bigger.
                 let size = if def.is_some() { size + 3.0 } else { size };
                 spawn_number(&mut commands, top, text, colour, size);
                 if *result != AttackResult::Miss {
                     let (colour, size) = match def {
-                        Some(SkillDef { visual: SkillVisual { colour: (r, g, b), size }, .. }) => {
+                        Some(AbilityDef { visual: AbilityVisual { colour: (r, g, b), size }, .. }) => {
                             (Color::srgb(*r, *g, *b), *size)
                         }
                         None => (FLASH_COLOUR, 1.0),
@@ -159,12 +159,12 @@ fn show_fights(
                     commands.entity(flash).insert(Flash { age: 0.0, colour, size });
                 }
             }
-            ServerMessage::SkillUsed { user, skill, target: aimed } => {
-                let (Some(def), Some(user)) = (content.skills.get(skill), find(*user)) else { continue };
+            ServerMessage::AbilityUsed { user, ability, target: aimed } => {
+                let (Some(def), Some(user)) = (content.abilities.get(ability), find(*user)) else { continue };
                 let (r, g, b) = def.visual.colour;
                 let colour = Color::srgb(r, g, b);
                 match def.effect {
-                    SkillEffect::Bolt { speed, .. } => {
+                    AbilityEffect::Bolt { speed, .. } => {
                         if let Ok(mut gait) = gaits.get_mut(user) {
                             gait.swing();
                         }
@@ -184,13 +184,13 @@ fn show_fights(
                             NotShadowCaster,
                         ));
                     }
-                    SkillEffect::Heal { .. } => {
+                    AbilityEffect::Heal { .. } => {
                         let Some((_, chest)) = spots(user) else { continue };
                         let glow =
                             spawn_glow(&mut commands, &flash_mesh, &mut materials, chest, colour, def.visual.size);
                         commands.entity(glow).insert(Glow { age: 0.0, colour });
                     }
-                    SkillEffect::Strike { .. } | SkillEffect::Rest => {}
+                    AbilityEffect::Strike { .. } | AbilityEffect::Rest => {}
                 }
             }
             ServerMessage::Healed { id, amount } => {

@@ -2,7 +2,7 @@
 //! when they go up a level, seen by everyone nearby.
 //!
 //! This is a placeholder made of simple shapes, until real effects are made
-//! (see "Skills and the hotbar" in `docs/plan-combat.md`).
+//! (see "Abilities and the hotbar" in `docs/plan-combat.md`).
 
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;

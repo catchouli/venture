@@ -47,9 +47,9 @@ Controls: **left-click** the ground to run there, or run with **WASD**
 (relative to the camera). **Right-drag** or the **arrow keys** rotate and tilt
 the camera, and the **mouse wheel** zooms. Click a player, NPC or creature to **select**
 it; click again to **follow** a player, **talk** to an NPC or **attack** a creature. **Escape** deselects. **Enter** chats. The character window's tabs each have a key: **C** stats,
-**K** skills, **I** bag, **G** equipment (gear), **J** quests, **O** emotes.
-The **hotbar** at the bottom uses skills and actions with keys **1** to **0**
-(or a click). Drag skills and actions onto it from the character window.
+**K** abilities, **I** bag, **G** equipment (gear), **J** quests, **O** emotes.
+The **hotbar** at the bottom uses abilities and actions with keys **1** to **0**
+(or a click). Drag abilities and actions onto it from the character window.
 New players choose a name, a class (Fighter or Mage) and a body type, with a
 preview. Talking to an NPC opens a **dialogue window**. Type **/help** in chat for commands such as **/follow**, **/talk**, **/attack**, **/wave** and **/town**. Rabbits live around the town and goblins (which attack on sight) a little further out; your health is at the top left, and if you're knocked out you wake up in town.
 Admins (listed by name in `server.ron`) also have **/setlevel**, **/reset**, **/setclass** and **/setgender**. **F1** switches to a
@@ -66,7 +66,7 @@ free camera for flying around (**WASD** to move, **Shift** to go faster).
 | [World authoring](docs/world-authoring.md) | The plan for authoring the world: a world edit app, drawn roads, forests, and standalone tree and building generators |
 | [Client and server](docs/client-server.md) | Server authority, movement prediction, streaming, profiles, LAN hosting |
 | [Plan: client/server](docs/plan-client-server.md) | Milestones 1 to 3, step by step |
-| [Plan: combat](docs/plan-combat.md) | Milestone 4: classes, levels, stats, skills, equipment and fighting |
+| [Plan: combat](docs/plan-combat.md) | Milestone 4: classes, levels, stats, abilities, equipment and fighting |
 | [Content authoring](docs/content-authoring.md) | Writing classes, NPCs, items, shops, quests, scripts and dialogue |
 | [Building and running](docs/building-and-running.md) | Desktop, web and dev tools in detail |
 | [Code style](docs/code-style.md) | Conventions that keep the code clean and maintainable |

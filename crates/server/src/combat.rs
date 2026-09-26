@@ -13,7 +13,7 @@
 //! after. A player who dies wakes up at the nearest respawn point (see
 //! `respawn_points.ron` in the content), with full health.
 //!
-//! Players also have [`Mana`], which skills spend (see [`crate::skills`]) and
+//! Players also have [`Mana`], which abilities spend (see [`crate::abilities`]) and
 //! which comes back on its own. Resting ([`Resting`]) speeds up both, until
 //! the player moves or is hit.
 
@@ -23,12 +23,13 @@ use bevy::prelude::*;
 use venture_content::ContentPack;
 use venture_navigation::Point;
 use venture_protocol::{AttackResult, ServerMessage};
+use venture_rpg::abilities::{REST_REGENERATION_SECONDS, mana_regeneration};
 use venture_rpg::derived::{OUT_OF_COMBAT_SECONDS, REGENERATION_SECONDS, health_regeneration};
-use venture_rpg::skills::{REST_REGENERATION_SECONDS, mana_regeneration};
 use venture_rpg::{AttackOutcome, Dice, Power, resolve_attack};
 use venture_simulation::{MELEE_RANGE, Movement};
 
 use crate::ServerSystems;
+use crate::abilities::PendingAbility;
 use crate::character::{Character, class_or_default};
 use crate::content::LoadedContent;
 use crate::creatures::{Creature, Dead};
@@ -36,7 +37,6 @@ use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteracti
 use crate::equipment::{Equipment, player_look};
 use crate::link::Link;
 use crate::npcs::resolve_placement;
-use crate::skills::PendingSkill;
 use crate::world::ServerWorld;
 
 /// Players within this distance (in metres) see a fight: attacks and deaths.
@@ -132,7 +132,7 @@ impl Health {
     }
 }
 
-/// A player's mana, which skills spend.
+/// A player's mana, which abilities spend.
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct Mana {
     current: u32,
@@ -169,7 +169,7 @@ impl Mana {
 }
 
 /// A player sitting down to rest: health and mana come back faster. Set by
-/// [`crate::skills`] (the Rest skill); ended by moving (see
+/// [`crate::abilities`] (the Rest ability); ended by moving (see
 /// [`crate::gameplay`]) or by fighting.
 #[derive(Component)]
 pub struct Resting;
@@ -199,16 +199,16 @@ pub struct Strike {
     pub attacker: Entity,
     /// What they attack.
     pub target: Entity,
-    /// The skill it's done with, if any (otherwise it's an ordinary attack).
-    pub skill: Option<SkillHit>,
+    /// The ability it's done with, if any (otherwise it's an ordinary attack).
+    pub ability: Option<AbilityHit>,
 }
 
-/// A skill's attack, in a [`Strike`].
+/// An ability's attack, in a [`Strike`].
 #[derive(Clone, Debug)]
-pub struct SkillHit {
-    /// Which skill (its id).
-    pub skill: String,
-    /// Its damage dice, before the ability's bonus.
+pub struct AbilityHit {
+    /// Which ability (its id).
+    pub ability: String,
+    /// Its damage dice, before the stat's bonus.
     pub damage: Dice,
     /// What powers it: the weapon or magic.
     pub power: Power,
@@ -258,7 +258,7 @@ fn auto_attack(
         if distance(position, target) > MELEE_RANGE || attacking.cooldown > 0.0 {
             continue;
         }
-        strikes.write(Strike { attacker: player, target: attacking.target, skill: None });
+        strikes.write(Strike { attacker: player, target: attacking.target, ability: None });
         let class = class_or_default(&content.pack, Some(&character.class));
         let speed = character.derived(&class, &equipment.gear(&content.pack.items)).attacks_per_second;
         attacking.cooldown = 1.0 / speed;
@@ -266,10 +266,10 @@ fn auto_attack(
 }
 
 /// What an attacker hits with: its attack bonus, its damage dice (bonus
-/// included). A skill uses its own dice (see `venture_rpg::skills`).
+/// included). An ability uses its own dice (see `venture_rpg::abilities`).
 fn attack_of(
     attacker: Entity,
-    skill: Option<&SkillHit>,
+    ability: Option<&AbilityHit>,
     players: &Query<(&mut Character, &Equipment, &Player)>,
     creatures: &Query<&Creature>,
     pack: &ContentPack,
@@ -277,8 +277,8 @@ fn attack_of(
     if let Ok((character, equipment, _)) = players.get(attacker) {
         let class = class_or_default(pack, Some(&character.class));
         let derived = character.derived(&class, &equipment.gear(&pack.items));
-        return Some(match skill {
-            Some(skill) => derived.skill_attack(skill.damage, skill.power),
+        return Some(match ability {
+            Some(ability) => derived.ability_attack(ability.damage, ability.power),
             None => (derived.attack_bonus, derived.damage),
         });
     }
@@ -319,7 +319,7 @@ struct Fights<'w, 's> {
 
 /// Rolls each attack, applies it, and deals with deaths.
 fn resolve_strikes(mut strikes: MessageReader<Strike>, mut fights: Fights) {
-    for Strike { attacker, target, skill } in strikes.read() {
+    for Strike { attacker, target, ability } in strikes.read() {
         let (attacker, target) = (*attacker, *target);
         // (Something killed earlier this tick isn't marked dead yet, but has no health.)
         let knocked_down = |entity| fights.healths.get(entity).is_ok_and(|health| health.current == 0);
@@ -332,7 +332,7 @@ fn resolve_strikes(mut strikes: MessageReader<Strike>, mut fights: Fights) {
         }
         let pack = &fights.content.pack;
         let (Some((bonus, damage)), Some(armour_class)) = (
-            attack_of(attacker, skill.as_ref(), &fights.characters, &fights.creatures, pack),
+            attack_of(attacker, ability.as_ref(), &fights.characters, &fights.creatures, pack),
             armour_class_of(target, &fights.characters, &fights.creatures, pack),
         ) else {
             continue;
@@ -354,8 +354,8 @@ fn resolve_strikes(mut strikes: MessageReader<Strike>, mut fights: Fights) {
             AttackOutcome::Hit(amount) => AttackResult::Hit(amount),
             AttackOutcome::Critical(amount) => AttackResult::Critical(amount),
         };
-        let skill = skill.as_ref().map(|skill| skill.skill.clone());
-        fights.tell_nearby(at, &ServerMessage::Attacked { attacker: attacker_id, target: target_id, result, skill });
+        let ability = ability.as_ref().map(|ability| ability.ability.clone());
+        fights.tell_nearby(at, &ServerMessage::Attacked { attacker: attacker_id, target: target_id, result, ability });
         // Fighting ends a rest, for both sides.
         fights.commands.entity(attacker).remove::<Resting>();
         fights.commands.entity(target).remove::<Resting>();
@@ -434,7 +434,7 @@ impl Fights<'_, '_> {
             Attacking,
             Following,
             PendingInteraction,
-            PendingSkill,
+            PendingAbility,
             Resting,
         )>();
         self.commands.entity(player).insert(Mover(Movement::Idle));

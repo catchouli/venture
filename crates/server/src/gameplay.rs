@@ -8,13 +8,13 @@ use venture_simulation::{
     Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, Movement, clamp_move_goal, plan_route, step,
 };
 
+use crate::abilities::PendingAbility;
 use crate::combat::{Attacking, Health, Resting};
 use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position};
 use crate::link::Link;
 use crate::npcs::{Npc, NpcInteraction};
 use crate::requests::{PlayerAction, PlayerRequest};
-use crate::skills::PendingSkill;
 use crate::world::ServerWorld;
 use crate::{GameRules, ServerSystems};
 
@@ -65,7 +65,7 @@ fn act_on_requests(
         };
         // Any new order replaces following, walking over to talk, fighting and resting.
         let mut stop_following = || {
-            commands.entity(player).remove::<(Following, PendingInteraction, Attacking, PendingSkill, Resting)>();
+            commands.entity(player).remove::<(Following, PendingInteraction, Attacking, PendingAbility, Resting)>();
         };
         match &request.action {
             PlayerAction::MoveTo(goal) => {
@@ -228,24 +228,24 @@ fn update_attackers(
 fn sit_down(mut commands: Commands, mut resters: Query<(Entity, &mut Mover), Added<Resting>>) {
     for (entity, mut mover) in &mut resters {
         mover.0 = Movement::Idle;
-        commands.entity(entity).remove::<(Following, PendingInteraction, Attacking, PendingSkill)>();
+        commands.entity(entity).remove::<(Following, PendingInteraction, Attacking, PendingAbility)>();
     }
 }
 
-/// Runs players into range of the target of a skill they're waiting to use
-/// (see [`crate::skills`], which uses it once they're close enough). Players
+/// Runs players into range of the target of an ability they're waiting to use
+/// (see [`crate::abilities`], which uses it once they're close enough). Players
 /// also attacking the target are already being kept in reach.
 fn update_casters(
     mut commands: Commands,
     world: Res<ServerWorld>,
     rules: Res<GameRules>,
     targets: Query<&Position, Without<Dead>>,
-    mut casters: Query<(Entity, &mut PendingSkill, &Position, &mut Mover), Without<Attacking>>,
+    mut casters: Query<(Entity, &mut PendingAbility, &Position, &mut Mover), Without<Attacking>>,
 ) {
     for (entity, mut pending, &Position(position), mut mover) in &mut casters {
         let Ok(&Position(target)) = targets.get(pending.target) else {
             mover.0 = Movement::Idle;
-            commands.entity(entity).remove::<PendingSkill>();
+            commands.entity(entity).remove::<PendingAbility>();
             continue;
         };
         if distance(position, target) <= pending.reach {
@@ -257,7 +257,7 @@ fn update_casters(
             .update(position, target, &mut mover.0, rules.0.max_move_distance, |x, y| world.is_blocked(x, y));
         if outcome == FollowOutcome::Stop {
             mover.0 = Movement::Idle;
-            commands.entity(entity).remove::<PendingSkill>();
+            commands.entity(entity).remove::<PendingAbility>();
         }
     }
 }

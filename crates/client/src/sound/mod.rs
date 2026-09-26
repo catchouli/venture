@@ -1,4 +1,4 @@
-//! Sound: playing the content's sounds for what the server reports. A skill
+//! Sound: playing the content's sounds for what the server reports. An ability
 //! plays its own sound when used; hits, misses, critical hits, deaths and the
 //! player's level-ups play the game's sounds (`sounds.ron`). Sounds further
 //! from the player's character are quieter.
@@ -58,8 +58,8 @@ fn play_sounds(
     let sounds = &content.game_sounds;
     for FromServer(message) in events.read() {
         let (file, id) = match message {
-            ServerMessage::SkillUsed { user, skill, .. } => {
-                (content.skills.get(skill).and_then(|def| def.sound.as_ref()), *user)
+            ServerMessage::AbilityUsed { user, ability, .. } => {
+                (content.abilities.get(ability).and_then(|def| def.sound.as_ref()), *user)
             }
             ServerMessage::Attacked { target, result, .. } => {
                 let file = match result {

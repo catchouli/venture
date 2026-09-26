@@ -1,5 +1,5 @@
 //! The interface drawn over the game: chat, the dialogue window, the toolbar,
-//! the hotbar, the player frame (health and mana), the character window (stats, skills, bag,
+//! the hotbar, the player frame (health and mana), the character window (stats, abilities, bag,
 //! equipment, quests and emotes),
 //! shops, character creation, the target frame, the connection overlay, text
 //! fields, tooltips and the cursor.

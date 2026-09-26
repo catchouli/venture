@@ -4,6 +4,6 @@
     items: [
         (item: "bread", count: 1),
     ],
-    // Skills everyone knows.
-    skills: ["rest"],
+    // Abilities everyone knows.
+    abilities: ["rest"],
 )

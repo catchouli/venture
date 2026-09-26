@@ -1,7 +1,7 @@
 //! The message types.
 
 use serde::{Deserialize, Serialize};
-use venture_rpg::{Abilities, Ability, Dice};
+use venture_rpg::{Dice, Stat, Stats};
 use venture_simulation::Rules;
 
 /// Identifies something in the game world (a player or an NPC) for as long
@@ -74,8 +74,9 @@ pub const HOTBAR_SLOTS: usize = 10;
 /// What's in a hotbar slot.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HotbarEntry {
-    /// A skill (its id).
-    Skill(String),
+    /// An ability (its id). (Called a skill in older saved hotbars.)
+    #[serde(alias = "Skill")]
+    Ability(String),
     /// An action.
     Action(HotbarAction),
 }
@@ -180,15 +181,15 @@ pub enum ClientMessage {
     Admin(AdminCommand),
     /// Do an emote (such as waving), for everyone nearby to see.
     Emote(Emote),
-    /// Spend a stat point on an ability.
+    /// Spend a stat point on a stat.
     SpendStatPoint {
-        /// Which ability.
-        ability: Ability,
+        /// Which stat.
+        stat: Stat,
     },
-    /// Learn one of the class's skills with skill points.
-    LearnSkill {
-        /// Which skill (its id).
-        skill: String,
+    /// Learn one of the class's abilities with ability points.
+    LearnAbility {
+        /// Which ability (its id).
+        ability: String,
     },
     /// Equip the item in an inventory slot (swapping out whatever it replaces).
     Equip {
@@ -200,10 +201,10 @@ pub enum ClientMessage {
         /// Which slot.
         slot: EquipSlot,
     },
-    /// Use a skill, on a target if it needs one (running into range first).
-    UseSkill {
-        /// Which skill (its id).
-        skill: String,
+    /// Use an ability, on a target if it needs one (running into range first).
+    UseAbility {
+        /// Which ability (its id).
+        ability: String,
         /// What to use it on, if anything.
         target: Option<EntityId>,
     },
@@ -283,17 +284,17 @@ pub enum ServerMessage {
         target: EntityId,
         /// How it went.
         result: AttackResult,
-        /// The skill it was done with, if any (for its look and sound).
-        skill: Option<String>,
+        /// The ability it was done with, if any (for its look and sound).
+        ability: Option<String>,
     },
-    /// Someone used a skill (sent to everyone nearby, and them): the client
+    /// Someone used an ability (sent to everyone nearby, and them): the client
     /// plays it (a swing, a bolt flying off, a glow, sitting down). Any damage
     /// follows as [`ServerMessage::Attacked`], when it lands.
-    SkillUsed {
+    AbilityUsed {
         /// Who used it.
         user: EntityId,
-        /// Which skill (its id).
-        skill: String,
+        /// Which ability (its id).
+        ability: String,
         /// What they used it on, if anything.
         target: Option<EntityId>,
     },
@@ -607,12 +608,12 @@ pub struct CharacterSheet {
     pub experience: u64,
     /// Experience the next level takes in all (0 at the top level).
     pub experience_to_next: u64,
-    /// Their ability scores.
-    pub stats: Abilities,
+    /// Their stats.
+    pub stats: Stats,
     /// Stat points to spend.
     pub stat_points: u32,
-    /// Skill points to spend.
-    pub skill_points: u32,
+    /// Ability points to spend.
+    pub ability_points: u32,
     /// Most health.
     pub max_health: u32,
     /// Most mana.
@@ -627,22 +628,22 @@ pub struct CharacterSheet {
     pub attacks_per_second: f32,
     /// Weapon damage, bonus included.
     pub damage: Dice,
-    /// The skills they know (skill ids from the content pack), in the order learned.
-    pub skills: Vec<String>,
-    /// Their class's skills, with the level each unlocks at and its cost.
-    pub class_skills: Vec<SkillOffer>,
+    /// The abilities they know (ability ids from the content pack), in the order learned.
+    pub abilities: Vec<String>,
+    /// Their class's abilities, with the level each unlocks at and its cost.
+    pub class_abilities: Vec<AbilityOffer>,
     /// What they have equipped: the item (an id) in each filled slot. An item
     /// filling several slots is listed for each.
     pub equipment: Vec<(EquipSlot, String)>,
 }
 
-/// A skill a class can learn, in a [`CharacterSheet`].
+/// An ability a class can learn, in a [`CharacterSheet`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillOffer {
-    /// The skill (an id from the content pack's skills).
-    pub skill: String,
+pub struct AbilityOffer {
+    /// The ability (an id from the content pack's abilities).
+    pub ability: String,
     /// The level it can be learned from.
     pub level: u32,
-    /// What it costs to learn, in skill points.
+    /// What it costs to learn, in ability points.
     pub cost: u32,
 }

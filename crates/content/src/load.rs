@@ -3,12 +3,12 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::client::{ClientContent, parse_appearances, parse_game_sounds, parse_items, parse_skills};
+use crate::client::{ClientContent, parse_abilities, parse_appearances, parse_game_sounds, parse_items};
 use crate::definitions::CreatureDef;
 use crate::definitions::{
-    AppearanceDef, ClassDef, GameSounds, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS,
-    MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef, RespawnPoint, ShopDef,
-    SkillDef, SkillEffect, SpawnerDef,
+    AbilityDef, AbilityEffect, AppearanceDef, ClassDef, GameSounds, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS,
+    MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef,
+    RespawnPoint, ShopDef, SpawnerDef,
 };
 use venture_protocol::EquipSlot;
 use venture_rpg::MAX_LEVEL;
@@ -54,8 +54,8 @@ pub struct ContentPack {
     pub shops: BTreeMap<String, ShopDef>,
     /// Quests, by id.
     pub quests: BTreeMap<String, QuestDef>,
-    /// Skills, by id.
-    pub skills: BTreeMap<String, SkillDef>,
+    /// Abilities, by id.
+    pub abilities: BTreeMap<String, AbilityDef>,
     /// The game's own sounds.
     pub sounds: GameSounds,
     /// Creatures, by id.
@@ -154,15 +154,18 @@ impl ContentPack {
             }
         }
 
-        for (relative, text) in read_files(folder, "skills", "ron", &mut errors) {
-            match parse_skills(&text) {
-                Ok(skills) => {
-                    for skill in skills {
-                        check_skill(&skill, &icons, &sounds, &relative, &mut errors);
-                        if pack.skills.contains_key(&skill.id) {
-                            errors.push(error(&relative, format!("there's already a skill called \"{}\"", skill.id)));
+        for (relative, text) in read_files(folder, "abilities", "ron", &mut errors) {
+            match parse_abilities(&text) {
+                Ok(abilities) => {
+                    for ability in abilities {
+                        check_ability(&ability, &icons, &sounds, &relative, &mut errors);
+                        if pack.abilities.contains_key(&ability.id) {
+                            errors.push(error(
+                                &relative,
+                                format!("there's already an ability called \"{}\"", ability.id),
+                            ));
                         }
-                        pack.skills.insert(skill.id.clone(), skill);
+                        pack.abilities.insert(ability.id.clone(), ability);
                     }
                     client_files.push((to_slashes(&relative), text.into_bytes()));
                 }
@@ -194,9 +197,9 @@ impl ContentPack {
                             errors.push(error(file, format!("there's no item called \"{}\"", stack.item)));
                         }
                     }
-                    for skill in &new_characters.skills {
-                        if !pack.skills.contains_key(skill) {
-                            errors.push(error(file, format!("there's no skill called \"{skill}\"")));
+                    for ability in &new_characters.abilities {
+                        if !pack.abilities.contains_key(ability) {
+                            errors.push(error(file, format!("there's no ability called \"{ability}\"")));
                         }
                     }
                     pack.new_characters = new_characters;
@@ -383,36 +386,36 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
     }
 }
 
-fn check_skill(
-    skill: &SkillDef,
+fn check_ability(
+    ability: &AbilityDef,
     icons: &HashSet<String>,
     sounds: &HashSet<String>,
     file: &Path,
     errors: &mut Vec<ContentError>,
 ) {
-    let mut problem = |message: String| errors.push(error(file, format!("skill \"{}\": {message}", skill.id)));
-    if skill.name.trim().is_empty() {
+    let mut problem = |message: String| errors.push(error(file, format!("ability \"{}\": {message}", ability.id)));
+    if ability.name.trim().is_empty() {
         problem("it needs a name".to_string());
     }
-    if !icons.contains(&skill.icon) {
-        problem(format!("there's no icon called \"{}\" in icons/", skill.icon));
+    if !icons.contains(&ability.icon) {
+        problem(format!("there's no icon called \"{}\" in icons/", ability.icon));
     }
-    if !(skill.cooldown >= 0.0 && skill.cooldown.is_finite() && skill.range >= 0.0 && skill.range.is_finite()) {
+    if !(ability.cooldown >= 0.0 && ability.cooldown.is_finite() && ability.range >= 0.0 && ability.range.is_finite()) {
         problem("its cooldown and range must be 0 or more".to_string());
     }
-    if let Some(sound) = skill.sound.as_ref().filter(|sound| !sounds.contains(*sound)) {
+    if let Some(sound) = ability.sound.as_ref().filter(|sound| !sounds.contains(*sound)) {
         problem(format!("there's no sound called \"{sound}\" in sounds/"));
     }
-    if let SkillEffect::Bolt { speed, .. } = skill.effect
+    if let AbilityEffect::Bolt { speed, .. } = ability.effect
         && !(speed > 0.0 && speed.is_finite())
     {
         problem("its bolt's speed must be more than 0".to_string());
     }
-    if skill.needs_target() && skill.reach() <= 0.0 {
+    if ability.needs_target() && ability.reach() <= 0.0 {
         problem("it's used on a target, so it needs a range".to_string());
     }
-    let (r, g, b) = skill.visual.colour;
-    if ![r, g, b, skill.visual.size].iter().all(|value| value.is_finite() && *value >= 0.0) {
+    let (r, g, b) = ability.visual.colour;
+    if ![r, g, b, ability.visual.size].iter().all(|value| value.is_finite() && *value >= 0.0) {
         problem("its visual's colour and size must be 0 or more".to_string());
     }
 }
@@ -456,15 +459,15 @@ fn check_class(class: &ClassDef, pack: &ContentPack, file: &Path, errors: &mut V
             }
         }
     }
-    let class_skills = class.skills.iter().map(|offer| &offer.skill);
-    for skill in class.starting_skills.iter().chain(class_skills) {
-        if !pack.skills.contains_key(skill) {
-            problem(format!("there's no skill called \"{skill}\""));
+    let class_abilities = class.abilities.iter().map(|offer| &offer.ability);
+    for ability in class.starting_abilities.iter().chain(class_abilities) {
+        if !pack.abilities.contains_key(ability) {
+            problem(format!("there's no ability called \"{ability}\""));
         }
     }
-    for offer in &class.skills {
+    for offer in &class.abilities {
         if !(1..=MAX_LEVEL).contains(&offer.level) {
-            problem(format!("{} must unlock at a level from 1 to {MAX_LEVEL}", offer.skill));
+            problem(format!("{} must unlock at a level from 1 to {MAX_LEVEL}", offer.ability));
         }
     }
 }

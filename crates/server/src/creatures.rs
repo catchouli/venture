@@ -244,7 +244,7 @@ fn think(
         }
         mover.0 = Movement::Idle;
         if creature.cooldown <= 0.0 {
-            strikes.write(Strike { attacker: entity, target, skill: None });
+            strikes.write(Strike { attacker: entity, target, ability: None });
             creature.cooldown = 1.0 / creature.def.attack.speed;
         }
     }

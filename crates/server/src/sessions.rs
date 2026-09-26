@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{BodyType, ClassChoice, EntityKind, ServerMessage};
 
+use crate::abilities::Cooldowns;
 use crate::character::{Admin, Character, class_or_default};
 use crate::combat::{Health, Mana, max_health, max_mana};
 use crate::content::LoadedContent;
@@ -19,7 +20,6 @@ use crate::npcs::Npc;
 use crate::profiles::{Profile, ProfileKey, ProfileStore};
 use crate::quests::QuestLog;
 use crate::requests::{Connections, SessionRequest, Stage};
-use crate::skills::Cooldowns;
 use crate::world::ServerWorld;
 use crate::{Admins, GameRules, ServerSystems};
 
@@ -163,7 +163,7 @@ impl Sessions<'_, '_> {
         let class = class_or_default(pack, Some(class_id));
         let position = self.spawn_point.0.unwrap_or(self.world.manifest.spawn_point);
         let mut new_profile = Profile::new(name.to_string(), position);
-        let character = Character::new(&class, body, &pack.new_characters.skills);
+        let character = Character::new(&class, body, &pack.new_characters.abilities);
         write_character(&mut new_profile, &character);
         new_profile.equipment = Some(Equipment::starting(&class, &pack.items).saved());
         let inventory = self.starting_inventory();
@@ -283,14 +283,14 @@ impl Sessions<'_, '_> {
 /// made before classes existed.
 fn read_character(saved: &Profile, pack: &venture_content::ContentPack) -> Character {
     let class = class_or_default(pack, saved.class.as_deref());
-    let mut character = Character::new(&class, saved.body, &pack.new_characters.skills);
+    let mut character = Character::new(&class, saved.body, &pack.new_characters.abilities);
     character.progress =
         venture_rpg::Progress { level: saved.level.clamp(1, venture_rpg::MAX_LEVEL), experience: saved.experience };
-    character.stats = saved.stats.filter(venture_rpg::Abilities::is_valid).unwrap_or(class.stats);
+    character.stats = saved.stats.filter(venture_rpg::Stats::is_valid).unwrap_or(class.stats);
     character.stat_points = saved.stat_points;
-    character.skill_points = saved.skill_points;
-    if let Some(skills) = &saved.skills {
-        character.skills.clone_from(skills);
+    character.ability_points = saved.ability_points;
+    if let Some(abilities) = &saved.abilities {
+        character.abilities.clone_from(abilities);
     }
     character
 }
@@ -302,8 +302,8 @@ fn write_character(profile: &mut Profile, character: &Character) {
     profile.experience = character.progress.experience;
     profile.stats = Some(character.stats);
     profile.stat_points = character.stat_points;
-    profile.skill_points = character.skill_points;
-    profile.skills = Some(character.skills.clone());
+    profile.ability_points = character.ability_points;
+    profile.abilities = Some(character.abilities.clone());
 }
 
 /// Turns coins (the money before Miasma) in an old profile's bag into Miasma.

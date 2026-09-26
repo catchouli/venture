@@ -1,11 +1,11 @@
-//! The hotbar: which skills and actions are on keys 1 to 0. It's only a
+//! The hotbar: which abilities and actions are on keys 1 to 0. It's only a
 //! layout (nothing on it changes the game until it's used, through the
 //! usual requests), saved with the character.
 //!
 //! New characters (and characters made before the hotbar) start with Attack,
-//! then the skills they know. Players rearrange it by dragging; the client
-//! sends the whole bar, and only skills they know are kept. A newly learned
-//! skill goes in the first empty slot, and skills a character no longer knows
+//! then the abilities they know. Players rearrange it by dragging; the client
+//! sends the whole bar, and only abilities they know are kept. A newly learned
+//! ability goes in the first empty slot, and abilities a character no longer knows
 //! (after an admin reset, say) come off.
 
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ pub struct HotbarPlugin;
 impl Plugin for HotbarPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(FixedUpdate, rearrange.in_set(ServerSystems::Gameplay))
-            .add_systems(FixedUpdate, follow_skills.in_set(ServerSystems::Updates));
+            .add_systems(FixedUpdate, follow_abilities.in_set(ServerSystems::Updates));
     }
 }
 
@@ -42,18 +42,18 @@ impl Hotbar {
         }
     }
 
-    /// Attack, then the skills the character knows.
+    /// Attack, then the abilities the character knows.
     pub fn starting(character: &Character) -> Self {
         let attack = HotbarEntry::Action(HotbarAction::Attack);
-        let skills = character.skills.iter().map(|skill| HotbarEntry::Skill(skill.clone()));
-        Self::fitted(std::iter::once(attack).chain(skills).map(Some).collect(), character)
+        let abilities = character.abilities.iter().map(|ability| HotbarEntry::Ability(ability.clone()));
+        Self::fitted(std::iter::once(attack).chain(abilities).map(Some).collect(), character)
     }
 
-    /// Exactly [`HOTBAR_SLOTS`] slots, with skills the character doesn't know taken off.
+    /// Exactly [`HOTBAR_SLOTS`] slots, with abilities the character doesn't know taken off.
     fn fitted(mut slots: Vec<Option<HotbarEntry>>, character: &Character) -> Self {
         for slot in &mut slots {
-            if let Some(HotbarEntry::Skill(skill)) = slot
-                && !character.skills.contains(skill)
+            if let Some(HotbarEntry::Ability(ability)) = slot
+                && !character.abilities.contains(ability)
             {
                 *slot = None;
             }
@@ -91,10 +91,10 @@ fn rearrange(
     }
 }
 
-/// Keeps hotbars in step with the skills characters know: new skills go in
+/// Keeps hotbars in step with the abilities characters know: new abilities go in
 /// the first empty slot, forgotten ones come off. The player is sent the
 /// new layout.
-fn follow_skills(
+fn follow_abilities(
     mut link: ResMut<Link>,
     mut players: Query<(Entity, &Player, &Character, &mut Hotbar), Changed<Character>>,
     everyone: Query<(), With<Hotbar>>,
@@ -102,12 +102,12 @@ fn follow_skills(
 ) {
     for (entity, player, character, mut hotbar) in &mut players {
         // The first time a player is seen is when they join: nothing is new.
-        let Some(before) = known.insert(entity, character.skills.clone()) else { continue };
+        let Some(before) = known.insert(entity, character.abilities.clone()) else { continue };
         let mut updated = Hotbar::fitted(hotbar.0.clone(), character);
-        for skill in character.skills.iter().filter(|skill| !before.contains(skill)) {
-            let on_bar = updated.0.contains(&Some(HotbarEntry::Skill(skill.clone())));
+        for ability in character.abilities.iter().filter(|ability| !before.contains(ability)) {
+            let on_bar = updated.0.contains(&Some(HotbarEntry::Ability(ability.clone())));
             if let Some(empty) = updated.0.iter_mut().find(|slot| slot.is_none()).filter(|_| !on_bar) {
-                *empty = Some(HotbarEntry::Skill(skill.clone()));
+                *empty = Some(HotbarEntry::Ability(ability.clone()));
             }
         }
         if updated != *hotbar {

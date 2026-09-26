@@ -195,7 +195,7 @@ def plain_robes():
     ]
 
 
-# Skill, action and emote icons sit on a dark tile, so they read as buttons.
+# Ability, action and emote icons sit on a dark tile, so they read as buttons.
 
 def tile(colour):
     return (rounded_box(16, 16, 14.5, 14.5, 4), colour)

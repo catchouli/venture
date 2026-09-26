@@ -1,133 +1,84 @@
-//! The five abilities (stats) every character and creature has, and the
-//! modifier each gives (SRD 5.1).
+//! Using abilities (our own rules, built on the SRD 5.1 attack roll): a weapon
+//! ability (such as Whack) is a weapon attack with the ability's own damage dice;
+//! a spell (such as Air Blast) rolls with the spell attack bonus, and the
+//! casting stat adds to its damage. Healing adds the casting stat too.
+//! Resting speeds up recovery, and mana comes back on its own, even in a fight.
 
-use serde::{Deserialize, Serialize};
+use crate::derived::DerivedStats;
+use crate::dice::Dice;
 
-/// The lowest an ability score can be.
-pub const MIN_SCORE: i32 = 1;
-/// The highest an ability score can be.
-pub const MAX_SCORE: i32 = 99;
+/// How often health and mana come back while resting, in seconds (instead of
+/// [`crate::derived::REGENERATION_SECONDS`]).
+pub const REST_REGENERATION_SECONDS: f32 = 1.0;
 
-/// One of the five abilities.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Ability {
-    /// Strength: melee hits and damage.
-    Strength,
-    /// Dexterity: armour class, attack speed, and finesse weapons.
-    Dexterity,
-    /// Constitution: health.
-    Constitution,
-    /// Intelligence: spells.
-    Intelligence,
-    /// Wisdom: mana and resisting magic.
-    Wisdom,
+/// What powers an ability's attack.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Power {
+    /// The weapon: its attack bonus and stat (Whack, Cleave).
+    Weapon,
+    /// Magic: the spell attack bonus and the casting stat (Air Blast).
+    Spell,
 }
 
-impl Ability {
-    /// Every ability, in the order they're shown.
-    pub const ALL: [Ability; 5] =
-        [Ability::Strength, Ability::Dexterity, Ability::Constitution, Ability::Intelligence, Ability::Wisdom];
-
-    /// Its short name, as shown on the stats tab: "STR".
-    pub fn short_name(self) -> &'static str {
-        match self {
-            Ability::Strength => "STR",
-            Ability::Dexterity => "DEX",
-            Ability::Constitution => "CON",
-            Ability::Intelligence => "INT",
-            Ability::Wisdom => "WIS",
-        }
-    }
+/// Mana that comes back every [`crate::derived::REGENERATION_SECONDS`]
+/// (every [`REST_REGENERATION_SECONDS`] while resting): a twentieth of the
+/// most mana, and at least 1. Characters with no mana get none.
+pub fn mana_regeneration(max_mana: u32) -> u32 {
+    if max_mana == 0 { 0 } else { (max_mana / 20).max(1) }
 }
 
-/// A set of ability scores. 10 is average for a person; each 2 points above
-/// or below changes the modifier by 1.
-///
-/// ```ron
-/// (strength: 14, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10)
-/// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Abilities {
-    /// Strength.
-    pub strength: i32,
-    /// Dexterity.
-    pub dexterity: i32,
-    /// Constitution.
-    pub constitution: i32,
-    /// Intelligence.
-    pub intelligence: i32,
-    /// Wisdom.
-    pub wisdom: i32,
-}
-
-impl Default for Abilities {
-    /// Average in everything.
-    fn default() -> Self {
-        Self { strength: 10, dexterity: 10, constitution: 10, intelligence: 10, wisdom: 10 }
-    }
-}
-
-impl Abilities {
-    /// One ability's score.
-    pub fn score(&self, ability: Ability) -> i32 {
-        match ability {
-            Ability::Strength => self.strength,
-            Ability::Dexterity => self.dexterity,
-            Ability::Constitution => self.constitution,
-            Ability::Intelligence => self.intelligence,
-            Ability::Wisdom => self.wisdom,
+impl DerivedStats {
+    /// An ability's attack: the attack bonus to roll with, and its damage dice
+    /// with the stat's bonus added.
+    pub fn ability_attack(&self, damage: Dice, power: Power) -> (i32, Dice) {
+        match power {
+            Power::Weapon => (self.attack_bonus, Dice { bonus: damage.bonus + self.damage_bonus, ..damage }),
+            Power::Spell => (self.spell_attack_bonus, Dice { bonus: damage.bonus + self.spell_bonus, ..damage }),
         }
     }
 
-    /// One ability's score, to change.
-    pub fn score_mut(&mut self, ability: Ability) -> &mut i32 {
-        match ability {
-            Ability::Strength => &mut self.strength,
-            Ability::Dexterity => &mut self.dexterity,
-            Ability::Constitution => &mut self.constitution,
-            Ability::Intelligence => &mut self.intelligence,
-            Ability::Wisdom => &mut self.wisdom,
-        }
+    /// How much a healing ability heals: its dice plus the casting stat's
+    /// modifier, and always at least 1.
+    pub fn healing(&self, amount: Dice, roll_die: &mut impl FnMut(u32) -> u32) -> u32 {
+        Dice { bonus: amount.bonus + self.spell_bonus, ..amount }.roll(roll_die).max(1)
     }
-
-    /// One ability's modifier.
-    pub fn modifier(&self, ability: Ability) -> i32 {
-        modifier(self.score(ability))
-    }
-
-    /// Whether every score is within [`MIN_SCORE`] and [`MAX_SCORE`].
-    pub fn is_valid(&self) -> bool {
-        Ability::ALL.iter().all(|&ability| (MIN_SCORE..=MAX_SCORE).contains(&self.score(ability)))
-    }
-}
-
-/// The modifier an ability score gives: `floor((score − 10) / 2)` (SRD 5.1).
-/// So 10 and 11 give +0, 12 gives +1, 8 gives −1.
-pub fn modifier(score: i32) -> i32 {
-    (score - 10).div_euclid(2)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::class::ClassRules;
+    use crate::derived::Gear;
+    use crate::stats::{Stat, Stats};
 
-    #[test]
-    fn modifiers_follow_the_srd_table() {
-        let table = [(1, -5), (3, -4), (8, -1), (9, -1), (10, 0), (11, 0), (12, 1), (15, 2), (20, 5), (30, 10)];
-        for (score, expected) in table {
-            assert_eq!(modifier(score), expected, "score {score}");
-        }
+    fn mage() -> DerivedStats {
+        let rules = ClassRules { hit_die: 6, mana_per_level: 8, casting_stat: Stat::Intelligence };
+        let stats = Stats { strength: 8, dexterity: 12, constitution: 12, intelligence: 16, wisdom: 12 };
+        DerivedStats::of(&rules, 1, &stats, &Gear::default())
     }
 
     #[test]
-    fn scores_are_read_and_changed_by_ability() {
-        let mut abilities = Abilities::default();
-        *abilities.score_mut(Ability::Wisdom) += 4;
-        assert_eq!(abilities.score(Ability::Wisdom), 14);
-        assert_eq!(abilities.modifier(Ability::Wisdom), 2);
-        assert!(abilities.is_valid());
-        abilities.strength = 0;
-        assert!(!abilities.is_valid());
+    fn spells_use_the_casting_stat_and_weapon_abilities_the_weapon() {
+        let stats = mage();
+        let (bonus, damage) = stats.ability_attack(Dice::new(1, 6), Power::Spell);
+        assert_eq!((bonus, damage.to_string()), (5, "1d6+3".to_string()), "+2 proficiency, +3 INT");
+        let (bonus, damage) = stats.ability_attack(Dice::new(1, 8), Power::Weapon);
+        assert_eq!((bonus, damage.to_string()), (1, "1d8-1".to_string()), "+2 proficiency, -1 STR");
+    }
+
+    #[test]
+    fn healing_adds_the_casting_stat_and_always_heals_a_little() {
+        let stats = mage();
+        assert_eq!(stats.healing(Dice::new(2, 6), &mut |_| 4), 11);
+        let mut weak = stats;
+        weak.spell_bonus = -5;
+        assert_eq!(weak.healing(Dice::new(1, 4), &mut |_| 1), 1);
+    }
+
+    #[test]
+    fn mana_comes_back_slowly_unless_there_is_none() {
+        assert_eq!(mana_regeneration(0), 0);
+        assert_eq!(mana_regeneration(11), 1);
+        assert_eq!(mana_regeneration(60), 3);
     }
 }
