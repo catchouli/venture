@@ -179,6 +179,7 @@ pub struct PartModel {
 #[serde(deny_unknown_fields)]
 pub struct Held {
     /// The bone it's attached to (such as `"hand_r"`).
+    #[cfg_attr(feature = "reflect", reflect(@crate::Refers::Bone))]
     pub bone: String,
     /// Where it sits, from the bone (metres, in the bone's own directions).
     #[serde(default)]

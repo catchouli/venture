@@ -18,6 +18,7 @@
 mod camera;
 mod document;
 mod fields;
+mod grips;
 mod looks;
 mod places;
 mod previews;
@@ -86,6 +87,7 @@ fn main() {
         shell::ShellPlugin,
         looks::LooksPlugin,
         fields::FieldsPlugin,
+        grips::GripsPlugin,
         places::PlacesPlugin,
         screenshot::ScreenshotPlugin,
     ));

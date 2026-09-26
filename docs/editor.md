@@ -52,6 +52,14 @@ as for `--local`.
     and **Rename everywhere** renames it and every reference to it (as one
     undo). Ids saved in players' characters (classes, items, abilities,
     skills, quests) warn that renaming loses them for saved characters.
+  - Items with held parts (a sword, a shield) show **How it's held**: a
+    person holding it (on any body type, standing or swinging, turned any
+    way), and each held part's grip from `characters/characters.ron`: the
+    bone it's on, its position (metres along the bone's own directions),
+    rotation (degrees) and size. Changes show at once; each item's grip is
+    its own, so a staff can be held differently from a sword.
+  - The **Character models** tab edits the rest of `characters.ron`:
+    animations, bodies, hair, parts and what players can choose.
   - Classes show what they're like at each level (health, mana, armour,
     attack, damage, points), and creatures how often they hit and how hard,
     worked out by the game's own rules.
@@ -87,6 +95,10 @@ aren't kept, so notes about an entry go in its `notes` field (see
   `#[reflect(@Refers::Item)]` (see `Refers`), which gives them their
   dropdowns and lets renames follow them.
 - `previews.rs`: the class and creature previews.
+- `grips.rs`: the grip stage: a person on a little stage of their own,
+  drawn by its own camera into a picture in the Items tab. Grip changes go
+  into the document's character models, which `looks.rs` hands to the
+  game's rendering (with a new version, so everyone is dressed again).
 - `shell.rs`: the layout (egui): the tabs, the entry list or table, the properties
   (drawn by `bevy-inspector-egui` from the types' reflection), problems, and
   shortcuts. The interface has its own camera over the whole window; the 3D
