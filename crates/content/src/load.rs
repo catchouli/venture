@@ -290,6 +290,9 @@ impl ContentPack {
                 Err(message) => errors.push(error(&relative, message.to_string())),
             }
         }
+        if !pack.classes.is_empty() && !pack.classes.iter().any(|class| class.starting) {
+            errors.push(error(Path::new("classes"), "no class is offered at the start (starting: true)".to_string()));
+        }
 
         if let Ok(text) = std::fs::read_to_string(folder.join(NEW_CHARACTERS_FILE)) {
             let file = Path::new(NEW_CHARACTERS_FILE);
@@ -937,6 +940,25 @@ mod tests {
         assert!(messages[0].contains("no shop called \"nowhere\""));
         assert!(messages[1].contains("no item called \"unicorn\""));
         assert!(messages[2].contains("isn't a command the game knows"));
+    }
+
+    #[test]
+    fn some_class_must_be_offered_at_the_start() {
+        let class = |id: &str, starting: bool| {
+            format!(
+                "(id: \"{id}\", name: \"{id}\", description: \"\", starting: {starting}, \
+                 rules: (hit_die: 8, mana_per_level: 1, casting_stat: Wisdom), \
+                 stats: (strength: 10, dexterity: 10, constitution: 10, intelligence: 10, wisdom: 10))"
+            )
+        };
+        let hidden = format!("[{}]", class("knight", false));
+        let folder = TestPack::new("no-starting-class", &[("classes/all.ron", &hidden)]);
+        let errors = ContentPack::load(&folder.0).unwrap_err();
+        assert!(errors.iter().any(|error| error.message.contains("no class is offered")), "{errors:?}");
+        let both = format!("[{}, {}]", class("squire", true), class("knight", false));
+        let folder = TestPack::new("one-starting-class", &[("classes/all.ron", &both)]);
+        let pack = ContentPack::load(&folder.0).unwrap();
+        assert_eq!(pack.classes.iter().filter(|class| class.starting).count(), 1);
     }
 
     #[test]

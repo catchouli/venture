@@ -41,7 +41,20 @@ as for `--local`.
     and the arrows move an entry up or down (order matters for classes:
     the first is the default).
   - In the middle is every field of the chosen entry, straight from the
-    game's own types, so a new field shows up here by itself.
+    game's own types, so a new field shows up here by itself. Fields have
+    readable names, and hovering one shows what it means (its doc comment).
+    Lists can be added to, removed from and reordered; choices have
+    dropdowns; colours have a colour picker; dice are written like "2d6+1".
+    Names of other things (an NPC's appearance, a class's starting items,
+    an item's icon) are dropdowns of what exists, and show in red if what
+    they name doesn't.
+  - Above the fields: **Used by** lists everything that names this entry,
+    and **Rename everywhere** renames it and every reference to it (as one
+    undo). Ids saved in players' characters (classes, items, abilities,
+    skills, quests) warn that renaming loses them for saved characters.
+  - Classes show what they're like at each level (health, mana, armour,
+    attack, damage, points), and creatures how often they hit and how hard,
+    worked out by the game's own rules.
   - **Table** shows every entry at once, a row each, with a column for each
     simple field (text, numbers, ticks, plain choices), for changing many
     things together. Click an entry's id to see all of it.
@@ -69,6 +82,11 @@ aren't kept, so notes about an entry go in its `notes` field (see
   game's own character and creature models, through `looks.rs`, which points
   `content://` at the content folder). Dragging moves only the marker until
   it's let go, then the entry's placement is rewritten, as one undo step.
+- `fields.rs`: the property panel, drawn from the types' reflection. Fields
+  naming other content are marked in the content crate with
+  `#[reflect(@Refers::Item)]` (see `Refers`), which gives them their
+  dropdowns and lets renames follow them.
+- `previews.rs`: the class and creature previews.
 - `shell.rs`: the layout (egui): the tabs, the entry list or table, the properties
   (drawn by `bevy-inspector-egui` from the types' reflection), problems, and
   shortcuts. The interface has its own camera over the whole window; the 3D

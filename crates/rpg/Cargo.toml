@@ -12,7 +12,7 @@ serde.workspace = true
 
 [features]
 # Reflection (for the editor's property panels).
-reflect = ["dep:bevy_reflect"]
+reflect = ["dep:bevy_reflect", "bevy_reflect/reflect_documentation"]
 
 [lints]
 workspace = true

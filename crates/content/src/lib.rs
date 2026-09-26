@@ -52,7 +52,7 @@ pub use client::{
 pub use definitions::{
     AbilityDef, AbilityEffect, AbilityVisual, AppearanceDef, ClassAbility, ClassDef, Colour, CreatureAttack,
     CreatureDef, Equippable, GameSounds, ItemCount, ItemDef, NewCharacterDef, NpcDef, OutfitStyle, Placement, QuestDef,
-    QuestStage, RespawnPoint, Settlements, ShopDef, ShopItem, SkillDef, SpawnerDef, THEME_PIECES, ThemeBorder,
+    QuestStage, Refers, RespawnPoint, Settlements, ShopDef, ShopItem, SkillDef, SpawnerDef, THEME_PIECES, ThemeBorder,
     ThemeDef, ThemePiece, WeaponDef,
 };
 pub use load::{ContentError, ContentPack};

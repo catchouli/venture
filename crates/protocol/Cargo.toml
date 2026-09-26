@@ -15,7 +15,7 @@ postcard.workspace = true
 
 [features]
 # Reflection (for the editor's property panels).
-reflect = ["dep:bevy_reflect", "venture_rpg/reflect"]
+reflect = ["dep:bevy_reflect", "bevy_reflect/reflect_documentation", "venture_rpg/reflect"]
 
 [lints]
 workspace = true

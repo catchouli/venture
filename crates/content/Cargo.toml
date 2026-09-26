@@ -8,7 +8,7 @@ rust-version.workspace = true
 
 [features]
 # Reflection (for the editor's property panels).
-reflect = ["dep:bevy_reflect", "venture_protocol/reflect", "venture_rpg/reflect"]
+reflect = ["dep:bevy_reflect", "bevy_reflect/reflect_documentation", "venture_protocol/reflect", "venture_rpg/reflect"]
 # Checking scripts compile. The server and the `check` tool need it; the
 # client doesn't (it only reads presentation data), so it's optional.
 scripts = ["dep:rhai", "dep:yarnspinner"]
