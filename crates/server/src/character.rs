@@ -8,9 +8,11 @@
 //! handled here. Changed characters (or equipment) are sent to their players
 //! as their character sheet automatically.
 
+use std::collections::BTreeMap;
+
 use bevy::prelude::*;
 use venture_content::{ClassDef, ContentPack};
-use venture_protocol::{AbilityOffer, BodyType, CharacterSheet, ServerMessage};
+use venture_protocol::{AbilityOffer, BodyType, CharacterSheet, ServerMessage, SkillProgress};
 use venture_rpg::progression::{experience_to_next_level, total_ability_points, total_stat_points};
 use venture_rpg::stats::MAX_SCORE;
 use venture_rpg::{ClassRules, DerivedStats, Gear, LevelUp, MAX_LEVEL, Progress, Stat, Stats};
@@ -49,6 +51,9 @@ pub struct Character {
     pub ability_points: u32,
     /// The abilities they know (ability ids), in the order learned.
     pub abilities: Vec<String>,
+    /// Their level and experience in each skill they've practised (skill
+    /// ids; skills not listed are at level 1).
+    pub skills: BTreeMap<String, Progress>,
 }
 
 /// Players with admin powers (see [`crate::admin`]).
@@ -67,6 +72,7 @@ impl Character {
             stat_points: 0,
             ability_points: 0,
             abilities: starting_abilities(class, common_abilities),
+            skills: BTreeMap::new(),
         }
     }
 
@@ -160,6 +166,17 @@ impl Character {
         DerivedStats::of(&class.rules, self.level(), &self.stats, gear)
     }
 
+    /// Their level and experience in a skill.
+    pub fn skill(&self, skill: &str) -> Progress {
+        self.skills.get(skill).copied().unwrap_or_default()
+    }
+
+    /// Adds experience to a skill, going up levels if it's enough. Returns
+    /// how many levels it went up.
+    pub fn add_skill_experience(&mut self, skill: &str, amount: u64) -> u32 {
+        self.skills.entry(skill.to_string()).or_default().add_experience(amount).levels
+    }
+
     /// Their character sheet, as the player sees it.
     pub fn sheet(&self, class: &ClassDef, equipment: &Equipment, pack: &ContentPack) -> CharacterSheet {
         let derived = self.derived(class, &equipment.gear(&pack.items));
@@ -187,6 +204,19 @@ impl Character {
             abilities: self.abilities.clone(),
             class_abilities,
             equipment: equipment.saved(),
+            skills: pack
+                .skills
+                .iter()
+                .map(|def| {
+                    let progress = self.skill(&def.id);
+                    SkillProgress {
+                        skill: def.id.clone(),
+                        level: progress.level,
+                        experience: progress.experience,
+                        experience_to_next: progress.experience + progress.experience_needed(),
+                    }
+                })
+                .collect(),
         }
     }
 }
@@ -351,7 +381,16 @@ mod tests {
     }
 
     #[test]
-    fn stat_points_raise_abilities() {
+    fn skills_level_up_on_the_same_curve_as_characters() {
+        let mut character = Character::new(&fighter(), BodyType::Androgynous, &[]);
+        assert_eq!(character.skill("fishing"), Progress::default(), "level 1 until practised");
+        assert_eq!(character.add_skill_experience("fishing", 150), 1);
+        assert_eq!(character.skill("fishing"), Progress { level: 2, experience: 50 });
+        assert_eq!(character.skill("mining").level, 1, "each skill is separate");
+    }
+
+    #[test]
+    fn stat_points_raise_stats() {
         let mut character = new_fighter();
         assert!(character.spend_stat_point(Stat::Strength).is_err(), "no points yet");
         character.set_level(2, &fighter(), &common());

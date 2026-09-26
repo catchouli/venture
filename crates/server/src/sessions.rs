@@ -292,6 +292,7 @@ fn read_character(saved: &Profile, pack: &venture_content::ContentPack) -> Chara
     if let Some(abilities) = &saved.abilities {
         character.abilities.clone_from(abilities);
     }
+    character.skills.clone_from(&saved.skill_progress);
     character
 }
 
@@ -304,6 +305,7 @@ fn write_character(profile: &mut Profile, character: &Character) {
     profile.stat_points = character.stat_points;
     profile.ability_points = character.ability_points;
     profile.abilities = Some(character.abilities.clone());
+    profile.skill_progress.clone_from(&character.skills);
 }
 
 /// Turns coins (the money before Miasma) in an old profile's bag into Miasma.

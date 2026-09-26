@@ -1,5 +1,7 @@
 //! The kinds of things a content pack defines.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use venture_protocol::{BodyType, CreatureLook, EquipSlot, ItemLook};
 use venture_rpg::{ClassRules, Dice, Stat, Stats};
@@ -211,6 +213,114 @@ impl AbilityDef {
     /// Whether it's used on a target (rather than on yourself).
     pub fn needs_target(&self) -> bool {
         matches!(self.effect, AbilityEffect::Strike { .. } | AbilityEffect::Bolt { .. })
+    }
+}
+
+/// A skill: something characters get better at by doing it (gathering and
+/// making things), with its own level and experience.
+///
+/// ```ron
+/// (id: "fishing", name: "Fishing", description: "Catching fish.", icon: "skill_fishing.png")
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SkillDef {
+    /// Unique name (saved in profiles, so don't rename lightly).
+    pub id: String,
+    /// The name shown to players.
+    pub name: String,
+    /// What it's about, in a sentence or two.
+    pub description: String,
+    /// Its picture: a PNG file in `icons/`.
+    pub icon: String,
+}
+
+/// The interface's look: the image for each piece of it (window frames,
+/// buttons, slots, bars and so on) and the toolbar's icons. Read from
+/// `ui/theme.ron`; the images are PNGs in `ui/`. Every piece is optional: a
+/// piece without an image keeps the plain flat look. See
+/// `docs/content-authoring.md` for what each piece is.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThemeDef {
+    /// Each piece's image, by piece name (such as `"window"`).
+    #[serde(default)]
+    pub pieces: BTreeMap<String, ThemePiece>,
+    /// The toolbar's icon for each tab of the character window, by tab name
+    /// (such as `"stats"`): PNGs in `ui/`.
+    #[serde(default)]
+    pub tab_icons: BTreeMap<String, String>,
+    /// A font for all the interface's text (a TTF or OTF file in `ui/`), if
+    /// not the built-in one.
+    #[serde(default)]
+    pub font: Option<String>,
+}
+
+/// The piece names a theme can give images to, with what each is.
+pub const THEME_PIECES: [(&str, &str); 22] = [
+    ("window", "the frame of a window (character window, shop, dialogue)"),
+    ("header", "the strip across the top of a window, behind its title or tabs"),
+    ("panel", "a smaller frame (player and target frames, chat, hotbar, toolbar)"),
+    ("chat", "the chat log's backing (usually see-through)"),
+    ("tooltip", "a tooltip's frame"),
+    ("button", "a button with words on it"),
+    ("button_hover", "a button under the mouse"),
+    ("button_pressed", "a button being pressed"),
+    ("button_chosen", "the button for the chosen option (a class or body type when making a character)"),
+    ("slot", "a box holding an icon (bag, gear, abilities, hotbar)"),
+    ("slot_hover", "a slot under the mouse"),
+    ("tab", "a tab of the character window"),
+    ("tab_hover", "a tab under the mouse"),
+    ("tab_open", "the open tab"),
+    ("bar_back", "the empty part of a bar (health, mana, experience)"),
+    ("bar_fill", "the full part of a bar: drawn white, and tinted each bar's colour"),
+    ("close", "a window's close button"),
+    ("close_hover", "a close button under the mouse"),
+    ("divider", "a line under headings"),
+    ("text_field", "a box to type in (chat, names)"),
+    ("toolbar_button", "a toolbar button, behind its icon"),
+    ("toolbar_button_hover", "a toolbar button under the mouse"),
+];
+
+/// One piece's image, drawn as a nine-slice: the corners stay as they are,
+/// the edges stretch (or repeat) along, and the middle fills the rest.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThemePiece {
+    /// The PNG in `ui/`.
+    pub image: String,
+    /// How wide the corners and edges are, in the image's pixels: one number
+    /// for all four sides, or `(left, right, top, bottom)`.
+    #[serde(default)]
+    pub border: ThemeBorder,
+    /// Whether the edges and middle repeat (rather than stretch).
+    #[serde(default)]
+    pub tile: bool,
+}
+
+/// How wide a piece's border is, in its image's pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ThemeBorder {
+    /// The same on every side.
+    All(f32),
+    /// Left, right, top and bottom.
+    Sides(f32, f32, f32, f32),
+}
+
+impl Default for ThemeBorder {
+    fn default() -> Self {
+        ThemeBorder::All(0.0)
+    }
+}
+
+impl ThemeBorder {
+    /// Left, right, top and bottom.
+    pub fn sides(self) -> [f32; 4] {
+        match self {
+            ThemeBorder::All(width) => [width; 4],
+            ThemeBorder::Sides(left, right, top, bottom) => [left, right, top, bottom],
+        }
     }
 }
 

@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::definitions::{AbilityDef, AppearanceDef, GameSounds, ItemDef};
+use crate::definitions::{AbilityDef, AppearanceDef, GameSounds, ItemDef, SkillDef, ThemeDef};
 
 /// Where the manifest is served, relative to the content address.
 pub const CLIENT_MANIFEST_FILE: &str = "manifest.ron";
@@ -84,6 +84,16 @@ pub fn parse_items(text: &str) -> Result<Vec<ItemDef>, String> {
 
 /// Reads a abilities file: a list of [`AbilityDef`]s.
 pub fn parse_abilities(text: &str) -> Result<Vec<AbilityDef>, String> {
+    ron::from_str(text).map_err(|error| error.to_string())
+}
+
+/// Reads a skills file: a list of [`SkillDef`]s.
+pub fn parse_skills(text: &str) -> Result<Vec<SkillDef>, String> {
+    ron::from_str(text).map_err(|error| error.to_string())
+}
+
+/// Reads the interface's theme (`ui/theme.ron`): a [`ThemeDef`].
+pub fn parse_theme(text: &str) -> Result<ThemeDef, String> {
     ron::from_str(text).map_err(|error| error.to_string())
 }
 

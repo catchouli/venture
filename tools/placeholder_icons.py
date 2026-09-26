@@ -316,6 +316,44 @@ def action_town():
     ]
 
 
+def skill_fishing():
+    scales = (110, 160, 190)
+    return [
+        tile((40, 62, 80)),
+        (ellipse(15, 17, 10, 5.5), scales),  # the fish
+        (polygon([(23, 17), (29, 11), (29, 23)]), scales),  # its tail
+        (detail(circle(10, 16, 1.4)), (30, 30, 40)),  # its eye
+        (detail(capsule(14, 14, 18, 20, 0.7)), (80, 120, 150)),  # a gill line
+    ]
+
+
+def skill_woodcutting():
+    return [
+        tile((56, 70, 44)),
+        (capsule(9, 26, 22, 7, 1.8), WOOD),  # the handle
+        (polygon([(18, 4), (27, 8), (25, 15), (19, 11)]), STEEL),  # the head
+    ]
+
+
+def skill_mining():
+    return [
+        tile((66, 60, 56)),
+        (capsule(8, 26, 21, 9, 1.8), WOOD),  # the handle
+        (polygon([(9, 9), (16, 5), (26, 6), (31, 12), (25, 9), (17, 9), (11, 12)]), STEEL),  # the pick's head
+    ]
+
+
+def skill_blacksmithing():
+    iron = (110, 112, 120)
+    return [
+        tile((70, 50, 40)),
+        (polygon([(5, 13), (27, 13), (24, 18), (20, 19), (21, 25), (11, 25), (12, 19), (8, 18)]), iron),  # the anvil
+        (capsule(18, 9, 26, 3, 1.3), WOOD),  # the hammer's handle
+        (rounded_box(16, 8, 4, 2.4, 0.8), STEEL),  # the hammer's head
+        (detail(circle(24, 11, 1.1)), (255, 190, 90)),  # a spark
+    ]
+
+
 ICONS = {
     "miasma.png": miasma,
     "bread.png": bread,
@@ -339,6 +377,10 @@ ICONS = {
     "action_follow.png": action_follow,
     "emote_wave.png": emote_wave,
     "action_town.png": action_town,
+    "skill_fishing.png": skill_fishing,
+    "skill_woodcutting.png": skill_woodcutting,
+    "skill_mining.png": skill_mining,
+    "skill_blacksmithing.png": skill_blacksmithing,
 }
 
 

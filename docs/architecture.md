@@ -98,9 +98,11 @@ src/
     clicks.rs          left clicks: select, follow, talk, attack, or run there
     move_marker.rs     the glowing move marker
   ui/                the interface
-    character_window/  the character window: mod.rs (the tabs), stats.rs,
+    character_window/  the character window: mod.rs (the tabs), stats.rs, skills.rs,
                        abilities.rs, bag.rs, equipment.rs, quests.rs, emotes.rs
-    toolbar.rs (buttons for the window's tabs), chat.rs, dialogue_window.rs,
+    theme.rs           the interface's look: each frame, button, slot and bar drawn
+                       with the content's theme pictures (nine-slices), or plain
+    toolbar.rs (an icon button for each of the window's tabs), chat.rs, dialogue_window.rs,
     shop.rs, character_creation.rs,
     vitals.rs (your name, level, health and mana, top left),
     hotbar.rs (abilities and actions on keys 1 to 0, dragged there from the character window),

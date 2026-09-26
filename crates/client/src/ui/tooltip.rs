@@ -4,6 +4,7 @@
 
 use bevy::prelude::*;
 
+use crate::ui::theme::{Piece, Themed};
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND};
 
 /// How far from the mouse the box sits, in pixels.
@@ -54,13 +55,14 @@ fn spawn_box(mut commands: Commands) {
                 max_width: px(MAX_WIDTH),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(3),
-                padding: UiRect::axes(px(8), px(5)),
+                padding: UiRect::axes(px(9), px(6)),
                 border: UiRect::all(px(1)),
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
             BackgroundColor(WINDOW_BACKGROUND),
             BorderColor::all(BORDER_COLOUR),
+            Themed(Piece::Tooltip),
             // Drawn above every other window.
             GlobalZIndex(100),
             Visibility::Hidden,

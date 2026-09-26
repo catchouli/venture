@@ -1,24 +1,28 @@
-//! The toolbar in the top-right corner: buttons for the character window's
-//! most-used tabs (the window itself handles every tab's key; see
-//! [`crate::ui::character_window`]).
+//! The toolbar in the top-right corner: an icon button for each tab of the
+//! character window (the icons come from the theme; the window itself
+//! handles every tab's key: see [`crate::ui::character_window`]).
 
 use bevy::prelude::*;
 
 use crate::network::ClientState;
 use crate::ui::character_window::{OpenTab, Tab};
-use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND};
+use crate::ui::theme::{Piece, Theme, Themed};
+use crate::ui::tooltip::Tooltip;
+use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER};
 
-/// Colour of the buttons' labels.
+/// Size of a button, in pixels.
+const BUTTON_SIZE: f32 = 38.0;
+/// Size of an icon on its button, in pixels.
+const ICON_SIZE: f32 = 26.0;
+/// Colour of a button's short name, when the theme has no icon for it.
 const LABEL_COLOUR: Color = Color::srgb(0.96, 0.9, 0.75);
-/// The buttons: their label, and the tab each opens.
-const BUTTONS: [(&str, Tab); 3] = [("Character (C)", Tab::Stats), ("Quests (J)", Tab::Quests), ("Bag (I)", Tab::Bag)];
 
 /// Shows the toolbar.
 pub struct ToolbarPlugin;
 
 impl Plugin for ToolbarPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_toolbar).add_systems(Update, (open_tabs, show_only_while_playing));
+        app.add_systems(Startup, spawn_toolbar).add_systems(Update, (open_tabs, show_icons, show_only_while_playing));
     }
 }
 
@@ -30,29 +34,56 @@ struct Toolbar;
 #[derive(Component)]
 struct TabButton(Tab);
 
+/// A button's icon.
+#[derive(Component)]
+struct Icon(Tab);
+
+/// A button's short name, shown when the theme has no icon for it.
+#[derive(Component)]
+struct Label(Tab);
+
 fn spawn_toolbar(mut commands: Commands) {
-    let font = TextFont { font_size: FontSize::Px(14.0), ..default() };
     commands
         .spawn((
             Toolbar,
-            Node { position_type: PositionType::Absolute, top: px(12), right: px(12), column_gap: px(6), ..default() },
+            Node { position_type: PositionType::Absolute, top: px(4), right: px(12), column_gap: px(4), ..default() },
+            WINDOW_LAYER,
         ))
         .with_children(|toolbar| {
-            for (label, tab) in BUTTONS {
+            for tab in Tab::ALL {
                 toolbar
                     .spawn((
                         TabButton(tab),
                         Button,
+                        Tooltip { title: tab.label().to_string(), body: format!("Key: {}", tab.key_name()) },
                         Node {
-                            padding: UiRect::axes(px(10), px(4)),
+                            width: px(BUTTON_SIZE),
+                            height: px(BUTTON_SIZE),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
                             border: UiRect::all(px(1)),
-                            border_radius: BorderRadius::all(px(3)),
+                            border_radius: BorderRadius::all(px(4)),
                             ..default()
                         },
                         BackgroundColor(WINDOW_BACKGROUND),
                         BorderColor::all(BORDER_COLOUR),
+                        Themed(Piece::ToolbarButton),
                     ))
-                    .with_child((Text::new(label), font.clone(), TextColor(LABEL_COLOUR)));
+                    .with_children(|button| {
+                        button.spawn((
+                            Icon(tab),
+                            ImageNode::default(),
+                            Node { width: px(ICON_SIZE), height: px(ICON_SIZE), ..default() },
+                            Visibility::Hidden,
+                        ));
+                        button.spawn((
+                            Label(tab),
+                            Text::new(&tab.label()[..3]),
+                            TextFont { font_size: FontSize::Px(11.0), ..default() },
+                            TextColor(LABEL_COLOUR),
+                            Node { position_type: PositionType::Absolute, ..default() },
+                        ));
+                    });
             }
         });
 }
@@ -66,6 +97,28 @@ fn open_tabs(buttons: Query<(&Interaction, &TabButton), Changed<Interaction>>, m
     }
 }
 
+/// Gives the buttons their icons from the theme (or their short names, if it has none).
+fn show_icons(
+    theme: Res<Theme>,
+    mut icons: Query<(&Icon, &mut ImageNode, &mut Visibility)>,
+    mut labels: Query<(&Label, &mut Visibility), Without<Icon>>,
+) {
+    if !theme.is_changed() {
+        return;
+    }
+    for (Icon(tab), mut image, mut visibility) in &mut icons {
+        let icon = theme.tab_icon(tab.id());
+        *visibility = if icon.is_some() { Visibility::Inherited } else { Visibility::Hidden };
+        image.image = icon.unwrap_or_default();
+    }
+    for (Label(tab), mut visibility) in &mut labels {
+        *visibility = if theme.tab_icon(tab.id()).is_some() { Visibility::Hidden } else { Visibility::Inherited };
+    }
+}
+
 fn show_only_while_playing(state: Res<State<ClientState>>, mut toolbar: Single<&mut Visibility, With<Toolbar>>) {
-    **toolbar = if *state.get() == ClientState::Playing { Visibility::Inherited } else { Visibility::Hidden };
+    let wanted = if *state.get() == ClientState::Playing { Visibility::Inherited } else { Visibility::Hidden };
+    if **toolbar != wanted {
+        **toolbar = wanted;
+    }
 }

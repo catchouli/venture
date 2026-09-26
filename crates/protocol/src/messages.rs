@@ -635,6 +635,21 @@ pub struct CharacterSheet {
     /// What they have equipped: the item (an id) in each filled slot. An item
     /// filling several slots is listed for each.
     pub equipment: Vec<(EquipSlot, String)>,
+    /// Their skills (gathering and making), in the order they're shown.
+    pub skills: Vec<SkillProgress>,
+}
+
+/// How far along a skill a character is, in a [`CharacterSheet`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillProgress {
+    /// Which skill (a skill id from the content pack).
+    pub skill: String,
+    /// Its level.
+    pub level: u32,
+    /// Experience earned towards the next level.
+    pub experience: u64,
+    /// Experience the next level takes in all (0 at the top level).
+    pub experience_to_next: u64,
 }
 
 /// An ability a class can learn, in a [`CharacterSheet`].

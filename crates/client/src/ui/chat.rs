@@ -24,6 +24,7 @@ use crate::interaction::admin_commands;
 use crate::interaction::targeting::{TargetKind, Targetable};
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::{FieldText, KeyboardFocus, TextField, TextInputSystems, TextSubmitted};
+use crate::ui::theme::{Piece, Themed};
 use crate::world::streaming::StreamingProgress;
 
 /// How many messages are shown.
@@ -111,8 +112,9 @@ fn spawn_chat_box(mut commands: Commands) {
         .with_children(|chat| {
             chat.spawn((
                 ChatLines,
-                Node { flex_direction: FlexDirection::Column, padding: UiRect::all(px(6)), ..default() },
+                Node { flex_direction: FlexDirection::Column, padding: UiRect::all(px(8)), ..default() },
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.25)),
+                Themed(Piece::Chat),
             ));
             chat.spawn((
                 ChatInput,
@@ -122,8 +124,9 @@ fn spawn_chat_box(mut commands: Commands) {
                     max_chars: MAX_CHAT_CHARS,
                     placeholder: "Press Enter to chat".to_string(),
                 },
-                Node { padding: UiRect::axes(px(6), px(4)), ..default() },
+                Node { padding: UiRect::axes(px(8), px(5)), ..default() },
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)),
+                Themed(Piece::TextField),
             ))
             .with_child((FieldText, Text::default(), font));
         });

@@ -374,6 +374,11 @@ fn content_with_files(npcs: &str, script: &str, dialogue: Option<&str>, extra: &
     write("items/things.ron", ITEMS.as_bytes());
     write("classes/classes.ron", CLASSES.as_bytes());
     write("abilities/abilities.ron", ABILITIES.as_bytes());
+    write(
+        "skills/skills.ron",
+        br#"[(id: "fishing", name: "Fishing", description: "Fish.", icon: "thing.png"),
+            (id: "mining", name: "Mining", description: "Rocks.", icon: "thing.png")]"#,
+    );
     write("shops/bakery.ron", br#"[(id: "bakery", name: "The Bakery", stock: [(item: "bread", price: 5)])]"#);
     write(
         "quests/errand.ron",
@@ -1018,6 +1023,16 @@ fn points_are_spent_on_stats_and_abilities() {
     let sheet = latest_sheet(&messages).unwrap();
     assert_eq!((sheet.stats.constitution, sheet.stat_points, sheet.ability_points), (15, 1, 0));
     assert_eq!(sheet.abilities, ["rest", "whack", "bash"]);
+}
+
+#[test]
+fn character_sheets_list_every_skill_starting_at_level_1() {
+    let mut server = TestServer::with_content("skills", content_with("[]", ""));
+    let (_, messages) = create(&mut server, TOKEN_A, "Angler", "fighter");
+    let sheet = latest_sheet(&messages).unwrap();
+    let skills: Vec<_> =
+        sheet.skills.iter().map(|s| (s.skill.as_str(), s.level, s.experience, s.experience_to_next)).collect();
+    assert_eq!(skills, [("fishing", 1, 0, 100), ("mining", 1, 0, 100)]);
 }
 
 /// A pack with one creature near the spawn point (at (103, 100)) and a

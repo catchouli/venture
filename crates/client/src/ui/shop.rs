@@ -11,6 +11,7 @@ use venture_protocol::{ClientMessage, ServerMessage, ShopStock};
 
 use crate::content::ContentStore;
 use crate::network::{ClientState, FromServer, ToServer};
+use crate::ui::theme::{Piece, Themed};
 use crate::ui::tooltip::Tooltip;
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER, spawn_close_button};
 
@@ -93,7 +94,7 @@ fn spawn_window(mut commands: Commands) {
             Interaction::default(),
             Node {
                 position_type: PositionType::Absolute,
-                top: px(44),
+                top: px(50),
                 right: px(RIGHT),
                 // (Widths include the padding and the 1 pixel border.)
                 width: px(COLUMNS as f32 * SLOT_WIDTH + (COLUMNS - 1) as f32 * GAP + 2.0 * (PADDING + 1.0)),
@@ -106,6 +107,7 @@ fn spawn_window(mut commands: Commands) {
             },
             BackgroundColor(WINDOW_BACKGROUND),
             BorderColor::all(BORDER_COLOUR),
+            Themed(Piece::Window),
             WINDOW_LAYER,
             Visibility::Hidden,
         ))
@@ -115,7 +117,9 @@ fn spawn_window(mut commands: Commands) {
                 Text::default(),
                 TextFont { font_size: FontSize::Px(16.0), ..default() },
                 TextColor(TITLE_COLOUR),
+                TextShadow { offset: Vec2::splat(1.0), ..default() },
             ));
+            window.spawn(crate::ui::character_window::divider());
             window.spawn((
                 StockGrid,
                 Node { flex_wrap: FlexWrap::Wrap, column_gap: px(GAP), row_gap: px(GAP), ..default() },
@@ -185,6 +189,7 @@ fn show_stock(
                     ..default()
                 },
                 BackgroundColor(SLOT_COLOUR),
+                Themed(Piece::Slot),
             ))
             .with_children(|slot| {
                 let icon = content.icon_for(&stock.item).unwrap_or_default();

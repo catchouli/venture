@@ -44,8 +44,10 @@ content/
   appearances/*.ron    how characters look (sent to clients)
   items/*.ron          things players can carry (sent to clients)
   icons/*.png          item, ability and action pictures (sent to clients)
+  skills/*.ron         gathering and making skills (sent to clients)
   sounds/*.wav         sounds (sent to clients)
   sounds.ron           the game's own sounds: hits, misses, levelling up
+  ui/theme.ron, ui/*   the interface's look: frame pictures, tab icons, font (sent to clients)
   creatures/*.ron      creatures: stats, attack, behaviour and look
   spawners/*.ron       where creatures live
   respawn_points.ron   where knocked-out players wake up
@@ -142,6 +144,92 @@ slot) and know the `starting_abilities`, plus everyone's abilities from
 Dice are written the usual way: `"1d8"`, `"2d6+1"`. The rules are in
 `crates/rpg/src/abilities.rs`. Abilities are sent to clients for their names,
 icons, sounds and looks.
+
+### Skills
+
+```ron
+[
+    (id: "fishing", name: "Fishing", description: "Catching fish in rivers, lakes and the sea.",
+     icon: "skill_fishing.png"),
+]
+```
+
+Skills are what characters get better at by doing them (gathering and
+making things). Each has its own level and experience, on the same curve as
+character levels, and the Skills tab lists them in file order. For now they
+only have names and levels: what each one involves is still being designed
+(see [vision.md](vision.md)). The `id` is saved in profiles.
+
+### The interface's look (theme)
+
+Every frame, button, slot, tab and bar in the interface is drawn with a
+picture from `ui/`, named in `ui/theme.ron`:
+
+```ron
+(
+    pieces: {
+        "window": (image: "window.png", border: 12),
+        "tab": (image: "tab.png", border: (6, 6, 6, 0)),   // (left, right, top, bottom)
+        // ...
+    },
+    tab_icons: { "stats": "tab_stats.png", /* ... */ },
+    font: Some("my_font.ttf"),   // optional: a TTF or OTF in ui/ for all text
+)
+```
+
+Each picture is drawn as a **nine-slice**. `border` says how wide (in the
+picture's pixels) the corners and edges are. The corners are drawn as they
+are, the edges stretch along (or repeat, with `tile: true`), and the middle
+stretches to fill the rest. So a window of any size keeps crisp corners.
+Keep ornaments (rivets, corner flourishes) inside the corners, and make
+edges that look right stretched.
+
+Things to know when painting:
+- **Nearly opaque:** the game blends in linear colour, so a dark frame that's
+  even a little see-through shows a lot of the bright world behind it. Only
+  the `chat` backing is meant to be see-through.
+- **Bar fills are white:** `bar_fill` is tinted each bar's colour (health red,
+  mana blue, experience gold), so paint it in white and greys.
+- **Tabs:** `tab`, `tab_hover` and `tab_open` sit along the top of the
+  window's page, so they have no bottom edge (their bottom border is 0).
+- **States:** `_hover` and `_pressed` pictures are optional. Without them, the
+  plain one is used.
+- **Plain look:** a piece left out keeps the plain flat look, as does
+  everything before the theme has downloaded.
+- **Live changes:** save a picture (or `theme.ron`) while the game is running
+  and the interface changes within a second or so.
+- **Size:** pictures can be up to 1 MB each.
+
+The pieces (the placeholders are made by `python3 tools/placeholder_ui.py`):
+
+| Piece | What it is | Placeholder size | Border |
+| --- | --- | --- | --- |
+| `window` | the frame of a window (character window, shop, dialogue) | 64×64 | 12 |
+| `header` | the strip across the top of a window, behind its title or tabs | 64×24 | 4 |
+| `panel` | a smaller frame (player and target frames, chat, hotbar, toolbar) | 32×32 | 6 |
+| `chat` | the chat log's backing (usually see-through) | 32×32 | 5 |
+| `tooltip` | a tooltip's frame | 32×32 | 5 |
+| `button` | a button with words on it | 48×24 | 6 |
+| `button_hover` | a button under the mouse | 48×24 | 6 |
+| `button_pressed` | a button being pressed | 48×24 | 6 |
+| `button_chosen` | the button for the chosen option (a class or body type when making a character) | 48×24 | 6 |
+| `slot` | a box holding an icon (bag, gear, abilities, hotbar) | 40×40 | 8 |
+| `slot_hover` | a slot under the mouse | 40×40 | 8 |
+| `tab` | a tab of the character window | 40×24 | (6, 6, 6, 0) |
+| `tab_hover` | a tab under the mouse | 40×24 | (6, 6, 6, 0) |
+| `tab_open` | the open tab | 40×24 | (6, 6, 6, 0) |
+| `bar_back` | the empty part of a bar (health, mana, experience) | 24×12 | 4 |
+| `bar_fill` | the full part of a bar: drawn white, and tinted each bar's colour | 24×12 | 3 |
+| `close` | a window's close button | 18×18 | 0 |
+| `close_hover` | a close button under the mouse | 18×18 | 0 |
+| `divider` | a line under headings | 64×6 | (20, 20, 0, 0) |
+| `text_field` | a box to type in (chat, names) | 32×24 | 5 |
+| `toolbar_button` | a toolbar button, behind its icon | 40×40 | 8 |
+| `toolbar_button_hover` | a toolbar button under the mouse | 40×40 | 8 |
+
+`tab_icons` are the toolbar's (and the window's tab row's) icons, one for each
+tab: `stats`, `skills`, `abilities`, `bag`, `gear`, `quests` and `emotes`
+(about 32×32, drawn at 26×26).
 
 ### Sounds
 

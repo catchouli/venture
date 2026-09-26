@@ -3,12 +3,14 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::client::{ClientContent, parse_abilities, parse_appearances, parse_game_sounds, parse_items};
+use crate::client::{
+    ClientContent, parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
+};
 use crate::definitions::CreatureDef;
 use crate::definitions::{
     AbilityDef, AbilityEffect, AppearanceDef, ClassDef, GameSounds, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS,
     MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef,
-    RespawnPoint, ShopDef, SpawnerDef,
+    RespawnPoint, ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
 };
 use venture_protocol::EquipSlot;
 use venture_rpg::MAX_LEVEL;
@@ -21,6 +23,12 @@ const RESPAWN_POINTS_FILE: &str = "respawn_points.ron";
 const SOUNDS_FILE: &str = "sounds.ron";
 /// The largest a sound file may be, in bytes.
 const MAX_SOUND_BYTES: usize = 512 * 1024;
+/// The interface's theme, in `ui/`.
+const THEME_FILE: &str = "ui/theme.ron";
+/// The largest an interface image may be, in bytes.
+const MAX_UI_IMAGE_BYTES: usize = 1024 * 1024;
+/// The largest a font may be, in bytes.
+const MAX_FONT_BYTES: usize = 4 * 1024 * 1024;
 /// The largest an icon file may be, in bytes.
 const MAX_ICON_BYTES: usize = 64 * 1024;
 /// The first bytes of every PNG file.
@@ -58,6 +66,10 @@ pub struct ContentPack {
     pub abilities: BTreeMap<String, AbilityDef>,
     /// The game's own sounds.
     pub sounds: GameSounds,
+    /// Skills (gathering and making), in the order they're shown.
+    pub skills: Vec<SkillDef>,
+    /// The interface's look.
+    pub theme: ThemeDef,
     /// Creatures, by id.
     pub creatures: BTreeMap<String, CreatureDef>,
     /// Spawners, in file order.
@@ -135,6 +147,56 @@ impl ContentPack {
                     client_files.push((SOUNDS_FILE.to_string(), text.into_bytes()));
                 }
                 Err(message) => errors.push(error(file, message)),
+            }
+        }
+
+        let mut ui_files = HashSet::new();
+        for (relative, bytes) in read_binary_files(folder, "ui", "png", &mut errors) {
+            if !bytes.starts_with(&PNG_SIGNATURE) {
+                errors.push(error(&relative, "this isn't a PNG image".to_string()));
+            } else if bytes.len() > MAX_UI_IMAGE_BYTES {
+                errors.push(error(
+                    &relative,
+                    format!("interface images must be at most {} KB", MAX_UI_IMAGE_BYTES / 1024),
+                ));
+            }
+            ui_files.insert(file_name(&relative));
+            client_files.push((to_slashes(&relative), bytes));
+        }
+        for extension in ["ttf", "otf"] {
+            for (relative, bytes) in read_binary_files(folder, "ui", extension, &mut errors) {
+                if bytes.len() > MAX_FONT_BYTES {
+                    errors.push(error(&relative, format!("fonts must be at most {} KB", MAX_FONT_BYTES / 1024)));
+                }
+                ui_files.insert(file_name(&relative));
+                client_files.push((to_slashes(&relative), bytes));
+            }
+        }
+        if let Ok(text) = std::fs::read_to_string(folder.join(THEME_FILE)) {
+            let file = Path::new(THEME_FILE);
+            match parse_theme(&text) {
+                Ok(theme) => {
+                    check_theme(&theme, &ui_files, file, &mut errors);
+                    pack.theme = theme;
+                    client_files.push((THEME_FILE.to_string(), text.into_bytes()));
+                }
+                Err(message) => errors.push(error(file, message)),
+            }
+        }
+
+        for (relative, text) in read_files(folder, "skills", "ron", &mut errors) {
+            match parse_skills(&text) {
+                Ok(skills) => {
+                    for skill in skills {
+                        check_skill(&skill, &icons, &relative, &mut errors);
+                        if pack.skills.iter().any(|other| other.id == skill.id) {
+                            errors.push(error(&relative, format!("there's already a skill called \"{}\"", skill.id)));
+                        }
+                        pack.skills.push(skill);
+                    }
+                    client_files.push((to_slashes(&relative), text.into_bytes()));
+                }
+                Err(message) => errors.push(error(&relative, message)),
             }
         }
 
@@ -420,6 +482,40 @@ fn check_ability(
     }
 }
 
+fn check_skill(skill: &SkillDef, icons: &HashSet<String>, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, format!("skill \"{}\": {message}", skill.id)));
+    if skill.name.trim().is_empty() {
+        problem("it needs a name".to_string());
+    }
+    if !icons.contains(&skill.icon) {
+        problem(format!("there's no icon called \"{}\" in icons/", skill.icon));
+    }
+}
+
+fn check_theme(theme: &ThemeDef, files: &HashSet<String>, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, message));
+    for (name, piece) in &theme.pieces {
+        if !THEME_PIECES.iter().any(|(known, _)| known == name) {
+            let known: Vec<_> = THEME_PIECES.iter().map(|(known, _)| *known).collect();
+            problem(format!("there's no piece called \"{name}\" (the pieces are {})", known.join(", ")));
+        }
+        if !files.contains(&piece.image) {
+            problem(format!("piece \"{name}\": there's no image called \"{}\" in ui/", piece.image));
+        }
+        if !piece.border.sides().iter().all(|side| side.is_finite() && *side >= 0.0) {
+            problem(format!("piece \"{name}\": its border must be 0 or more"));
+        }
+    }
+    for (tab, icon) in &theme.tab_icons {
+        if !files.contains(icon) {
+            problem(format!("tab icon \"{tab}\": there's no image called \"{icon}\" in ui/"));
+        }
+    }
+    if let Some(font) = theme.font.as_ref().filter(|font| !files.contains(*font)) {
+        problem(format!("there's no font called \"{font}\" in ui/"));
+    }
+}
+
 fn check_shop(shop: &ShopDef, pack: &ContentPack, file: &Path, errors: &mut Vec<ContentError>) {
     let mut problem = |message: String| errors.push(error(file, format!("shop \"{}\": {message}", shop.id)));
     if shop.name.trim().is_empty() {
@@ -683,6 +779,19 @@ mod tests {
         let pack = ContentPack::load(&folder.0).unwrap();
         assert_eq!(pack.npcs.len(), 1);
         assert_eq!(pack.client.manifest.files.len(), 1, "only appearances go to clients");
+    }
+
+    #[test]
+    fn themes_name_known_pieces_and_pictures_that_exist() {
+        let theme = r#"(pieces: {"window": (image: "window.png", border: 12), "windwo": (image: "window.png"),
+            "button": (image: "missing.png", border: (4, 4, 3, 3))}, tab_icons: {"bag": "bag.png"})"#;
+        let folder = TestPack::new("theme", &[("ui/theme.ron", theme), ("ui/window.png", "not a picture")]);
+        let messages: Vec<String> = ContentPack::load(&folder.0).unwrap_err().iter().map(ToString::to_string).collect();
+        assert_eq!(messages.len(), 4, "{messages:?}");
+        assert_eq!(messages[0], "ui/window.png: this isn't a PNG image");
+        assert!(messages[1].contains("piece \"button\": there's no image called \"missing.png\""), "{messages:?}");
+        assert!(messages[2].contains("there's no piece called \"windwo\""), "{messages:?}");
+        assert!(messages[3].contains("tab icon \"bag\": there's no image called \"bag.png\""), "{messages:?}");
     }
 
     #[test]
