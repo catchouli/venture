@@ -49,6 +49,7 @@ pub struct MoveMarker {
 #[derive(Component)]
 struct Crest;
 
+/// The ground marker's meshes and materials.
 #[derive(Resource)]
 pub struct MarkerAssets {
     crest_mesh: Handle<Mesh>,

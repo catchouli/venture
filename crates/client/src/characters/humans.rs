@@ -85,8 +85,9 @@ pub struct HumanLook {
     pub beard: Option<String>,
     /// Their outfit parts (clothes, armour, and things held).
     pub parts: Vec<String>,
-    /// Their skin and hair colours.
+    /// Their skin colour.
     pub skin: Paint,
+    /// Their hair colour.
     pub hair_colour: Paint,
     /// Their height, build and head size (from `-FEATURE_RANGE` to `FEATURE_RANGE`).
     pub sizes: [i8; 3],
@@ -98,7 +99,9 @@ pub struct HumanLook {
 /// A colour: one of the content's palette (players choose these), or given.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Paint {
+    /// The colour at this place in the palette.
     Palette(u8),
+    /// This colour.
     Colour(Color),
 }
 

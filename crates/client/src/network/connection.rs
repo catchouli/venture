@@ -20,9 +20,11 @@ pub enum ConnectionEvent {
 /// An open (or opening) connection.
 pub enum Connection {
     /// A WebSocket to a server over the network.
+    #[allow(missing_docs)]
     WebSocket { sender: ewebsock::WsSender, receiver: ewebsock::WsReceiver },
     /// An in-memory link to a server inside this client.
     #[cfg(not(target_arch = "wasm32"))]
+    #[allow(missing_docs)]
     Local {
         link: venture_server::LinkSender,
         id: venture_server::ConnectionId,

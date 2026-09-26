@@ -8,10 +8,15 @@ use bevy::prelude::*;
 /// Vertices and triangles being built up.
 #[derive(Default)]
 pub struct MeshData {
+    /// Each vertex's position.
     pub positions: Vec<[f32; 3]>,
+    /// Each vertex's normal.
     pub normals: Vec<[f32; 3]>,
+    /// Each vertex's colour.
     pub colours: Vec<[f32; 4]>,
+    /// Each vertex's texture coordinates.
     pub uvs: Vec<[f32; 2]>,
+    /// Three vertex numbers per triangle.
     pub indices: Vec<u32>,
 }
 
@@ -62,10 +67,12 @@ impl MeshData {
         self.indices.extend(other.indices.iter().map(|index| first + index));
     }
 
+    /// Whether it has no triangles.
     pub fn is_empty(&self) -> bool {
         self.indices.is_empty()
     }
 
+    /// Makes a Bevy mesh of it.
     pub fn into_mesh(self) -> Mesh {
         Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
             .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.positions)
