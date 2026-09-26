@@ -8,6 +8,7 @@ use venture_rpg::{ClassRules, Dice, Stat, Stats};
 
 /// The cut of an NPC's clothes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum OutfitStyle {
     /// A plain tunic and trousers.
     #[default]
@@ -32,6 +33,7 @@ fn default_bolt_speed() -> f32 {
 ///  tunic: (0.25, 0.35, 0.22), trousers: (0.3, 0.26, 0.22))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct AppearanceDef {
     /// Unique name, used by NPCs to refer to it.
@@ -123,6 +125,7 @@ const _: () = assert!(PICKED_RANGE <= FEATURE_RANGE);
 ///  at: StartingSettlement(offset: (6.0, 3.0)), script: Some("guard.rhai"), dialogue: Some("Guard"))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct NpcDef {
     /// Unique name, used to recognise the NPC across content reloads.
@@ -152,6 +155,7 @@ pub struct NpcDef {
 /// settlements keeps content in the right spot even when the terrain
 /// generator is tuned.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum Placement {
     /// Relative to the settlement new characters start in, in metres (east, south).
     StartingSettlement {
@@ -176,6 +180,7 @@ pub enum Placement {
 ///  icon: "bread.png", value: 4)
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct ItemDef {
     /// Unique name, used everywhere else to refer to it (and saved in profiles).
@@ -208,6 +213,7 @@ pub struct ItemDef {
 ///              look: (style: Sword, main: (0.7, 0.7, 0.72), trim: (0.35, 0.22, 0.12))))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct Equippable {
     /// The slots it fills (a robe fills both `Body` and `Legs`).
@@ -229,6 +235,7 @@ pub struct Equippable {
 
 /// A weapon's part in the rules.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct WeaponDef {
     /// Its damage dice, before the stat's bonus (such as `"1d6"`).
@@ -246,6 +253,7 @@ pub struct WeaponDef {
 ///  mana: 3, cooldown: 6.0, range: 2.5, effect: Strike(damage: "1d8"))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct AbilityDef {
     /// Unique name (saved in profiles, so don't rename lightly).
@@ -301,6 +309,7 @@ impl AbilityDef {
 /// (id: "fishing", name: "Fishing", description: "Catching fish.", icon: "skill_fishing.png")
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct SkillDef {
     /// Unique name (saved in profiles, so don't rename lightly).
@@ -322,6 +331,7 @@ pub struct SkillDef {
 /// piece without an image keeps the plain flat look. See
 /// `docs/content-authoring.md` for what each piece is.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct ThemeDef {
     /// Each piece's image, by piece name (such as `"window"`).
@@ -365,6 +375,7 @@ pub const THEME_PIECES: [(&str, &str); 21] = [
 /// One piece's image, drawn as a nine-slice: the corners stay as they are,
 /// the edges stretch (or repeat) along, and the middle fills the rest.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct ThemePiece {
     /// The PNG in `ui/`.
@@ -380,6 +391,7 @@ pub struct ThemePiece {
 
 /// How wide a piece's border is, in its image's pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(untagged)]
 pub enum ThemeBorder {
     /// The same on every side.
@@ -406,6 +418,7 @@ impl ThemeBorder {
 
 /// How an ability's effect looks (placeholder effects drawn by the client).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct AbilityVisual {
     /// Its colour.
@@ -423,6 +436,7 @@ impl Default for AbilityVisual {
 /// The game's own sounds (as opposed to abilities' sounds): files in `sounds/`,
 /// each optional. Read from `sounds.ron`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct GameSounds {
     /// An attack that hits.
@@ -451,6 +465,7 @@ impl GameSounds {
 
 /// What an ability does when used.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum AbilityEffect {
     /// Sit down and recover health and mana faster, until you move.
     Rest,
@@ -476,6 +491,7 @@ pub enum AbilityEffect {
 
 /// An ability a class can learn: from which level, and for how many ability points.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct ClassAbility {
     /// Which ability (a [`AbilityDef`] id).
@@ -501,6 +517,7 @@ impl ItemDef {
 /// (id: "elsies_bakery", name: "Elsie's Bakery", stock: [(item: "bread", price: 5)])
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct ShopDef {
     /// Unique name, used by dialogue to open it.
@@ -516,6 +533,7 @@ pub struct ShopDef {
 
 /// Something a shop sells.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct ShopItem {
     /// Which item (an [`ItemDef`] id).
@@ -535,6 +553,7 @@ pub struct ShopItem {
 /// ])
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct QuestDef {
     /// Unique name, used by dialogue (and saved in profiles, so don't rename lightly).
@@ -550,6 +569,7 @@ pub struct QuestDef {
 
 /// One stage of a quest.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct QuestStage {
     /// Its name, unique within the quest (and saved in profiles).
@@ -576,6 +596,7 @@ impl QuestDef {
 /// (miasma: 25, items: [(item: "bread", count: 1)])
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct NewCharacterDef {
     /// Their money.
@@ -599,6 +620,7 @@ pub struct NewCharacterDef {
 ///  abilities: [(ability: "shield_bash", level: 3, cost: 1)])
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct ClassDef {
     /// Unique name (saved in profiles, so don't rename lightly).
@@ -627,6 +649,7 @@ pub struct ClassDef {
 
 /// A number of one kind of item.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct ItemCount {
     /// Which item (an [`ItemDef`] id).
@@ -651,6 +674,7 @@ pub(crate) const MAX_HIT_DIE: u32 = 20;
 ///  look: (shape: Rabbit, main: (0.55, 0.45, 0.35), trim: (0.92, 0.9, 0.86)))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct CreatureDef {
     /// Unique name, used by spawners.
@@ -689,6 +713,7 @@ fn default_aggro_radius() -> f32 {
 
 /// How a creature attacks.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct CreatureAttack {
     /// Its damage dice (such as `"1d4+1"`).
@@ -707,6 +732,7 @@ pub struct CreatureAttack {
 ///  radius: 8.0, respawn_seconds: 20.0)
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct SpawnerDef {
     /// Unique name.
@@ -731,6 +757,7 @@ pub struct SpawnerDef {
 /// (name: "the town square", at: StartingSettlement(offset: (0.0, 0.0)))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct RespawnPoint {
     /// Its name, as in "You wake up in {name}."

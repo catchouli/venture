@@ -11,6 +11,7 @@ use crate::stats::Stat;
 /// (hit_die: 10, mana_per_level: 3, casting_stat: Wisdom)
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct ClassRules {
     /// The size of the die for health per level (SRD 5.1: d10 for fighters,

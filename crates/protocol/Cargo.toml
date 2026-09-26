@@ -7,10 +7,15 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+bevy_reflect = { workspace = true, optional = true }
 venture_simulation.workspace = true
 venture_rpg.workspace = true
 serde.workspace = true
 postcard.workspace = true
+
+[features]
+# Reflection (for the editor's property panels).
+reflect = ["dep:bevy_reflect", "venture_rpg/reflect"]
 
 [lints]
 workspace = true

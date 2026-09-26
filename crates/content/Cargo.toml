@@ -7,11 +7,14 @@ license.workspace = true
 rust-version.workspace = true
 
 [features]
+# Reflection (for the editor's property panels).
+reflect = ["dep:bevy_reflect", "venture_protocol/reflect", "venture_rpg/reflect"]
 # Checking scripts compile. The server and the `check` tool need it; the
 # client doesn't (it only reads presentation data), so it's optional.
 scripts = ["dep:rhai", "dep:yarnspinner"]
 
 [dependencies]
+bevy_reflect = { workspace = true, optional = true }
 serde.workspace = true
 ron.workspace = true
 sha2.workspace = true

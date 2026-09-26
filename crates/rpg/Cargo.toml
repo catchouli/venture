@@ -7,7 +7,12 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+bevy_reflect = { workspace = true, optional = true }
 serde.workspace = true
+
+[features]
+# Reflection (for the editor's property panels).
+reflect = ["dep:bevy_reflect"]
 
 [lints]
 workspace = true

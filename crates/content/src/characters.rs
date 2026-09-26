@@ -26,6 +26,7 @@ use venture_protocol::{BodyType, Features};
 /// )
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct CharacterModels {
     /// The file holding the animations (on the shared skeleton).
@@ -97,6 +98,7 @@ pub const CLIPS: [(&str, &str); 13] = [
 
 /// The body model for each body type.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct Bodies {
     /// For masculine characters.
@@ -120,6 +122,7 @@ impl Bodies {
 
 /// A body.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct BodyModel {
     /// Its model.
@@ -136,6 +139,7 @@ pub struct BodyModel {
 
 /// Which bodies an outfit part was made for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum PartFit {
     /// Parts made for masculine bodies.
     #[default]
@@ -148,6 +152,7 @@ pub enum PartFit {
 /// and the other is used), and the parts of the body it covers (hidden under
 /// it, so they don't poke through).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct PartModel {
     /// Its model for masculine bodies.
@@ -170,6 +175,7 @@ pub struct PartModel {
 
 /// How a held thing is attached to the skeleton.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
 pub struct Held {
     /// The bone it's attached to (such as `"hand_r"`).
@@ -206,6 +212,7 @@ impl PartModel {
 
 /// A part of the body clothes can cover.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum BodyRegion {
     /// Chest, back and belly.
     Torso,

@@ -35,6 +35,7 @@ pub enum EntityKind {
 
 /// The kind of body a creature has (placeholder models, until real ones).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum CreatureShape {
     /// A rabbit: small, with long ears.
     Rabbit,
@@ -48,6 +49,7 @@ pub enum CreatureShape {
 /// (shape: Rabbit, main: (0.6, 0.5, 0.4), trim: (0.9, 0.88, 0.85))
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct CreatureLook {
     /// Its shape.
     pub shape: CreatureShape,
@@ -515,6 +517,7 @@ pub struct ClassChoice {
 
 /// A character's build. It only changes how they look.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum BodyType {
     /// Broader shoulders, narrower hips.
     Masculine,
@@ -543,6 +546,7 @@ impl BodyType {
 /// chosen in the character creator. Hairstyles and palettes come from the
 /// content's `characters/characters.ron`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(default)]
 pub struct Features {
     /// Height, from `-FEATURE_RANGE` (shortest) to `FEATURE_RANGE` (tallest).
@@ -576,6 +580,7 @@ impl Features {
 
 /// A place on a character that equipment goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum EquipSlot {
     /// Their head (helmets).
     Head,
@@ -610,6 +615,7 @@ impl EquipSlot {
 
 /// How a worn item shows on a character (placeholder shapes, until real models).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum LookStyle {
     /// Plates strapped over the chest and back, with shoulder guards.
     Plates,
@@ -633,6 +639,7 @@ pub enum LookStyle {
 /// (style: Plates, main: (0.62, 0.46, 0.28), trim: (0.3, 0.2, 0.12))
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct ItemLook {
     /// Its shape.
     pub style: LookStyle,
