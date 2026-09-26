@@ -19,6 +19,6 @@
                 (text: "{mana} / {mana_max}", style: "bar_numbers_small"),
             ]),
         ]),
-        (bar: "experience", height: 8, tooltip: "Experience\n{experience} / {experience_max} towards your next level."),
+        (bar: "experience", height: 8, tooltip: "{experience}/{experience_max}"),
     ],
 )

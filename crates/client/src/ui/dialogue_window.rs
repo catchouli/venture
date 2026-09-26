@@ -70,13 +70,12 @@ struct GoodbyeButton;
 struct CloseButton;
 
 fn spawn_window(mut commands: Commands) {
-    // A full-width row near the bottom of the screen (above the hotbar),
-    // centring the window below the player's character, which the camera
-    // keeps in the middle.
+    // A full-width row along the bottom of the screen, centring the window
+    // below the player's character, which the camera keeps in the middle.
     commands
         .spawn(Node {
             position_type: PositionType::Absolute,
-            bottom: px(80),
+            bottom: px(12),
             width: percent(100),
             justify_content: JustifyContent::Center,
             ..default()
