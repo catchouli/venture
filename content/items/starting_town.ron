@@ -30,7 +30,10 @@
     ),
 
     // Starting equipment. `equip` says which slots an item fills, what it
-    // adds (armour, or weapon stats), and how it looks on the character.
+    // adds (armour, or weapon stats), and how it looks on the character:
+    // `parts` are outfit parts from characters/characters.ron (clothes,
+    // armour, or something held), and `look` is a simple shape drawn when
+    // there are no character models.
     (
         id: "training_sword",
         name: "Training sword",
@@ -41,6 +44,7 @@
             slots: [DominantHand],
             weapon: Some((damage: "1d6", speed: 1.0, stat: Strength)),
             look: (style: Sword, main: (0.72, 0.74, 0.78), trim: (0.36, 0.23, 0.13)),
+            parts: ["bronze_sword"],
         )),
     ),
     (
@@ -65,6 +69,7 @@
             slots: [Body],
             armour: 1,
             look: (style: Plates, main: (0.62, 0.46, 0.28), trim: (0.30, 0.19, 0.11)),
+            parts: ["ranger_body", "ranger_pauldron"],
         )),
     ),
     (
@@ -77,6 +82,7 @@
             slots: [Legs],
             armour: 1,
             look: (style: LegPlates, main: (0.62, 0.46, 0.28), trim: (0.30, 0.19, 0.11)),
+            parts: ["ranger_legs", "ranger_feet"],
         )),
     ),
     (
@@ -88,6 +94,7 @@
         equip: Some((
             slots: [Body, Legs],
             look: (style: Robe, main: (0.28, 0.30, 0.52), trim: (0.78, 0.68, 0.40)),
+            parts: ["peasant_body", "peasant_arms", "peasant_legs", "peasant_feet", "ranger_hood"],
         )),
     ),
     (
@@ -100,6 +107,7 @@
             slots: [NonDominantHand],
             armour: 1,
             look: (style: Buckler, main: (0.58, 0.42, 0.25), trim: (0.42, 0.42, 0.46)),
+            parts: ["wooden_shield"],
         )),
     ),
 ]

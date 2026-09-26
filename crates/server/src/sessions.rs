@@ -128,6 +128,7 @@ impl Sessions<'_, '_> {
             .into_iter()
             .map(|class| ClassChoice {
                 worn: Equipment::starting(&class, &self.content.pack.items).looks(&self.content.pack.items),
+                outfit: Equipment::starting(&class, &self.content.pack.items).outfit(&self.content.pack.items),
                 id: class.id,
                 name: class.name,
                 description: class.description,

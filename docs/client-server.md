@@ -423,8 +423,9 @@ anything). New abilities go in the first empty slot, and forgotten ones come off
 
 ## Jumping
 
-Jumping is for show: movement stays on the ground, so it doesn't change where
-a character can go. The client jumps at once and sends `Jump`; the server
+For now jumping is for show: movement stays on the ground, so it doesn't
+change where a character can go. Later it will be possible to jump onto
+things, but the game won't require it. The client jumps at once and sends `Jump`; the server
 allows one jump at a time (`JUMP_SECONDS`, in `venture_simulation`), stands a
 resting player up, and tells everyone else within 40 m (`Jumped { id }`).
 

@@ -1,0 +1,73 @@
+// Character models: bodies, hair and outfit parts, all on one shared
+// skeleton, and the animations they play. The models (glTF) and textures
+// beside this file are from Quaternius's CC0 packs (see
+// tools/import_characters.py, which copies them here from the downloads).
+// See docs/content-authoring.md.
+(
+    animations: "animations.glb",
+    // The game's names for animations, and each one's name in the file.
+    clips: {
+        "idle": "Idle_Loop",
+        "walk": "Walk_Loop",
+        "run": "Jog_Fwd_Loop",
+        "attack": "Sword_Attack",
+        "punch": "Punch_Jab",
+        "cast": "Spell_Simple_Shoot",
+        // Resting kneels on the ground (the Sitting_ animations are for
+        // chairs, for later): it blends down into the kneel and back up.
+        "sit_down": "Fixing_Kneeling",
+        "sitting": "Fixing_Kneeling",
+        "stand_up": "Idle_Loop",
+        "jump": "Jump_Loop",
+        "wave": "Interact",
+        "hit": "Hit_Chest",
+        "death": "Death01",
+    },
+    // Which parts fit each body (made for masculine or feminine bodies), its
+    // hairstyle unless one's chosen, and a paler skin for lighter characters.
+    bodies: (
+        masculine: (model: "body_male.gltf", fits: Masculine, hair: "hair_simpleparted",
+                    light_skin: "t_superhero_male_ligh.png"),
+        feminine: (model: "body_female.gltf", fits: Feminine, hair: "hair_long",
+                   light_skin: "t_superhero_female_light_basecolor.png"),
+        androgynous: (model: "body_female.gltf", fits: Feminine, hair: "hair_buzzedfemale",
+                      light_skin: "t_superhero_female_light_basecolor.png"),
+    ),
+    hair: {
+        "hair_simpleparted": "hair_simpleparted.gltf",
+        "hair_long": "hair_long.gltf",
+        "hair_buns": "hair_buns.gltf",
+        "hair_buzzed": "hair_buzzed.gltf",
+        "hair_buzzedfemale": "hair_buzzedfemale.gltf",
+        "hair_beard": "hair_beard.gltf",
+    },
+    // Outfit parts: a model for each kind of body (either is used for both if
+    // only one's given), and the parts of the body they cover (hidden under
+    // them): Torso, Arms, Hands, Hips, Legs, Feet.
+    parts: {
+        "peasant_body": (masculine: "male_peasant_body.gltf", feminine: "female_peasant_body.gltf", covers: [Torso]),
+        "peasant_arms": (masculine: "male_peasant_arms.gltf", feminine: "female_peasant_arms.gltf", covers: [Arms, Hands]),
+        "peasant_legs": (masculine: "male_peasant_legs.gltf", feminine: "female_peasant_legs.gltf", covers: [Hips, Legs]),
+        "peasant_feet": (masculine: "male_peasant_feet.gltf", feminine: "female_peasant_feet.gltf", covers: [Feet]),
+        "ranger_body": (masculine: "male_ranger_body.gltf", feminine: "female_ranger_body.gltf", covers: [Torso]),
+        "ranger_arms": (masculine: "male_ranger_arms.gltf", feminine: "female_ranger_arms.gltf", covers: [Arms, Hands]),
+        "ranger_legs": (masculine: "male_ranger_legs.gltf", feminine: "female_ranger_legs.gltf", covers: [Hips, Legs]),
+        "ranger_feet": (masculine: "male_ranger_feet_boots.gltf", feminine: "female_ranger_feet.gltf", covers: [Feet]),
+        "ranger_hood": (masculine: "male_ranger_head_hood.gltf", feminine: "female_ranger_head_hood.gltf",
+                        hides_hair: true),
+        "ranger_pauldron": (masculine: "male_ranger_acc_pauldron.gltf", feminine: "female_ranger_acc_pauldrons.gltf"),
+        // Held things: attached to a bone, rather than worn.
+        "bronze_sword": (masculine: "sword_bronze.gltf",
+                         held: (bone: "hand_r", position: (0.0, 0.05, 0.0), rotation: (0.0, 0.0, 0.0))),
+        "wooden_shield": (masculine: "shield_wooden.gltf",
+                          held: (bone: "lowerarm_l", position: (0.0, 0.15, 0.0), rotation: (0.0, 0.0, 0.0), scale: 0.6)),
+    },
+    // Worn where nothing else covers the body.
+    plain_clothes: ["peasant_body", "peasant_arms", "peasant_legs", "peasant_feet"],
+    // NPCs' outfit styles.
+    outfits: {
+        "Tunic": ["peasant_body", "peasant_arms", "peasant_legs", "peasant_feet"],
+        "Armour": ["ranger_body", "ranger_arms", "ranger_legs", "ranger_feet", "ranger_pauldron"],
+        "Robe": ["peasant_body", "peasant_arms", "peasant_legs", "peasant_feet", "ranger_hood"],
+    },
+)

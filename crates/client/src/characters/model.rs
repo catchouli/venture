@@ -60,6 +60,8 @@ pub struct Gait {
     pub resting: bool,
     /// Seconds into a jump, if the character is in the air.
     jumping: Option<f32>,
+    /// Whether the swing going on is casting a spell (rather than a blow).
+    casting: bool,
     /// How far down they are, from `0.0` (standing) to `1.0` (sitting).
     sitting: f32,
 }
@@ -81,7 +83,7 @@ impl Gait {
 
     /// How high the jump has lifted the character (metres), and how far
     /// through it they are (0 to 1), while in the air.
-    fn jump_amount(&self) -> (f32, f32) {
+    pub fn jump_amount(&self) -> (f32, f32) {
         match self.jumping {
             Some(time) => {
                 let progress = (time / JUMP_SECONDS).clamp(0.0, 1.0);
@@ -95,6 +97,23 @@ impl Gait {
     /// Starts a swing of the weapon (or fist), as in an attack.
     pub fn swing(&mut self) {
         self.swinging = Some(0.0);
+        self.casting = false;
+    }
+
+    /// Starts casting a spell (a swing, for the simple bodies).
+    pub fn cast(&mut self) {
+        self.swinging = Some(0.0);
+        self.casting = true;
+    }
+
+    /// Whether the swing going on is casting a spell.
+    pub fn is_casting(&self) -> bool {
+        self.casting && self.swinging.is_some()
+    }
+
+    /// Whether the character is waving.
+    pub fn is_waving(&self) -> bool {
+        self.waving.is_some()
     }
 
     /// Whether the character is in the middle of a swing (for creatures'
@@ -149,6 +168,19 @@ impl Side {
         }
     }
 }
+
+/// Where the simple shapes' "elbow" space (the forearm hanging down its -Y,
+/// the hand at 0.29 m) sits on a model's right hand bone (which points along
+/// its +Y, towards the fingers).
+const HAND_FRAME: Transform = Transform::from_xyz(0.0, -0.29, 0.0).with_rotation(Quat::from_xyzw(0.0, 0.0, 1.0, 0.0));
+/// Where the simple shapes' elbow space sits on a model's left forearm bone.
+const FOREARM_FRAME: Transform = Transform::from_xyz(0.0, 0.0, 0.0).with_rotation(Quat::from_xyzw(0.0, 0.0, 1.0, 0.0));
+
+/// A top-level part of a placeholder body (made of simple shapes), which a
+/// character model replaces once the models have loaded (see
+/// [`crate::characters::humans`]).
+#[derive(Component)]
+pub struct PlaceholderPart;
 
 /// A pivot the animation rotates, belonging to the character entity `owner`.
 #[derive(Component)]
@@ -302,6 +334,35 @@ impl CharacterAssets {
         }
     }
 
+    /// For character models: puts simple shapes on a model's bones for held
+    /// things that have no model: weapons in the right hand, a buckler on
+    /// the left forearm.
+    pub fn attach_shapes(
+        &self,
+        commands: &mut Commands,
+        materials: &mut Assets<StandardMaterial>,
+        looks: &[ItemLook],
+        hand: Option<Entity>,
+        forearm: Option<Entity>,
+    ) {
+        for look in looks {
+            let shape = worn(materials, look);
+            match (look.style, hand, forearm) {
+                (LookStyle::Sword | LookStyle::Staff | LookStyle::Club, Some(hand), _) => {
+                    commands
+                        .spawn((HAND_FRAME, Visibility::default(), ChildOf(hand)))
+                        .with_children(|frame| spawn_weapon(frame, &self.meshes, &shape));
+                }
+                (LookStyle::Buckler, _, Some(forearm)) => {
+                    commands
+                        .spawn((FOREARM_FRAME, Visibility::default(), ChildOf(forearm)))
+                        .with_children(|frame| spawn_buckler(frame, &self.meshes, &shape, 1.0));
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// A sphere of radius 1, for building other bodies (such as creatures').
     pub fn unit_sphere(&self) -> Handle<Mesh> {
         self.meshes.unit_sphere.clone()
@@ -421,7 +482,15 @@ pub fn spawn_character(commands: &mut Commands, assets: &CharacterAssets, transf
 /// Rebuilds a character's body with a new look (such as when its appearance
 /// changes in the content). The character entity itself stays.
 pub fn rebuild_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, look: &Look) {
-    commands.entity(owner).despawn_children();
+    // Out with the old placeholder parts (only those: other children, such
+    // as dressed models, stay).
+    commands.queue(move |world: &mut World| {
+        let Some(children) = world.get::<Children>(owner) else { return };
+        let old: Vec<Entity> = children.iter().filter(|child| world.get::<PlaceholderPart>(*child).is_some()).collect();
+        for part in old {
+            world.despawn(part);
+        }
+    });
     build_body(commands, owner, assets, look);
 }
 
@@ -517,6 +586,7 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
             }
         })
         .id();
+    commands.entity(body).insert(PlaceholderPart);
     commands.entity(owner).add_child(body);
 
     for side in [Side::Left, Side::Right] {
@@ -573,6 +643,7 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
                     });
             })
             .id();
+        commands.entity(hip).insert(PlaceholderPart);
         commands.entity(owner).add_child(hip);
     }
 }

@@ -81,7 +81,10 @@ src/
     query.rs           ground height, raycasts, blocked cells
     lighting.rs        sun, sky and ambient light
   characters/        characters in the world
-    model.rs           the placeholder character and its animation
+    humans.rs          people as character models: loading them from the content,
+                       dressing (body, hair, outfit parts, held things), and animation
+    model.rs           the placeholder character (shown until the models load) and the
+                       gait every character's animation follows
     player.rs          your character: prediction, steering, following, correction
     remote.rs          other players, NPCs and creatures, interpolated between snapshots
     creatures.rs       the placeholder creature models (rabbit, goblin) and their animation

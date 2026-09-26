@@ -13,6 +13,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 use venture_protocol::{BodyType, ClassChoice, ClientMessage, MAX_NAME_CHARS, PlayerLook, ServerMessage, clean_name};
 
+use crate::characters::humans::HumanLook;
 use crate::characters::model::{CharacterAssets, Gait, rebuild_body, spawn_character};
 use crate::dev::settings::DevSettings;
 use crate::network::{ClientState, FromServer, ToServer};
@@ -77,8 +78,10 @@ struct Offer {
 impl Offer {
     /// How the chosen options look.
     fn look(&self) -> PlayerLook {
-        let worn = self.classes.get(self.class).map(|class| class.worn.clone()).unwrap_or_default();
-        PlayerLook { body: self.body, worn }
+        let class = self.classes.get(self.class);
+        let worn = class.map(|class| class.worn.clone()).unwrap_or_default();
+        let outfit = class.map(|class| class.outfit.clone()).unwrap_or_default();
+        PlayerLook { body: self.body, worn, outfit }
     }
 }
 
@@ -160,7 +163,7 @@ fn build_stage(
     // Turned a little, so the build shows.
     let transform = Transform::from_translation(STAGE).with_rotation(Quat::from_rotation_y(0.5));
     let character = spawn_character(&mut commands, &assets, transform, &look);
-    commands.entity(character).insert((CreationScreen, PreviewCharacter, layer));
+    commands.entity(character).insert((CreationScreen, PreviewCharacter, HumanLook::of_player(&offer.look()), layer));
 }
 
 fn open_prompt(
@@ -368,6 +371,7 @@ fn dress_preview(
         let (entity, mut gait) = preview.into_inner();
         let look = assets.player_look(0, &offer.look(), &mut materials);
         rebuild_body(&mut commands, entity, &assets, &look);
+        commands.entity(entity).insert(HumanLook::of_player(&offer.look()));
         gait.wave();
     }
 }

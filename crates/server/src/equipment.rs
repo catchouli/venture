@@ -90,6 +90,20 @@ impl Equipment {
         self.items().iter().filter_map(|item| Some(items.get(*item)?.equip.as_ref()?.look)).collect()
     }
 
+    /// The outfit parts what's worn puts on the character (each once).
+    pub fn outfit(&self, items: &BTreeMap<String, ItemDef>) -> Vec<String> {
+        let mut parts: Vec<String> = Vec::new();
+        for item in self.items() {
+            let Some(equip) = items.get(item).and_then(|def| def.equip.as_ref()) else { continue };
+            for part in &equip.parts {
+                if !parts.contains(part) {
+                    parts.push(part.clone());
+                }
+            }
+        }
+        parts
+    }
+
     /// Equips the item in an inventory slot, putting whatever it replaces in
     /// the bag. Returns what to tell the player, or `None` for a request that
     /// doesn't make sense (such as an empty slot).
@@ -145,7 +159,7 @@ impl Equipment {
 
 /// How a player looks: their build, and what they wear.
 pub fn player_look(character: &Character, equipment: &Equipment, items: &BTreeMap<String, ItemDef>) -> PlayerLook {
-    PlayerLook { body: character.body, worn: equipment.looks(items) }
+    PlayerLook { body: character.body, worn: equipment.looks(items), outfit: equipment.outfit(items) }
 }
 
 /// Carries out equip and unequip requests, and shows everyone the new look.
@@ -199,7 +213,7 @@ mod tests {
             icon: String::new(),
             stackable: false,
             value: 1,
-            equip: Some(Equippable { slots, armour, weapon, look: look(style) }),
+            equip: Some(Equippable { slots, armour, weapon, look: look(style), parts: Vec::new() }),
         };
         let sword = WeaponDef { damage: Dice::new(1, 6), speed: 1.0, stat: Stat::Strength };
         [

@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use crate::characters::{CharacterModels, check_character_models, parse_character_models};
 use crate::client::{
     ClientContent, parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
 };
@@ -26,6 +27,10 @@ const SOUNDS_FILE: &str = "sounds.ron";
 const MAX_SOUND_BYTES: usize = 512 * 1024;
 /// The interface's theme, in `ui/`.
 const THEME_FILE: &str = "ui/theme.ron";
+/// Character models and animations.
+const CHARACTERS_FILE: &str = "characters/characters.ron";
+/// The largest a model file (or its texture) may be, in bytes.
+const MAX_MODEL_FILE_BYTES: usize = 8 << 20;
 /// The interface's text styles and colours.
 const STYLES_FILE: &str = "ui/styles.ron";
 /// The largest an interface image may be, in bytes.
@@ -75,6 +80,8 @@ pub struct ContentPack {
     pub theme: ThemeDef,
     /// The interface's text styles, colours and bar colours.
     pub ui_styles: UiStyles,
+    /// Character models, if the pack has them.
+    pub character_models: Option<CharacterModels>,
     /// The interface's layouts, by name (the file name without `.ron`).
     pub layouts: BTreeMap<String, UiNode>,
     /// Creatures, by id.
@@ -432,6 +439,32 @@ impl ContentPack {
             }
         }
 
+        let mut model_files = Vec::new();
+        for extension in ["gltf", "bin", "glb", "png"] {
+            for (relative, bytes) in read_binary_files(folder, "characters", extension, &mut errors) {
+                if bytes.len() > MAX_MODEL_FILE_BYTES {
+                    errors.push(error(
+                        &relative,
+                        format!("model files must be at most {} MB", MAX_MODEL_FILE_BYTES >> 20),
+                    ));
+                }
+                model_files.push(file_name(&relative));
+                client_files.push((to_slashes(&relative), bytes));
+            }
+        }
+        if let Ok(text) = std::fs::read_to_string(folder.join(CHARACTERS_FILE)) {
+            let file = Path::new(CHARACTERS_FILE);
+            match parse_character_models(&text) {
+                Ok(models) => {
+                    errors.extend(check_character_models(&models, &model_files).into_iter().map(|m| error(file, m)));
+                    pack.character_models = Some(models);
+                    client_files.push((CHARACTERS_FILE.to_string(), text.into_bytes()));
+                }
+                Err(message) => errors.push(error(file, message)),
+            }
+        }
+        check_model_names(&pack, &mut errors);
+
         pack.client = ClientContent::new(client_files);
         if errors.is_empty() { Ok(pack) } else { Err(errors) }
     }
@@ -549,6 +582,29 @@ fn check_theme(theme: &ThemeDef, files: &HashSet<String>, file: &Path, errors: &
     }
     if let Some(font) = theme.font.as_ref().filter(|font| !files.contains(*font)) {
         problem(format!("there's no font called \"{font}\" in ui/"));
+    }
+}
+
+/// Items' and appearances' outfit parts and hairstyles must exist.
+fn check_model_names(pack: &ContentPack, errors: &mut Vec<ContentError>) {
+    let models = pack.character_models.clone().unwrap_or_default();
+    let has_part = |part: &String| models.parts.contains_key(part);
+    for item in pack.items.values() {
+        let parts = item.equip.iter().flat_map(|equip| &equip.parts);
+        for part in parts.filter(|part| !has_part(part)) {
+            let message = format!("item \"{}\": there's no outfit part called \"{part}\"", item.id);
+            errors.push(error(Path::new("items"), message));
+        }
+    }
+    for appearance in pack.appearances.values() {
+        for part in appearance.parts.iter().filter(|part| !has_part(part)) {
+            let message = format!("appearance \"{}\": there's no outfit part called \"{part}\"", appearance.id);
+            errors.push(error(Path::new("appearances"), message));
+        }
+        if let Some(hair) = appearance.hairstyle.as_ref().filter(|hair| !models.hair.contains_key(*hair)) {
+            let message = format!("appearance \"{}\": there's no hairstyle called \"{hair}\"", appearance.id);
+            errors.push(error(Path::new("appearances"), message));
+        }
     }
 }
 

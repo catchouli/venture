@@ -18,6 +18,7 @@
 //!   abilities/*.ron        what abilities do (sent to clients)
 //!   skills/*.ron           gathering and making skills (sent to clients)
 //!   ui/theme.ron, ui/*.png the interface's look (sent to clients)
+//!   characters/            character models, outfits and animations (sent to clients)
 //!   ui/layouts/*.ron       where each window's parts go (sent to clients)
 //!   ui/styles.ron          the interface's text styles and colours (sent to clients)
 //!   npcs/*.ron          who lives where (server only)
@@ -32,6 +33,7 @@
 //! [`ClientContent`] is the part clients download, described by a
 //! [`ContentManifest`] of hashes so they only fetch what changed.
 
+pub mod characters;
 mod client;
 mod definitions;
 #[cfg(feature = "scripts")]
