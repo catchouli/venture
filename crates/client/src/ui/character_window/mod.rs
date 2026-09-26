@@ -32,6 +32,9 @@ use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER, spawn_c
 
 /// Width of the window, in pixels.
 pub const WINDOW_WIDTH: f32 = 340.0;
+/// Distance from the window to the right of the screen, in pixels (clear of
+/// the hotbar, down the bottom right).
+pub const RIGHT: f32 = 80.0;
 /// How far below the top of the screen the window sits (under the toolbar), in pixels.
 const TOP: f32 = 50.0;
 /// Colour of the open tab's label.
@@ -203,7 +206,7 @@ pub fn spawn_window(mut commands: Commands) {
             Node {
                 position_type: PositionType::Absolute,
                 top: px(TOP),
-                right: px(12),
+                right: px(RIGHT),
                 width: px(WINDOW_WIDTH),
                 ..window_frame()
             },

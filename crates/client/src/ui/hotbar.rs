@@ -1,4 +1,4 @@
-//! The hotbar, at the bottom of the screen: ten slots for abilities and actions,
+//! The hotbar, down the bottom right of the screen: ten slots for abilities and actions,
 //! used with keys 1 to 9 and 0 or by clicking. Abilities show their cooldown
 //! (a shade that shrinks, and the seconds left) and fade when there isn't
 //! enough mana for them.

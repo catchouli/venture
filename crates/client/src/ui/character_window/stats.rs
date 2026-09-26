@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 use venture_protocol::ClientMessage;
-use venture_rpg::{Stat, modifier};
+use venture_rpg::{Progress, Stat, modifier};
 
 use crate::characters::nameplates::Nameplate;
 use crate::characters::player::LocalPlayer;
@@ -32,6 +32,7 @@ enum Field {
     Name,
     ClassAndLevel,
     Experience,
+    TotalExperience,
     Points,
     Score(Stat),
     Secondary(Secondary),
@@ -84,6 +85,7 @@ fn fill_page(mut commands: Commands, pages: Res<Pages>) {
         page.spawn((Field::ClassAndLevel, text("", 13.0, TEXT_COLOUR)));
         page.spawn(bar(10.0, EXPERIENCE_BAR, 0.0, (), ExperienceFill));
         page.spawn((Field::Experience, text("", 12.0, QUIET_COLOUR)));
+        page.spawn((Field::TotalExperience, text("", 12.0, QUIET_COLOUR)));
 
         page.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|row| {
             row.spawn(heading("Stats"));
@@ -132,6 +134,10 @@ fn show_sheet(
             Field::ClassAndLevel => format!("Level {} {}", sheet.level, sheet.class),
             Field::Experience if sheet.experience_to_next == 0 => "The highest level".to_string(),
             Field::Experience => format!("{} / {} experience", sheet.experience, sheet.experience_to_next),
+            Field::TotalExperience => {
+                let progress = Progress { level: sheet.level, experience: sheet.experience };
+                format!("{} experience in all", progress.total_experience())
+            }
             Field::Points if sheet.stat_points == 1 => "1 point to spend".to_string(),
             Field::Points if sheet.stat_points > 0 => format!("{} points to spend", sheet.stat_points),
             Field::Points => String::new(),

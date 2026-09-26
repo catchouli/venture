@@ -28,7 +28,7 @@ const GAP: f32 = 4.0;
 /// Space around the window's contents, in pixels.
 const PADDING: f32 = 10.0;
 /// How far from the right edge the window sits, in pixels: just left of the character window.
-const RIGHT: f32 = 12.0 + crate::ui::character_window::WINDOW_WIDTH + 10.0;
+const RIGHT: f32 = crate::ui::character_window::RIGHT + crate::ui::character_window::WINDOW_WIDTH + 10.0;
 /// How many one Shift-click buys.
 const SHIFT_COUNT: u32 = 5;
 /// Colour of the shop's name.

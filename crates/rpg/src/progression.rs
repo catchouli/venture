@@ -99,6 +99,12 @@ impl Progress {
         gained
     }
 
+    /// All the experience it took to get here: every level so far, plus
+    /// what's been earned towards the next.
+    pub fn total_experience(&self) -> u64 {
+        (1..self.level).map(experience_to_next_level).sum::<u64>() + self.experience
+    }
+
     /// Experience still needed to reach the next level (0 at the top).
     pub fn experience_needed(&self) -> u64 {
         if self.level >= MAX_LEVEL { 0 } else { experience_to_next_level(self.level) - self.experience }
@@ -108,6 +114,13 @@ impl Progress {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn total_experience_counts_every_level_so_far() {
+        assert_eq!(Progress { level: 1, experience: 25 }.total_experience(), 25);
+        let level_3 = Progress { level: 3, experience: 10 };
+        assert_eq!(level_3.total_experience(), experience_to_next_level(1) + experience_to_next_level(2) + 10);
+    }
 
     #[test]
     fn the_curve_starts_quick_and_grows() {
