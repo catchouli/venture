@@ -66,8 +66,17 @@ impl TestServer {
         let rules = Rules { max_move_distance: 30.0 };
         let content = ContentSetup { folder: profile_folder.clone(), pack, client: Default::default(), watch: false };
         let admins = vec!["Boss".to_string()];
-        GameServer { world: flat_world(), profiles, link, rules, content, spawn_override: None, admins }
-            .install(&mut app);
+        GameServer {
+            world: flat_world(),
+            profiles,
+            link,
+            rules,
+            content,
+            spawn_override: None,
+            admins,
+            everyone_is_admin: false,
+        }
+        .install(&mut app);
         Self { app, link: link_sender, profile_folder, delete_profiles: true }
     }
 

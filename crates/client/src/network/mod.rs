@@ -28,6 +28,12 @@ use crate::dev::settings::DevSettings;
 /// Seconds between attempts to reconnect.
 const RETRY_SECONDS: f32 = 3.0;
 
+/// Which saved login token to use: a named test profile's, the `--local`
+/// one, or the usual one.
+fn token_slot(profile: Option<String>, local: bool) -> Option<String> {
+    profile.or_else(|| local.then(|| "local".to_string()))
+}
+
 /// Connects to the server and passes messages both ways.
 pub struct NetworkPlugin;
 
@@ -39,7 +45,7 @@ impl Plugin for NetworkPlugin {
 
         let choice = app.world().resource::<ServerChoice>();
         let profile = app.world().resource::<DevSettings>().profile.clone();
-        let slot = profile.or_else(|| choice.is_local().then(|| "local".to_string()));
+        let slot = token_slot(profile, choice.is_local());
         app.init_state::<ClientState>()
             .insert_resource(Session::new(token::load_or_create(slot.as_deref())))
             .insert_non_send(ActiveConnection(None))

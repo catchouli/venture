@@ -6,7 +6,9 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 use venture_content::ContentPack;
-use venture_server::{ContentSetup, GameServer, Link, ProfileStore, ServerConfig, ServerWorld, SharedClientContent};
+use venture_server::{
+    ContentSetup, GameServer, Link, ProfileKey, ProfileStore, ServerConfig, ServerWorld, SharedClientContent,
+};
 
 use crate::content::LocalContent;
 
@@ -26,9 +28,13 @@ pub struct LocalServerPlugin;
 
 impl Plugin for LocalServerPlugin {
     fn build(&self, app: &mut App) {
-        let ServerChoice::Local { world_folder } = app.world().resource::<ServerChoice>().clone() else { return };
+        let ServerChoice::Local { world_folder, new_character, admin } = app.world().resource::<ServerChoice>().clone()
+        else {
+            return;
+        };
         let dev = app.world().resource::<DevSettings>();
         let spawn_override = dev.start_position;
+        let dev_profile = dev.profile.clone();
         // Automated runs get a fresh profile each time, so they start at the
         // requested spot, unless they name one (VENTURE_PROFILE): then it's
         // kept between runs, so a check can go on over several runs.
@@ -76,7 +82,14 @@ impl Plugin for LocalServerPlugin {
 
         let (link_sender, link) = Link::new();
         app.insert_resource(LocalServerLink(link_sender));
+        // `--new-character`: this client's character goes, so it's asked for a new one.
+        if new_character {
+            let slot = super::token_slot(dev_profile, true);
+            profiles.remove(&ProfileKey::from_token(&super::token::load_or_create(slot.as_deref())));
+        }
         let admins = config.admins.clone();
-        GameServer { world, profiles, link, rules: config.rules(), content, spawn_override, admins }.install(app);
+        let everyone_is_admin = admin;
+        GameServer { world, profiles, link, rules: config.rules(), content, spawn_override, admins, everyone_is_admin }
+            .install(app);
     }
 }

@@ -3,7 +3,10 @@
 //! - **Web:** the server that served the page.
 //! - **Desktop:** `--connect http://host:port` (default `http://127.0.0.1:8080`),
 //!   or `--local` to run a server inside the client for development (see
-//!   `crate::network::local_server`), optionally with `--world <folder>`.
+//!   `crate::network::local_server`), optionally with `--world <folder>`,
+//!   `--new-character` (delete your local character first, to make a new
+//!   one) and `--admin` (give every character on the local server admin
+//!   powers).
 
 use bevy::prelude::*;
 
@@ -25,6 +28,10 @@ pub enum ServerChoice {
     Local {
         /// The baked world folder.
         world_folder: std::path::PathBuf,
+        /// Whether to delete the local character first, to make a new one.
+        new_character: bool,
+        /// Whether every character on the local server has admin powers.
+        admin: bool,
     },
 }
 
@@ -43,7 +50,8 @@ impl ServerChoice {
                 |flag: &str| args.iter().position(|arg| arg == flag).and_then(|i| args.get(i + 1)).cloned();
             if args.iter().any(|arg| arg == "--local") {
                 let world_folder = value_after("--world").unwrap_or_else(|| "world".to_string()).into();
-                Self::Local { world_folder }
+                let flag = |name: &str| args.iter().any(|arg| arg == name);
+                Self::Local { world_folder, new_character: flag("--new-character"), admin: flag("--admin") }
             } else {
                 let base_url = value_after("--connect").unwrap_or_else(|| DEFAULT_SERVER.to_string());
                 Self::Remote { base_url: base_url.trim_end_matches('/').to_string() }
