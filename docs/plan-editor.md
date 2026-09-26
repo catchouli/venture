@@ -7,7 +7,10 @@ creature spawners, respawn points) and the rules and things of the game
 edit app of [world-authoring.md](world-authoring.md): props, generator
 plug-ins (trees, then buildings), areas, roads and towns.
 
-This is the plan; none of it exists yet.
+**Status:** milestone 0 is done (see [editor.md](editor.md)). The tabs for
+classes, abilities, items and the rest already edit every field, through
+reflection; milestone 2 makes them friendlier (dropdowns for ids, colour
+pickers, dice as text, previews).
 
 ## Principles
 

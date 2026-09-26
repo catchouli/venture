@@ -22,6 +22,22 @@ pub enum OutfitStyle {
 /// A colour as sRGB red, green and blue, each from 0 to 1.
 pub type Colour = (f32, f32, f32);
 
+/// Whether a value is its type's default (left out when saving, as reading
+/// fills it back in).
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // (serde passes a reference)
+fn is_default_bolt_speed(speed: &f32) -> bool {
+    *speed == default_bolt_speed()
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_default_aggro_radius(radius: &f32) -> bool {
+    *radius == default_aggro_radius()
+}
+
 fn default_bolt_speed() -> f32 {
     12.0
 }
@@ -47,31 +63,31 @@ pub struct AppearanceDef {
     /// Trousers colour.
     pub trousers: Colour,
     /// Their build (androgynous if not given).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub body: BodyType,
     /// The cut of their clothes (a tunic if not given).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub outfit: OutfitStyle,
     /// Their hairstyle (from `characters/characters.ron`), if not their body's usual one.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub hairstyle: Option<String>,
     /// The outfit parts they wear (from `characters/characters.ron`), if not
     /// the ones for their outfit style.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub parts: Vec<String>,
     /// Their beard (from `characters/characters.ron`), if they have one.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub beard: Option<String>,
     /// Their height, build and head size (from -10 to 10, as in the character
     /// creator). Any left out are picked from the appearance's id, so each
     /// person looks a little different, but always the same.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub height: Option<i8>,
     /// Their build (see `height`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub build: Option<i8>,
     /// Their head size (see `height`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub head: Option<i8>,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -137,14 +153,14 @@ pub struct NpcDef {
     /// Where the NPC lives.
     pub at: Placement,
     /// The script that gives the NPC its behaviour (a file in `scripts/`), if any.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub script: Option<String>,
     /// The conversation that opens when a player talks to the NPC: the title
     /// of a node in the `dialogue/` files, if any.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub dialogue: Option<String>,
     /// How far from home (in metres) the NPC may wander. Zero keeps it in place.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub wander_radius: f32,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -192,14 +208,14 @@ pub struct ItemDef {
     /// Its picture: a PNG file in `icons/`.
     pub icon: String,
     /// Whether any number of them share one inventory slot (like arrows).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub stackable: bool,
     /// What it's worth, in Miasma. Shops buy it for half that; zero means
     /// shops won't buy it at all (quest items, for example).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub value: u32,
     /// If it can be worn or wielded: where, what it does, and how it looks.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub equip: Option<Equippable>,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -219,17 +235,17 @@ pub struct Equippable {
     /// The slots it fills (a robe fills both `Body` and `Legs`).
     pub slots: Vec<EquipSlot>,
     /// Armour class it adds.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub armour: i32,
     /// What it does as a weapon (for items in the `Weapon` slot).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub weapon: Option<WeaponDef>,
     /// How it shows on the character (the simple shapes drawn when the
     /// character models aren't available).
     pub look: ItemLook,
     /// The outfit parts it puts on the character (from
     /// `characters/characters.ron`): clothes, armour, or a weapon in hand.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub parts: Vec<String>,
 }
 
@@ -265,21 +281,21 @@ pub struct AbilityDef {
     /// Its picture: a PNG file in `icons/`.
     pub icon: String,
     /// Mana it costs to use.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub mana: u32,
     /// Seconds before it can be used again.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub cooldown: f32,
     /// How far away the target may be, in metres (0 for abilities on yourself).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub range: f32,
     /// What it does.
     pub effect: AbilityEffect,
     /// The sound it makes when used: a file in `sounds/`, if any.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub sound: Option<String>,
     /// How it looks: the colour and size of its flash, bolt or glow.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub visual: AbilityVisual,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -335,15 +351,15 @@ pub struct SkillDef {
 #[serde(deny_unknown_fields)]
 pub struct ThemeDef {
     /// Each piece's image, by piece name (such as `"window"`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub pieces: BTreeMap<String, ThemePiece>,
     /// The toolbar's icon for each tab of the character window, by tab name
     /// (such as `"stats"`): PNGs in `ui/`.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub tab_icons: BTreeMap<String, String>,
     /// A font for all the interface's text (a TTF or OTF file in `ui/`), if
     /// not the built-in one.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub font: Option<String>,
 }
 
@@ -382,10 +398,10 @@ pub struct ThemePiece {
     pub image: String,
     /// How wide the corners and edges are, in the image's pixels: one number
     /// for all four sides, or `(left, right, top, bottom)`.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub border: ThemeBorder,
     /// Whether the edges and middle repeat (rather than stretch).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub tile: bool,
 }
 
@@ -440,19 +456,19 @@ impl Default for AbilityVisual {
 #[serde(deny_unknown_fields)]
 pub struct GameSounds {
     /// An attack that hits.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub hit: Option<String>,
     /// A critical hit.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub critical: Option<String>,
     /// An attack that misses.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub miss: Option<String>,
     /// Something dying.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub death: Option<String>,
     /// The player reaching a new level.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub level_up: Option<String>,
 }
 
@@ -479,7 +495,7 @@ pub enum AbilityEffect {
         /// Its damage dice, before the casting stat's bonus.
         damage: Dice,
         /// How fast it flies, in metres per second.
-        #[serde(default = "default_bolt_speed")]
+        #[serde(default = "default_bolt_speed", skip_serializing_if = "is_default_bolt_speed")]
         speed: f32,
     },
     /// Heal yourself.
@@ -600,13 +616,13 @@ impl QuestDef {
 #[serde(deny_unknown_fields)]
 pub struct NewCharacterDef {
     /// Their money.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub miasma: u64,
     /// The items in their bag.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub items: Vec<ItemCount>,
     /// The abilities every character knows from the start (such as resting).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub abilities: Vec<String>,
 }
 
@@ -634,13 +650,13 @@ pub struct ClassDef {
     /// The stats a new character of this class starts with.
     pub stats: Stats,
     /// The items a new character of this class has equipped.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub starting_equipment: Vec<String>,
     /// The abilities a new character of this class knows (on top of everyone's).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub starting_abilities: Vec<String>,
     /// The abilities the class can learn with ability points.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub abilities: Vec<ClassAbility>,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -690,13 +706,13 @@ pub struct CreatureDef {
     /// How it fights back.
     pub attack: CreatureAttack,
     /// Whether it attacks players who come near, rather than only fighting back.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub aggressive: bool,
     /// How near (in metres) a player must come for an aggressive creature to notice them.
-    #[serde(default = "default_aggro_radius")]
+    #[serde(default = "default_aggro_radius", skip_serializing_if = "is_default_aggro_radius")]
     pub aggro_radius: f32,
     /// How far from home (in metres) it wanders when it isn't fighting.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub wander_radius: f32,
     /// Experience for killing it.
     pub experience: u64,
@@ -742,7 +758,7 @@ pub struct SpawnerDef {
     /// Where: creatures appear within `radius` of here.
     pub at: Placement,
     /// How far from `at` (in metres) a creature may appear.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub radius: f32,
     /// How long after one dies the next appears, in seconds.
     pub respawn_seconds: f32,
