@@ -5,6 +5,8 @@
 //! - `VENTURE_EDITOR_TAB=Classes`: the tab to show (by its title).
 //! - `VENTURE_EDITOR_ENTRY=mage`: the entry to choose on it.
 //! - `VENTURE_EDITOR_FOCUS=x,y`: where the camera looks (metres).
+//! - `VENTURE_EDITOR_PLACE=town_guard`: choose this placed thing on the World
+//!   tab (by id, or name for respawn points), and look at it.
 //! - `VENTURE_SCREENSHOT_DELAY=seconds`: wait longer before the picture.
 
 use bevy::prelude::*;
@@ -13,6 +15,7 @@ use venture_client::world::streaming::StreamingProgress;
 
 use crate::camera::EditorCamera;
 use crate::document::Document;
+use crate::places::{Places, Selection};
 use crate::shell::{Shell, Tab};
 
 /// Frames to wait before and after taking it.
@@ -27,7 +30,7 @@ impl Plugin for ScreenshotPlugin {
         let delay = std::env::var("VENTURE_SCREENSHOT_DELAY").ok().and_then(|value| value.parse().ok()).unwrap_or(1.0);
         app.insert_resource(Pending { path, frames: 0, taken: false, delay })
             .add_systems(PostStartup, choose_view)
-            .add_systems(Update, take_when_loaded);
+            .add_systems(Update, (choose_place, take_when_loaded));
     }
 }
 
@@ -59,6 +62,25 @@ fn choose_view(mut shell: ResMut<Shell>, document: Res<Document>, mut camera: Si
     });
     if let Some(focus) = focus {
         camera.go_to(focus);
+    }
+}
+
+fn choose_place(
+    places: Res<Places>,
+    mut selection: ResMut<Selection>,
+    mut camera: Single<&mut EditorCamera>,
+    mut done: Local<bool>,
+) {
+    let Ok(key) = std::env::var("VENTURE_EDITOR_PLACE") else { return };
+    if *done {
+        return;
+    }
+    if let Some(place) = places.list.iter().find(|place| place.key == key)
+        && let Some((x, y)) = place.position
+    {
+        selection.0 = Some((place.kind, place.key.clone()));
+        camera.go_to(Vec3::new(x, 0.0, y));
+        *done = true;
     }
 }
 

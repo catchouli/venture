@@ -4,6 +4,7 @@
 //! checks the game runs (on a mirror of the content folder, so nothing is
 //! written to the real one until it's saved).
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -120,6 +121,10 @@ pub trait AnyCollection: Send + Sync {
     fn shift(&mut self, file: usize, index: usize, by: isize) -> Option<usize>;
     /// Registers the entry type for reflection.
     fn register(&self, registry: &mut bevy::reflect::TypeRegistry);
+    /// As `Any`, to get at the typed collection.
+    fn as_any(&self) -> &dyn Any;
+    /// As `Any`, mutably.
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<T: Entry> Collection<T> {
@@ -158,6 +163,18 @@ impl<T: Entry> Collection<T> {
             files.push(EntryFile { path, entries });
         }
         Ok(Self { title, place, files })
+    }
+}
+
+impl<T: Entry> Collection<T> {
+    /// Its files.
+    pub fn files(&self) -> &[EntryFile<T>] {
+        &self.files
+    }
+
+    /// Its files, to change (then call [`Document::changed`]).
+    pub fn files_mut(&mut self) -> &mut [EntryFile<T>] {
+        &mut self.files
     }
 }
 
@@ -268,6 +285,14 @@ impl<T: Entry> AnyCollection for Collection<T> {
     fn register(&self, registry: &mut bevy::reflect::TypeRegistry) {
         registry.register::<T>();
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 /// A change that can be undone: a file's text before and after.
@@ -292,6 +317,8 @@ pub struct Document {
     on_disk: HashMap<(usize, usize), String>,
     undo: Vec<Step>,
     redo: Vec<Step>,
+    /// Goes up by one with every change (so views know to update).
+    pub revision: u64,
 }
 
 impl Document {
@@ -318,6 +345,7 @@ impl Document {
             on_disk: HashMap::new(),
             undo: Vec::new(),
             redo: Vec::new(),
+            revision: 0,
         };
         document.refresh_texts();
         // (What's on disk counts as what was loaded, written tidily, so files
@@ -343,6 +371,7 @@ impl Document {
         if before == after {
             return;
         }
+        self.revision += 1;
         self.redo.clear();
         if let Some(last) = self.undo.last_mut()
             && (last.collection, last.file) == (collection, file)
@@ -388,6 +417,23 @@ impl Document {
             error!("Couldn't restore a change: {error}");
         }
         self.current.insert((collection, file), text.to_string());
+        self.revision += 1;
+    }
+
+    /// One kind of content, by its type, with its place in [`Document::collections`].
+    pub fn find<T: Entry>(&self) -> Option<(usize, &Collection<T>)> {
+        self.collections
+            .iter()
+            .enumerate()
+            .find_map(|(index, collection)| Some((index, collection.as_any().downcast_ref::<Collection<T>>()?)))
+    }
+
+    /// One kind of content, by its type, to change.
+    pub fn find_mut<T: Entry>(&mut self) -> Option<(usize, &mut Collection<T>)> {
+        self.collections
+            .iter_mut()
+            .enumerate()
+            .find_map(|(index, collection)| Some((index, collection.as_any_mut().downcast_mut::<Collection<T>>()?)))
     }
 
     /// Files changed since they were saved (relative paths).

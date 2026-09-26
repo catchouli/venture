@@ -12,8 +12,11 @@ use bevy_egui::{EguiContext, EguiGlobalSettings, EguiPrimaryContextPass, Primary
 use venture_content::ContentError;
 
 use crate::Project;
+use venture_client::common::coords::to_bevy;
+
 use crate::camera::EditorCamera;
 use crate::document::Document;
+use crate::places::{EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection};
 
 /// How long after the last change the content is checked, in seconds.
 const CHECK_DELAY: f64 = 0.4;
@@ -117,7 +120,7 @@ fn shell_ui(world: &mut World) {
             top_bar(ui, &mut shell, &mut document, now);
             problems_panel(ui, &mut shell, &document);
             match shell.tab {
-                Tab::World => world_tab(ui, world),
+                Tab::World => world_tab(ui, world, &mut shell, &mut document, now),
                 Tab::Content(collection) => {
                     entries_panel(ui, &mut shell, &mut document, collection, now);
                     properties_panel(ui, world, &mut shell, &mut document, collection, now);
@@ -317,27 +320,9 @@ fn properties_panel(
     now: f64,
 ) {
     let (file, entry) = shell.chosen.get(&collection).copied().unwrap_or((0, 0));
-    let registry = world.resource::<AppTypeRegistry>().clone();
-    let registry = registry.read();
     let mut changed = false;
     egui::CentralPanel::default().show_inside(root, |ui| {
-        let unsaved = document.is_unsaved(collection, file);
-        let kind = &mut document.collections[collection];
-        let Some(path) = kind.paths().get(file).cloned() else {
-            ui.label("Nothing here yet.");
-            return;
-        };
-        let key = kind.keys(file).get(entry).cloned().unwrap_or_default();
-        ui.heading(&key);
-        ui.label(format!("{}{}", path.display(), if unsaved { " (unsaved)" } else { "" }));
-        ui.separator();
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            // (Wide enough for ids and names inside lists.)
-            ui.spacing_mut().text_edit_width = 320.0;
-            if let Some(value) = kind.entry_mut(file, entry) {
-                changed = bevy_inspector_egui::reflect_inspector::ui_for_value(value, ui, &registry);
-            }
-        });
+        changed = edit_entry(ui, world, document, (collection, file, entry));
     });
     if changed {
         document.changed(collection, file, now);
@@ -345,18 +330,82 @@ fn properties_panel(
     }
 }
 
-/// The World tab: the 3D view fills the middle. (Placing things arrives in
-/// milestone 1.)
-fn world_tab(root: &mut egui::Ui, world: &mut World) {
-    egui::Panel::left("places").resizable(true).default_size(230.0).show_inside(root, |ui| {
-        ui.heading("Places");
-        ui.label("Placing NPCs, spawners and respawn points comes next.");
-        ui.separator();
-        ui.label("Right drag: turn");
-        ui.label("Middle drag (or Shift + right drag): slide");
-        ui.label("Scroll: closer / further");
-        ui.label("W A S D: move (Shift: faster)");
+/// Shows an entry's every field, to edit. Returns whether it changed (the
+/// caller then tells the document).
+fn edit_entry(ui: &mut egui::Ui, world: &World, document: &mut Document, (c, f, i): EntryRef) -> bool {
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    let unsaved = document.is_unsaved(c, f);
+    let Some(kind) = document.collections.get_mut(c) else { return false };
+    let Some(path) = kind.paths().get(f).cloned() else {
+        ui.label("Nothing here yet.");
+        return false;
+    };
+    let key = kind.keys(f).get(i).cloned().unwrap_or_default();
+    ui.heading(&key);
+    ui.label(format!("{}{}", path.display(), if unsaved { " (unsaved)" } else { "" }));
+    ui.separator();
+    let mut changed = false;
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        // (Wide enough for ids and names inside lists.)
+        ui.spacing_mut().text_edit_width = 320.0;
+        if let Some(value) = kind.entry_mut(f, i) {
+            changed = bevy_inspector_egui::reflect_inspector::ui_for_value(value, ui, &registry);
+        }
     });
+    changed
+}
+
+/// The World tab: placed things on the left, the chosen one's properties on
+/// the right, and the 3D view in the middle, with names over the markers.
+fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document: &mut Document, now: f64) {
+    let mut go_to = None;
+    world.resource_scope(|world, mut selection: Mut<Selection>| {
+        let places = world.resource::<Places>();
+        egui::Panel::left("places").resizable(true).default_size(240.0).show_inside(root, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for kind in PlaceKind::ALL {
+                    let of_kind: Vec<&Place> = places.list.iter().filter(|place| place.kind == kind).collect();
+                    egui::CollapsingHeader::new(format!("{} ({})", kind.title(), of_kind.len()))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            for place in of_kind {
+                                let label = match place.position {
+                                    Some(_) => place.label.clone(),
+                                    None => format!("{} (not in this world)", place.label),
+                                };
+                                if ui.selectable_label(selection.is(place), label).clicked() {
+                                    selection.0 = Some((place.kind, place.key.clone()));
+                                    go_to = place.position;
+                                }
+                            }
+                        });
+                }
+                ui.separator();
+                ui.weak("Click a marker to choose it, and drag it to move it.");
+                ui.weak("Right drag: turn. Middle drag (or Shift + right drag): slide.");
+                ui.weak("Scroll: closer or further. W A S D: move (Shift: faster).");
+            });
+        });
+        let chosen = places.list.iter().find(|place| selection.is(place)).map(|place| place.entry);
+        if let Some(entry) = chosen {
+            let mut changed = false;
+            egui::Panel::right("place properties").resizable(true).default_size(380.0).show_inside(root, |ui| {
+                changed = edit_entry(ui, world, document, entry);
+            });
+            if changed {
+                document.changed(entry.0, entry.1, now);
+                shell.check_due = Some(now + CHECK_DELAY);
+            }
+        }
+    });
+    if let Some((x, y)) = go_to {
+        let mut cameras = world.query::<&mut EditorCamera>();
+        if let Ok(mut camera) = cameras.single_mut(world) {
+            camera.go_to(to_bevy(x, y, 0.0));
+        }
+    }
+
     // The camera draws only in what's left between the panels (and only
     // takes the mouse there).
     let rect = root.available_rect_before_wrap();
@@ -375,5 +424,45 @@ fn world_tab(root: &mut egui::Ui, world: &mut World) {
         if camera.viewport.as_ref().map(|v| (v.physical_position, v.physical_size)) != Some((position, size)) {
             camera.viewport = viewport;
         }
+    }
+    name_markers(root, world, rect);
+}
+
+/// How far from the camera's point markers get their names shown, in metres.
+const NAMES_WITHIN: f32 = 150.0;
+
+/// Writes each marker's name over it, in the 3D view.
+fn name_markers(root: &egui::Ui, world: &mut World, rect: egui::Rect) {
+    let mut cameras = world.query::<(&Camera, &GlobalTransform, &EditorCamera)>();
+    let mut markers = world.query::<(&PlaceMarker, &Transform)>();
+    let world = &*world;
+    let Ok((camera, camera_place, orbit)) = cameras.single(world) else { return };
+    let focus = orbit.focus;
+    let places = world.resource::<Places>();
+    let selection = world.resource::<Selection>().clone();
+    let painter = root.ctx().layer_painter(egui::LayerId::new(egui::Order::Middle, "marker names".into()));
+    let painter = painter.with_clip_rect(rect);
+    for (marker, transform) in markers.iter(world) {
+        if transform.translation.distance(focus) > NAMES_WITHIN {
+            continue;
+        }
+        let Ok(spot) = camera.world_to_viewport(camera_place, transform.translation + Vec3::Y * 1.3) else {
+            continue;
+        };
+        let Some(place) = places.list.iter().find(|place| place.kind == marker.kind && place.key == marker.key) else {
+            continue;
+        };
+        let colour = if selection.is(place) { egui::Color32::WHITE } else { egui::Color32::from_gray(225) };
+        // (Bevy's viewport positions are already from the window's corner.)
+        let at = egui::pos2(spot.x, spot.y);
+        let font = egui::FontId::proportional(14.0);
+        painter.text(
+            at + egui::vec2(1.0, 1.0),
+            egui::Align2::CENTER_BOTTOM,
+            &place.label,
+            font.clone(),
+            egui::Color32::BLACK,
+        );
+        painter.text(at, egui::Align2::CENTER_BOTTOM, &place.label, font, colour);
     }
 }

@@ -7,10 +7,15 @@
         stats: (strength: 15, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10),
         starting_equipment: ["training_sword", "wooden_buckler", "wooden_chestguard", "wooden_legguards"],
         starting_abilities: ["whack"],
-        abilities: [
-            (ability: "cleave", level: 3, cost: 1),
-            (ability: "second_wind", level: 5, cost: 2),
-        ],
+        abilities: [(ability: "cleave", level: 3, cost: 1), (ability: "second_wind", level: 5, cost: 2)],
+    ),
+    (
+        id: "peasant",
+        name: "Peasant",
+        description: "super weak crappy guy",
+        rules: (hit_die: 1, mana_per_level: 1, casting_stat: Wisdom),
+        stats: (strength: 1, dexterity: 1, constitution: 1, intelligence: 1, wisdom: 1),
+        notes: "really crappy guy. no abilities and has nothing",
     ),
     (
         id: "mage",
@@ -20,9 +25,6 @@
         stats: (strength: 8, dexterity: 12, constitution: 12, intelligence: 15, wisdom: 13),
         starting_equipment: ["wooden_staff", "wooden_buckler", "plain_robes"],
         starting_abilities: ["air_blast"],
-        abilities: [
-            (ability: "frost_shard", level: 3, cost: 1),
-            (ability: "arcane_bolt", level: 5, cost: 2),
-        ],
+        abilities: [(ability: "frost_shard", level: 3, cost: 1), (ability: "arcane_bolt", level: 5, cost: 2)],
     ),
 ]

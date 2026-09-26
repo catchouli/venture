@@ -73,12 +73,15 @@ pub struct NpcInteraction {
 
 /// Where a placement is in the world, if its settlement exists.
 pub fn resolve_placement(placement: &Placement, manifest: &WorldManifest) -> Option<Point> {
-    let (settlement, (dx, dy)) = match placement {
-        Placement::Position(position) => return Some(*position),
-        Placement::StartingSettlement { offset } => (manifest.starting_settlement()?, offset),
-        Placement::Settlement { index, offset } => (manifest.settlements.get(*index)?, offset),
-    };
-    Some((settlement.position.0 + dx, settlement.position.1 + dy))
+    placement.position(&settlements(manifest))
+}
+
+/// Where the world's settlements are, for placements.
+pub fn settlements(manifest: &WorldManifest) -> venture_content::Settlements {
+    venture_content::Settlements {
+        starting: manifest.starting_settlement().map(|settlement| settlement.position),
+        all: manifest.settlements.iter().map(|settlement| settlement.position).collect(),
+    }
 }
 
 /// Makes the NPCs in the world match the content pack whenever it changes:
