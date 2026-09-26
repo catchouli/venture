@@ -22,6 +22,12 @@ pub struct PropTemplates {
     bush: MeshData,
 }
 
+impl Default for PropTemplates {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PropTemplates {
     /// Builds every template.
     pub fn new() -> Self {

@@ -87,6 +87,7 @@ pub struct ShownChunks(pub HashMap<ChunkPos, Entity>);
 pub struct StreamingProgress {
     /// Whether `waiting` has been measured yet.
     pub measured: bool,
+    /// How many chunks near the camera are still loading.
     pub waiting: usize,
 }
 

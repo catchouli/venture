@@ -30,7 +30,10 @@ impl Plugin for WorldSourcePlugin {
 #[derive(Resource, Clone)]
 pub enum WorldSource {
     /// A web address ending in the world folder, such as `http://host:8080/world`.
-    Http { base_url: String },
+    Http {
+        /// The address.
+        base_url: String,
+    },
     /// A folder on disk (desktop `--local` mode).
     #[cfg(not(target_arch = "wasm32"))]
     Folder(std::path::PathBuf),
