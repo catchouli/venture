@@ -1,6 +1,5 @@
 //! On-screen debug text (where the player is and how the game is running),
-//! shown and hidden with **F3**, and a reminder of the controls. Developer
-//! tools such as the free camera (**F1**) only work while the debug text is
+//! shown and hidden with **F3**. Developer tools such as the free camera (**F1**) only work while the debug text is
 //! showing.
 
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
@@ -15,8 +14,6 @@ use crate::network::ClientState;
 use crate::ui::text_input::KeyboardFocus;
 use crate::world::streaming::{ChunkStore, ShownChunks};
 
-const CONTROLS_HELP: &str = "Left-click or WASD: run\nClick someone: select; again: follow/talk\n\
-                             Right-drag or arrow keys: rotate and tilt\nWheel: zoom\nEnter: chat (/help: commands)   Esc: deselect";
 /// The developer controls, listed in the debug text.
 const DEBUG_HELP: &str = "F1: free camera (WASD to fly, Shift: fast)   F3: hide this";
 
@@ -61,10 +58,7 @@ fn spawn_hud(mut commands: Commands) {
     let shadow = TextShadow { offset: Vec2::splat(1.5), ..default() };
     // (Below the player frame.)
     let debug = Node { position_type: PositionType::Absolute, left: px(10), top: px(78), ..default() };
-    // Bottom right, clear of the chat box in the bottom left.
-    let help = Node { position_type: PositionType::Absolute, right: px(10), bottom: px(10), ..default() };
-    commands.spawn((HudText, Text::default(), font.clone(), shadow, debug, Visibility::Hidden));
-    commands.spawn((Text::new(CONTROLS_HELP), font, shadow, help, TextLayout::justify(Justify::Right)));
+    commands.spawn((HudText, Text::default(), font, shadow, debug, Visibility::Hidden));
 }
 
 fn update_hud(
