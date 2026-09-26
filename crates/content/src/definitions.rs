@@ -189,6 +189,49 @@ pub enum Placement {
     Position((f32, f32)),
 }
 
+/// Where the world's settlements are, for working out placements: the
+/// starting settlement's centre, and every settlement's centre in order.
+#[derive(Clone, Debug, Default)]
+pub struct Settlements {
+    /// The centre of the settlement new characters start in.
+    pub starting: Option<(f32, f32)>,
+    /// Every settlement's centre, by number.
+    pub all: Vec<(f32, f32)>,
+}
+
+impl Placement {
+    /// Where it is in the world, if its settlement exists.
+    pub fn position(&self, settlements: &Settlements) -> Option<(f32, f32)> {
+        let (centre, (dx, dy)) = match self {
+            Placement::Position(position) => return Some(*position),
+            Placement::StartingSettlement { offset } => (settlements.starting?, offset),
+            Placement::Settlement { index, offset } => (*settlements.all.get(*index)?, offset),
+        };
+        Some((centre.0 + dx, centre.1 + dy))
+    }
+
+    /// The same kind of placement, moved to a position in the world (so
+    /// something placed relative to a settlement stays relative to it).
+    pub fn moved_to(&self, (x, y): (f32, f32), settlements: &Settlements) -> Placement {
+        let centre = match self {
+            Placement::Position(_) => None,
+            Placement::StartingSettlement { .. } => settlements.starting,
+            Placement::Settlement { index, .. } => settlements.all.get(*index).copied(),
+        };
+        let offset = centre.map(|(cx, cy)| (round_to_centimetres(x - cx), round_to_centimetres(y - cy)));
+        match (self, offset) {
+            (Placement::StartingSettlement { .. }, Some(offset)) => Placement::StartingSettlement { offset },
+            (Placement::Settlement { index, .. }, Some(offset)) => Placement::Settlement { index: *index, offset },
+            _ => Placement::Position((round_to_centimetres(x), round_to_centimetres(y))),
+        }
+    }
+}
+
+/// Rounds to the nearest centimetre (so moved things save as tidy numbers).
+fn round_to_centimetres(metres: f32) -> f32 {
+    (metres * 100.0).round() / 100.0
+}
+
 /// Something a player can carry.
 ///
 /// ```ron
@@ -812,6 +855,24 @@ mod tests {
             head: None,
             notes: String::new(),
         }
+    }
+
+    #[test]
+    fn placements_move_and_stay_relative() {
+        let settlements = Settlements { starting: Some((100.0, 200.0)), all: vec![(100.0, 200.0), (500.0, 500.0)] };
+        let square = Placement::StartingSettlement { offset: (3.0, -4.0) };
+        assert_eq!(square.position(&settlements), Some((103.0, 196.0)));
+        assert_eq!(
+            square.moved_to((110.25, 190.0), &settlements),
+            Placement::StartingSettlement { offset: (10.25, -10.0) }
+        );
+        let far = Placement::Settlement { index: 1, offset: (0.0, 0.0) };
+        assert_eq!(far.moved_to((501.0, 499.0), &settlements), Placement::Settlement { index: 1, offset: (1.0, -1.0) });
+        assert_eq!(
+            Placement::Position((1.0, 2.0)).moved_to((7.123, 8.0), &settlements),
+            Placement::Position((7.12, 8.0))
+        );
+        assert_eq!(Placement::Settlement { index: 9, offset: (0.0, 0.0) }.position(&settlements), None);
     }
 
     #[test]

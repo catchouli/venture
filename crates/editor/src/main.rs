@@ -17,6 +17,7 @@
 
 mod camera;
 mod document;
+mod places;
 mod screenshot;
 mod shell;
 
@@ -77,7 +78,12 @@ fn main() {
     .add_plugins((EguiPlugin::default(), DefaultInspectorConfigPlugin))
     .insert_resource(project)
     .insert_resource(document)
-    .add_plugins((camera::EditorCameraPlugin, shell::ShellPlugin, screenshot::ScreenshotPlugin));
+    .add_plugins((
+        camera::EditorCameraPlugin,
+        shell::ShellPlugin,
+        places::PlacesPlugin,
+        screenshot::ScreenshotPlugin,
+    ));
     {
         let registry = app.world().resource::<AppTypeRegistry>().clone();
         let mut registry = registry.write();

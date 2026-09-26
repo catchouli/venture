@@ -1,0 +1,464 @@
+//! Things placed in the world: NPCs, spawners and respawn points, shown and
+//! moved on the World tab.
+//!
+//! The [`Document`] stays the one truth. Each placed thing gets a marker
+//! entity ([`PlaceMarker`]), kept in step with the document whenever it
+//! changes. Clicking a marker chooses it; dragging it moves only the marker,
+//! and letting go writes the new placement into its entry (as one undo
+//! step), relative to its settlement as before.
+
+use std::collections::HashMap;
+
+use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
+use bevy_egui::input::EguiWantsInput;
+use venture_client::common::coords::{from_bevy, to_bevy};
+use venture_client::world::query::{ground_height, raycast_ground};
+use venture_client::world::source::WorldInfo;
+use venture_client::world::streaming::ChunkStore;
+use venture_content::{CreatureDef, NpcDef, Placement, RespawnPoint, Settlements, SpawnerDef};
+
+use crate::camera::EditorCamera;
+use crate::document::{Document, Entry};
+use crate::shell::ViewRect;
+
+/// How close (metres) the pointer's ray must pass to a marker to pick it.
+const PICK_RADIUS: f32 = 1.2;
+/// How far the pointer must move (pixels) before a press becomes a drag.
+const DRAG_START: f32 = 4.0;
+
+/// Shows placed things and lets them be picked and moved.
+pub struct PlacesPlugin;
+
+impl Plugin for PlacesPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Places>()
+            .init_resource::<Selection>()
+            .init_resource::<Drag>()
+            .add_systems(Startup, make_marker_assets)
+            .add_systems(Update, (list_places, sync_markers, pick_and_drag, keep_on_ground, draw_guides).chain());
+    }
+}
+
+/// The kinds of things placed in the world.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PlaceKind {
+    /// A non-player character.
+    Npc,
+    /// A creature spawner.
+    Spawner,
+    /// Where knocked-out players wake up.
+    RespawnPoint,
+}
+
+impl PlaceKind {
+    /// Every kind, in the order the outliner lists them.
+    pub const ALL: [PlaceKind; 3] = [PlaceKind::Npc, PlaceKind::Spawner, PlaceKind::RespawnPoint];
+
+    /// Its name in the outliner.
+    pub fn title(self) -> &'static str {
+        match self {
+            PlaceKind::Npc => "NPCs",
+            PlaceKind::Spawner => "Spawners",
+            PlaceKind::RespawnPoint => "Respawn points",
+        }
+    }
+}
+
+/// An entry with a place in the world.
+pub trait Placeable: Entry {
+    /// Its kind.
+    const KIND: PlaceKind;
+    /// Where it is.
+    fn at(&self) -> &Placement;
+    /// Where it is, to change.
+    fn at_mut(&mut self) -> &mut Placement;
+    /// What to call it in the world view.
+    fn label(&self) -> String;
+}
+
+impl Placeable for NpcDef {
+    const KIND: PlaceKind = PlaceKind::Npc;
+    fn at(&self) -> &Placement {
+        &self.at
+    }
+    fn at_mut(&mut self) -> &mut Placement {
+        &mut self.at
+    }
+    fn label(&self) -> String {
+        self.name.clone()
+    }
+}
+
+impl Placeable for SpawnerDef {
+    const KIND: PlaceKind = PlaceKind::Spawner;
+    fn at(&self) -> &Placement {
+        &self.at
+    }
+    fn at_mut(&mut self) -> &mut Placement {
+        &mut self.at
+    }
+    fn label(&self) -> String {
+        format!("{} ({})", self.creature, self.id)
+    }
+}
+
+impl Placeable for RespawnPoint {
+    const KIND: PlaceKind = PlaceKind::RespawnPoint;
+    fn at(&self) -> &Placement {
+        &self.at
+    }
+    fn at_mut(&mut self) -> &mut Placement {
+        &mut self.at
+    }
+    fn label(&self) -> String {
+        format!("Wake up: {}", self.name)
+    }
+}
+
+/// Where an entry is in the document: (collection, file, entry).
+pub type EntryRef = (usize, usize, usize);
+
+/// A placed thing, as the World tab shows it.
+#[derive(Clone, Debug)]
+pub struct Place {
+    /// Its kind.
+    pub kind: PlaceKind,
+    /// Its entry.
+    pub entry: EntryRef,
+    /// Its id (or name).
+    pub key: String,
+    /// What to call it.
+    pub label: String,
+    /// Where it is in the world (metres), if its settlement exists.
+    pub position: Option<(f32, f32)>,
+    /// For spawners: how far from it creatures appear, and how far away
+    /// aggressive ones notice players (if they do).
+    pub radii: Option<(f32, Option<f32>)>,
+}
+
+/// Every placed thing, worked out from the document.
+#[derive(Resource, Default)]
+pub struct Places {
+    /// The things, by kind, in document order.
+    pub list: Vec<Place>,
+    /// The document revision they're from, and whether the world's
+    /// settlements were known then.
+    made_from: Option<(u64, bool)>,
+}
+
+/// The chosen placed thing, by kind and key (which survive other entries
+/// being added or removed).
+#[derive(Resource, Default, Clone, PartialEq, Eq)]
+pub struct Selection(pub Option<(PlaceKind, String)>);
+
+impl Selection {
+    /// Whether this place is the chosen one.
+    pub fn is(&self, place: &Place) -> bool {
+        self.0.as_ref().is_some_and(|(kind, key)| *kind == place.kind && *key == place.key)
+    }
+}
+
+/// A press on a marker, which becomes a drag once the pointer moves.
+#[derive(Resource, Default)]
+struct Drag {
+    /// The marker being pressed, and where the pointer was pressed (window pixels).
+    pressed: Option<(Entity, Vec2)>,
+    /// Whether it's being dragged (not just clicked).
+    moving: bool,
+}
+
+/// A marker in the world for a placed thing.
+#[derive(Component)]
+pub struct PlaceMarker {
+    /// What it marks.
+    pub kind: PlaceKind,
+    /// Its entry's key.
+    pub key: String,
+}
+
+/// Meshes and materials for markers.
+#[derive(Resource)]
+struct MarkerAssets {
+    shapes: HashMap<PlaceKind, (Handle<Mesh>, Handle<StandardMaterial>)>,
+}
+
+/// Where the world's settlements are, once the world has loaded.
+pub fn settlements(world: &WorldInfo) -> Settlements {
+    let manifest = &world.0;
+    Settlements {
+        starting: manifest.starting_settlement().map(|settlement| settlement.position),
+        all: manifest.settlements.iter().map(|settlement| settlement.position).collect(),
+    }
+}
+
+fn make_marker_assets(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let mut material = |colour: Color| {
+        materials.add(StandardMaterial { base_color: colour, emissive: colour.to_linear() * 0.4, ..default() })
+    };
+    let shapes = HashMap::from([
+        (PlaceKind::Npc, (meshes.add(Capsule3d::new(0.3, 1.1)), material(Color::srgb(0.3, 0.55, 0.95)))),
+        (PlaceKind::Spawner, (meshes.add(Sphere::new(0.45)), material(Color::srgb(0.9, 0.3, 0.25)))),
+        (PlaceKind::RespawnPoint, (meshes.add(Cylinder::new(0.6, 0.15)), material(Color::srgb(0.95, 0.8, 0.3)))),
+    ]);
+    commands.insert_resource(MarkerAssets { shapes });
+}
+
+/// Works out every placed thing whenever the document (or the world) changes.
+fn list_places(document: Res<Document>, world: Option<Res<WorldInfo>>, mut places: ResMut<Places>) {
+    let key = (document.revision, world.is_some());
+    if places.made_from == Some(key) {
+        return;
+    }
+    let settlements = world.map(|world| settlements(&world)).unwrap_or_default();
+    let creatures: HashMap<String, CreatureDef> = document
+        .find::<CreatureDef>()
+        .map(|(_, creatures)| {
+            creatures.files().iter().flat_map(|file| file.entries.iter().map(|c| (c.id.clone(), c.clone()))).collect()
+        })
+        .unwrap_or_default();
+    let mut list = Vec::new();
+    add_places::<NpcDef>(&document, &settlements, &mut list, |_| None);
+    add_places::<SpawnerDef>(&document, &settlements, &mut list, |spawner| {
+        let aggro = creatures.get(&spawner.creature).filter(|creature| creature.aggressive).map(|c| c.aggro_radius);
+        Some((spawner.radius, aggro))
+    });
+    add_places::<RespawnPoint>(&document, &settlements, &mut list, |_| None);
+    places.list = list;
+    places.made_from = Some(key);
+}
+
+fn add_places<T: Placeable>(
+    document: &Document,
+    settlements: &Settlements,
+    list: &mut Vec<Place>,
+    radii: impl Fn(&T) -> Option<(f32, Option<f32>)>,
+) {
+    let Some((collection, kind)) = document.find::<T>() else { return };
+    for (f, file) in kind.files().iter().enumerate() {
+        for (i, entry) in file.entries.iter().enumerate() {
+            list.push(Place {
+                kind: T::KIND,
+                entry: (collection, f, i),
+                key: entry.key(),
+                label: entry.label(),
+                position: entry.at().position(settlements),
+                radii: radii(entry),
+            });
+        }
+    }
+}
+
+/// Makes the markers match the places: new ones appear, gone ones go, and
+/// moved ones move (unless one is being dragged).
+fn sync_markers(
+    mut commands: Commands,
+    places: Res<Places>,
+    assets: Option<Res<MarkerAssets>>,
+    store: Res<ChunkStore>,
+    drag: Res<Drag>,
+    mut markers: Query<(Entity, &PlaceMarker, &mut Transform)>,
+) {
+    let Some(assets) = assets else { return };
+    if !places.is_changed() {
+        return;
+    }
+    let mut existing: HashMap<(PlaceKind, String), Entity> =
+        markers.iter().map(|(entity, marker, _)| ((marker.kind, marker.key.clone()), entity)).collect();
+    for place in &places.list {
+        let Some((x, y)) = place.position else { continue };
+        let height = ground_height(&store, x, y).unwrap_or(0.0);
+        let at = Transform::from_translation(to_bevy(x, y, height) + marker_lift(place.kind));
+        match existing.remove(&(place.kind, place.key.clone())) {
+            Some(entity) => {
+                let dragged = drag.moving && drag.pressed.is_some_and(|(pressed, _)| pressed == entity);
+                if let Ok((_, _, mut transform)) = markers.get_mut(entity)
+                    && !dragged
+                {
+                    *transform = at;
+                }
+            }
+            None => {
+                let (mesh, material) = assets.shapes[&place.kind].clone();
+                commands.spawn((
+                    Name::new(format!("Marker: {}", place.label)),
+                    PlaceMarker { kind: place.kind, key: place.key.clone() },
+                    Mesh3d(mesh),
+                    MeshMaterial3d(material),
+                    at,
+                ));
+            }
+        }
+    }
+    for (_, entity) in existing {
+        commands.entity(entity).despawn();
+    }
+}
+
+/// How high a marker's centre is above the ground.
+fn marker_lift(kind: PlaceKind) -> Vec3 {
+    Vec3::Y
+        * match kind {
+            PlaceKind::Npc => 0.85,
+            PlaceKind::Spawner => 0.45,
+            PlaceKind::RespawnPoint => 0.08,
+        }
+}
+
+/// Markers placed before their ground loaded settle onto it.
+fn keep_on_ground(store: Res<ChunkStore>, mut markers: Query<(&PlaceMarker, &mut Transform)>) {
+    if !store.is_changed() {
+        return;
+    }
+    for (marker, mut transform) in &mut markers {
+        let (x, y) = from_bevy(transform.translation);
+        if let Some(height) = ground_height(&store, x, y) {
+            let wanted = height + marker_lift(marker.kind).y;
+            if (transform.translation.y - wanted).abs() > 0.01 {
+                transform.translation.y = wanted;
+            }
+        }
+    }
+}
+
+/// The pointer's ray into the world, if it's over the 3D view.
+fn pointer_ray(window: &Window, view: &ViewRect, camera: (&Camera, &GlobalTransform)) -> Option<(Ray3d, Vec2)> {
+    let cursor = window.cursor_position()?;
+    let rect = view.0?;
+    if !rect.contains(cursor) {
+        return None;
+    }
+    // (Bevy's viewport positions are from the window's corner, not the view's.)
+    let ray = camera.0.viewport_to_world(camera.1, cursor).ok()?;
+    Some((ray, cursor))
+}
+
+/// Left click picks a marker (or clears the choice, on bare ground); dragging
+/// one moves it along the ground, and letting go saves where it went.
+fn pick_and_drag(
+    time: Res<Time>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    egui: Res<EguiWantsInput>,
+    view: Res<ViewRect>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    camera: Single<(&Camera, &GlobalTransform), With<EditorCamera>>,
+    store: Res<ChunkStore>,
+    world: Option<Res<WorldInfo>>,
+    mut drag: ResMut<Drag>,
+    mut selection: ResMut<Selection>,
+    mut document: ResMut<Document>,
+    mut markers: Query<(Entity, &PlaceMarker, &mut Transform)>,
+) {
+    let pointer = pointer_ray(&window, &view, *camera);
+    if buttons.just_pressed(MouseButton::Left) && !egui.wants_pointer_input() {
+        let Some((ray, cursor)) = pointer else { return };
+        // The marker nearest the camera whose centre the ray passes close to.
+        let picked = markers
+            .iter()
+            .filter_map(|(entity, marker, transform)| {
+                let along = (transform.translation - ray.origin).dot(*ray.direction);
+                let closest = ray.origin + *ray.direction * along;
+                let size = PICK_RADIUS + along * 0.004;
+                (along > 0.0 && closest.distance(transform.translation) < size).then_some((along, entity, marker))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0));
+        match picked {
+            Some((_, entity, marker)) => {
+                selection.0 = Some((marker.kind, marker.key.clone()));
+                *drag = Drag { pressed: Some((entity, cursor)), moving: false };
+            }
+            None => selection.0 = None,
+        }
+        return;
+    }
+    let Some((entity, pressed_at)) = drag.pressed else { return };
+    if buttons.pressed(MouseButton::Left) {
+        let Some((ray, cursor)) = pointer else { return };
+        if !drag.moving && cursor.distance(pressed_at) < DRAG_START {
+            return;
+        }
+        drag.moving = true;
+        if let (Some(ground), Ok((_, marker, mut transform))) = (raycast_ground(&store, ray), markers.get_mut(entity)) {
+            transform.translation = ground + marker_lift(marker.kind);
+        }
+        return;
+    }
+    // Let go: a drag writes the marker's new place into its entry.
+    let moving = drag.moving;
+    *drag = Drag::default();
+    let (Some(world), true, Ok((_, marker, transform))) = (world, moving, markers.get(entity)) else { return };
+    let point = from_bevy(transform.translation);
+    let settlements = settlements(&world);
+    let key = marker.key.clone();
+    let moved = match marker.kind {
+        PlaceKind::Npc => move_entry::<NpcDef>(&mut document, &key, point, &settlements),
+        PlaceKind::Spawner => move_entry::<SpawnerDef>(&mut document, &key, point, &settlements),
+        PlaceKind::RespawnPoint => move_entry::<RespawnPoint>(&mut document, &key, point, &settlements),
+    };
+    if let Some((collection, file)) = moved {
+        document.changed(collection, file, time.elapsed_secs_f64());
+    }
+}
+
+/// Moves an entry (by key) to a point. Returns its (collection, file).
+fn move_entry<T: Placeable>(
+    document: &mut Document,
+    key: &str,
+    point: (f32, f32),
+    settlements: &Settlements,
+) -> Option<(usize, usize)> {
+    let (collection, kind) = document.find_mut::<T>()?;
+    for (f, file) in kind.files_mut().iter_mut().enumerate() {
+        if let Some(entry) = file.entries.iter_mut().find(|entry| entry.key() == key) {
+            let moved = entry.at().moved_to(point, settlements);
+            *entry.at_mut() = moved;
+            return Some((collection, f));
+        }
+    }
+    None
+}
+
+/// Draws spawners' radii on the ground, and a ring around the chosen thing.
+fn draw_guides(
+    mut gizmos: Gizmos,
+    places: Res<Places>,
+    selection: Res<Selection>,
+    store: Res<ChunkStore>,
+    view: Res<ViewRect>,
+    markers: Query<(&PlaceMarker, &Transform)>,
+) {
+    if view.0.is_none() {
+        return;
+    }
+    let positions: HashMap<(PlaceKind, &str), Vec3> =
+        markers.iter().map(|(marker, transform)| ((marker.kind, marker.key.as_str()), transform.translation)).collect();
+    for place in &places.list {
+        let Some(&centre) = positions.get(&(place.kind, place.key.as_str())) else { continue };
+        let chosen = selection.is(place);
+        if let Some((radius, aggro)) = place.radii {
+            let colour = if chosen { Color::srgb(1.0, 0.55, 0.45) } else { Color::srgba(0.9, 0.3, 0.25, 0.7) };
+            ground_circle(&mut gizmos, &store, centre, radius, colour);
+            if let Some(aggro) = aggro {
+                ground_circle(&mut gizmos, &store, centre, aggro, Color::srgba(1.0, 0.6, 0.1, 0.5));
+            }
+        }
+        if chosen {
+            ground_circle(&mut gizmos, &store, centre, 1.0, Color::WHITE);
+        }
+    }
+}
+
+/// A circle following the ground.
+fn ground_circle(gizmos: &mut Gizmos, store: &ChunkStore, centre: Vec3, radius: f32, colour: Color) {
+    let segments = ((radius * 4.0) as usize).clamp(24, 160);
+    let points = (0..=segments).map(|i| {
+        let angle = i as f32 / segments as f32 * std::f32::consts::TAU;
+        let (x, z) = (centre.x + angle.cos() * radius, centre.z + angle.sin() * radius);
+        Vec3::new(x, ground_height(store, x, z).unwrap_or(centre.y) + 0.15, z)
+    });
+    gizmos.linestrip(points, colour);
+}
