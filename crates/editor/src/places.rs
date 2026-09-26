@@ -511,3 +511,169 @@ fn ground_circle(gizmos: &mut Gizmos, store: &ChunkStore, centre: Vec3, radius: 
     });
     gizmos.linestrip(points, colour);
 }
+
+/// Adds a new placed thing of type `T` at a point, made from RON with
+/// `{id}`, `{x}` and `{y}` filled in, in the kind's first file. It's placed
+/// relative to the starting settlement when there is one. Returns its key.
+fn add_new<T: Placeable>(
+    document: &mut Document,
+    point: (f32, f32),
+    settlements: &Settlements,
+    prefix: &str,
+    template: &str,
+    now: f64,
+) -> Result<String, String> {
+    let (collection, kind) = document.find_mut::<T>().ok_or("no such kind of content")?;
+    let taken: Vec<String> = kind.files().iter().flat_map(|file| file.entries.iter().map(Entry::key)).collect();
+    let key = (1..).map(|n| format!("{prefix}_{n}")).find(|key| !taken.contains(key)).unwrap_or_default();
+    let text = template.replace("{id}", &key);
+    let mut entry: T = ron::from_str(&text).map_err(|error| error.to_string())?;
+    let relative = Placement::StartingSettlement { offset: (0.0, 0.0) };
+    let base = if settlements.starting.is_some() { relative } else { Placement::Position((0.0, 0.0)) };
+    *entry.at_mut() = base.moved_to(point, settlements);
+    let file = kind.files_mut().first_mut().ok_or("there's no file to add it to yet")?;
+    file.entries.push(entry);
+    document.changed(collection, 0, now);
+    Ok(key)
+}
+
+/// Adds a new NPC, spawner or respawn point at a point. Returns its key.
+pub fn add_place(
+    document: &mut Document,
+    kind: PlaceKind,
+    point: (f32, f32),
+    settlements: &Settlements,
+    now: f64,
+) -> Result<String, String> {
+    let first_key = |collection: Option<Vec<String>>| collection.and_then(|keys| keys.into_iter().next());
+    match kind {
+        PlaceKind::Npc => {
+            let appearance = first_key(document.find::<AppearanceDef>().map(|(_, all)| keys_of(all.files())))
+                .ok_or("make an appearance first")?;
+            let template =
+                format!(r#"(id: "{{id}}", name: "New person", appearance: "{appearance}", at: Position((0.0, 0.0)))"#);
+            add_new::<NpcDef>(document, point, settlements, "npc", &template, now)
+        }
+        PlaceKind::Spawner => {
+            let creature = first_key(document.find::<CreatureDef>().map(|(_, all)| keys_of(all.files())))
+                .ok_or("make a creature first")?;
+            let template = format!(
+                r#"(id: "{{id}}", creature: "{creature}", at: Position((0.0, 0.0)), radius: 8.0, respawn_seconds: 30.0)"#
+            );
+            add_new::<SpawnerDef>(document, point, settlements, "spawner", &template, now)
+        }
+        PlaceKind::RespawnPoint => {
+            let template = r#"(name: "{id}", at: Position((0.0, 0.0)))"#;
+            add_new::<RespawnPoint>(document, point, settlements, "respawn point", template, now)
+        }
+    }
+}
+
+fn keys_of<T: Entry>(files: &[crate::document::EntryFile<T>]) -> Vec<String> {
+    files.iter().flat_map(|file| file.entries.iter().map(Entry::key)).collect()
+}
+
+/// Copies a placed thing, a couple of metres east of it. Returns the copy's key.
+pub fn copy_place(document: &mut Document, place: &Place, settlements: &Settlements, now: f64) -> Option<String> {
+    let (collection, file, index) = place.entry;
+    let copy = document.collections[collection].duplicate(file, index)?;
+    let key = document.collections[collection].keys(file).get(copy)?.clone();
+    document.changed(collection, file, now);
+    if let Some((x, y)) = place.position {
+        let moved = match place.kind {
+            PlaceKind::Npc => move_entry::<NpcDef>(document, &key, (x + 2.0, y), settlements),
+            PlaceKind::Spawner => move_entry::<SpawnerDef>(document, &key, (x + 2.0, y), settlements),
+            PlaceKind::RespawnPoint => move_entry::<RespawnPoint>(document, &key, (x + 2.0, y), settlements),
+        };
+        if let Some((collection, file)) = moved {
+            document.changed(collection, file, now);
+        }
+    }
+    Some(key)
+}
+
+/// Deletes a placed thing.
+pub fn delete_place(document: &mut Document, place: &Place, now: f64) {
+    let (collection, file, index) = place.entry;
+    document.collections[collection].remove(file, index);
+    document.changed(collection, file, now);
+}
+
+/// Places something at a position in the world, rather than relative to a
+/// settlement (where it is doesn't change).
+pub fn make_absolute(document: &mut Document, place: &Place, now: f64) {
+    let Some(position) = place.position else { return };
+    let absolute = Settlements::default();
+    let moved = match place.kind {
+        PlaceKind::Npc => move_entry::<NpcDef>(document, &place.key, position, &absolute),
+        PlaceKind::Spawner => move_entry::<SpawnerDef>(document, &place.key, position, &absolute),
+        PlaceKind::RespawnPoint => move_entry::<RespawnPoint>(document, &place.key, position, &absolute),
+    };
+    if let Some((collection, file)) = moved {
+        document.changed(collection, file, now);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use super::*;
+    use crate::document::copy_folder;
+
+    fn scratch(name: &str) -> PathBuf {
+        let folder = std::env::temp_dir().join(format!("venture-places-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        copy_folder(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content"), &folder).unwrap();
+        folder
+    }
+
+    fn npcs(document: &Document) -> Vec<NpcDef> {
+        document.find::<NpcDef>().unwrap().1.files().iter().flat_map(|file| file.entries.clone()).collect()
+    }
+
+    fn place_of(document: &Document, key: &str, settlements: &Settlements) -> Place {
+        let (collection, npcs) = document.find::<NpcDef>().unwrap();
+        let index = npcs.files()[0].entries.iter().position(|npc| npc.id == key).unwrap();
+        let npc = &npcs.files()[0].entries[index];
+        Place {
+            kind: PlaceKind::Npc,
+            entry: (collection, 0, index),
+            key: key.to_string(),
+            label: npc.name.clone(),
+            position: npc.at.position(settlements),
+            radii: None,
+            look: PlaceLook::Point,
+        }
+    }
+
+    #[test]
+    fn places_are_added_copied_made_absolute_and_deleted() {
+        let folder = scratch("edit");
+        let mut document = Document::load(&folder).unwrap();
+        let settlements = Settlements { starting: Some((1000.0, 1000.0)), all: vec![(1000.0, 1000.0)] };
+        let before = npcs(&document).len();
+
+        let key = add_place(&mut document, PlaceKind::Npc, (1010.0, 995.0), &settlements, 0.0).unwrap();
+        let added = npcs(&document).into_iter().find(|npc| npc.id == key).unwrap();
+        assert_eq!(added.at, Placement::StartingSettlement { offset: (10.0, -5.0) });
+
+        let place = place_of(&document, &key, &settlements);
+        let copy = copy_place(&mut document, &place, &settlements, 10.0).unwrap();
+        let copied = npcs(&document).into_iter().find(|npc| npc.id == copy).unwrap();
+        assert_eq!(copied.at, Placement::StartingSettlement { offset: (12.0, -5.0) });
+
+        let place = place_of(&document, &copy, &settlements);
+        make_absolute(&mut document, &place, 20.0);
+        let absolute = npcs(&document).into_iter().find(|npc| npc.id == copy).unwrap();
+        assert_eq!(absolute.at, Placement::Position((1012.0, 995.0)));
+
+        let place = place_of(&document, &key, &settlements);
+        delete_place(&mut document, &place, 30.0);
+        assert_eq!(npcs(&document).len(), before + 1);
+        let mirror = scratch("edit-mirror");
+        assert!(document.check(&mirror).is_empty(), "{:?}", document.check(&mirror));
+        let _ = std::fs::remove_dir_all(&folder);
+        let _ = std::fs::remove_dir_all(&mirror);
+    }
+}

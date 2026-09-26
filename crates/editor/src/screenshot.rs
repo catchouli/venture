@@ -4,6 +4,7 @@
 //!
 //! - `VENTURE_EDITOR_TAB=Classes`: the tab to show (by its title).
 //! - `VENTURE_EDITOR_ENTRY=mage`: the entry to choose on it.
+//! - `VENTURE_EDITOR_TABLE=1`: show content tabs as tables.
 //! - `VENTURE_EDITOR_FOCUS=x,y`: where the camera looks (metres).
 //! - `VENTURE_EDITOR_PLACE=town_guard`: choose this placed thing on the World
 //!   tab (by id, or name for respawn points), and look at it.
@@ -48,6 +49,7 @@ fn choose_view(mut shell: ResMut<Shell>, document: Res<Document>, mut camera: Si
         && let Some(index) = document.collections.iter().position(|kind| kind.title().eq_ignore_ascii_case(&title))
     {
         shell.tab = Tab::Content(index);
+        shell.show_tables(std::env::var_os("VENTURE_EDITOR_TABLE").is_some());
         if let Ok(key) = std::env::var("VENTURE_EDITOR_ENTRY") {
             let kind = &document.collections[index];
             for file in 0..kind.paths().len() {

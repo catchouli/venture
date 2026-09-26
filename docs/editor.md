@@ -14,11 +14,24 @@ as for `--local`.
 
 ## What it does so far
 
-- **World tab:** the baked world, drawn as in the game.
+- **World tab:** the baked world, drawn as in the game, with everything
+  placed in it: NPCs (in their real models), spawners (showing their
+  creature, with the area creatures appear in drawn on the ground, and the
+  distance aggressive ones notice players from), and respawn points.
+  - On the left is every placed thing: click one to choose it and look at
+    it. **Add** puts a new NPC, spawner or respawn point where the camera is
+    looking (relative to the starting town). **Copy** adds a copy two metres
+    east, **Delete** removes it, and **Make absolute** pins it to its spot in
+    the world rather than to its settlement.
+  - Click a thing in the view to choose it, and drag it to move it along
+    the ground. Things placed relative to a settlement stay relative to it.
+  - The chosen thing's every field is on the right.
+  - **Save and play here** saves, then starts the game (`--local`) with a
+    new character at the camera's spot. It uses a profile of its own
+    ("editor"), with admin powers, so your usual character is left alone.
   - Right drag turns the view, and middle drag (or Shift with right drag)
-    slides it over the ground.
-  - The scroll wheel goes closer or further.
-  - W, A, S and D (or the arrow keys) move over the ground; hold Shift to
+    slides it over the ground. The scroll wheel goes closer or further.
+    W, A, S and D (or the arrow keys) move over the ground; hold Shift to
     go faster.
 - **A tab for each kind of content:** classes, abilities, items, skills,
   creatures, spawners, NPCs, appearances, shops, quests, respawn points,
@@ -29,6 +42,9 @@ as for `--local`.
     the first is the default).
   - In the middle is every field of the chosen entry, straight from the
     game's own types, so a new field shows up here by itself.
+  - **Table** shows every entry at once, a row each, with a column for each
+    simple field (text, numbers, ticks, plain choices), for changing many
+    things together. Click an entry's id to see all of it.
 - **Undo and redo** (Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y; Cmd on a Mac):
   changes to the same file within a second undo together.
 - **Problems:** the content is checked a moment after every change, with the
@@ -48,7 +64,12 @@ aren't kept, so notes about an entry go in its `notes` field (see
 - `document.rs`: the content in memory, one list of entries per file, as
   the content crate's own types. It loads, writes, undoes (by keeping each
   changed file's text before and after), and checks.
-- `shell.rs`: the layout (egui): the tabs, the entry list, the properties
+- `places.rs`: the World tab's placed things. The document stays the one
+  truth; each placed thing has a marker entity kept in step with it (the
+  game's own character and creature models, through `looks.rs`, which points
+  `content://` at the content folder). Dragging moves only the marker until
+  it's let go, then the entry's placement is rewritten, as one undo step.
+- `shell.rs`: the layout (egui): the tabs, the entry list or table, the properties
   (drawn by `bevy-inspector-egui` from the types' reflection), problems, and
   shortcuts. The interface has its own camera over the whole window; the 3D
   view's camera only draws between the panels.
@@ -56,9 +77,12 @@ aren't kept, so notes about an entry go in its `notes` field (see
   in around that point, using the client's world plugin.
 - `screenshot.rs`: `VENTURE_SCREENSHOT=path` saves a picture of the window
   once the world has loaded, then exits. `VENTURE_EDITOR_TAB=Classes` and
-  `VENTURE_EDITOR_ENTRY=mage` choose what's showing, and
-  `VENTURE_EDITOR_FOCUS=x,y` where the camera looks.
+  `VENTURE_EDITOR_ENTRY=mage` choose what's showing (with
+  `VENTURE_EDITOR_TABLE=1` for tables), `VENTURE_EDITOR_PLACE=town_guard`
+  chooses a placed thing, and `VENTURE_EDITOR_FOCUS=x,y` and
+  `VENTURE_EDITOR_DISTANCE=metres` set the camera.
 
 Tests (`cargo test -p venture_editor`) check that saving everything gives the
-game the same content, that awkward text survives, that undo works, and that
-problems are found before saving.
+game the same content, that awkward text survives, that undo works, that
+problems are found before saving, and that placed things are added, copied,
+made absolute and deleted properly.

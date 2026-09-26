@@ -12,11 +12,15 @@ use bevy_egui::{EguiContext, EguiGlobalSettings, EguiPrimaryContextPass, Primary
 use venture_content::ContentError;
 
 use crate::Project;
-use venture_client::common::coords::to_bevy;
+use venture_client::common::coords::{from_bevy, to_bevy};
+use venture_client::world::source::WorldInfo;
 
 use crate::camera::EditorCamera;
 use crate::document::Document;
-use crate::places::{EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, marker_heights};
+use crate::places::{
+    EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, add_place, copy_place, delete_place, make_absolute,
+    marker_heights, settlements,
+};
 
 /// How long after the last change the content is checked, in seconds.
 const CHECK_DELAY: f64 = 0.4;
@@ -61,9 +65,16 @@ pub struct Shell {
     check_due: Option<f64>,
     /// The last thing that happened, for the status line.
     status: String,
+    /// Whether content tabs show every entry in a table, rather than one entry.
+    table: bool,
 }
 
 impl Shell {
+    /// Shows content tabs as tables (or one entry at a time).
+    pub fn show_tables(&mut self, table: bool) {
+        self.table = table;
+    }
+
     /// Chooses an entry on a content tab.
     pub fn choose(&mut self, collection: usize, file: usize, entry: usize) {
         self.chosen.insert(collection, (file, entry));
@@ -123,7 +134,11 @@ fn shell_ui(world: &mut World) {
                 Tab::World => world_tab(ui, world, &mut shell, &mut document, now),
                 Tab::Content(collection) => {
                     entries_panel(ui, &mut shell, &mut document, collection, now);
-                    properties_panel(ui, world, &mut shell, &mut document, collection, now);
+                    if shell.table && !document.collections[collection].is_single() {
+                        table_panel(ui, world, &mut shell, &mut document, collection, now);
+                    } else {
+                        properties_panel(ui, world, &mut shell, &mut document, collection, now);
+                    }
                 }
             }
         });
@@ -264,6 +279,10 @@ fn entries_panel(root: &mut egui::Ui, shell: &mut Shell, document: &mut Document
         let kind = &mut document.collections[collection];
         if !kind.is_single() {
             ui.horizontal(|ui| {
+                ui.selectable_value(&mut shell.table, false, "One").on_hover_text("Every field of one entry");
+                ui.selectable_value(&mut shell.table, true, "Table").on_hover_text("The simple fields of every entry");
+            });
+            ui.horizontal(|ui| {
                 if ui.button("Copy").on_hover_text("Add a copy of this, just after it").clicked()
                     && let Some(copy) = kind.duplicate(file, entry)
                 {
@@ -330,6 +349,98 @@ fn properties_panel(
     }
 }
 
+/// Every entry of a kind in a table: a row each, and a column for each
+/// simple field (text, numbers, ticks and plain choices). Clicking an
+/// entry's key shows all of it.
+fn table_panel(
+    root: &mut egui::Ui,
+    world: &mut World,
+    shell: &mut Shell,
+    document: &mut Document,
+    collection: usize,
+    now: f64,
+) {
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    let mut changed_files = Vec::new();
+    let mut open = None;
+    egui::CentralPanel::default().show_inside(root, |ui| {
+        let kind = &mut document.collections[collection];
+        let files = kind.paths().len();
+        // The columns: the first entry's simple fields.
+        let columns: Vec<String> =
+            (0..files).find_map(|f| kind.entry_mut(f, 0).map(simple_fields)).unwrap_or_default();
+        egui::ScrollArea::both().show(ui, |ui| {
+            ui.spacing_mut().text_edit_width = 160.0;
+            egui::Grid::new("table").striped(true).num_columns(columns.len() + 1).show(ui, |ui| {
+                ui.strong("");
+                for column in &columns {
+                    ui.strong(column);
+                }
+                ui.end_row();
+                for f in 0..files {
+                    for (i, key) in kind.keys(f).iter().enumerate() {
+                        if ui.link(key).on_hover_text("Show all of it").clicked() {
+                            open = Some((f, i));
+                        }
+                        let Some(entry) = kind.entry_mut(f, i) else { continue };
+                        let bevy::reflect::ReflectMut::Struct(fields) = entry.reflect_mut() else { continue };
+                        for column in &columns {
+                            match fields.field_mut(column) {
+                                Some(value) if is_simple(value) => {
+                                    ui.push_id((f, i, column), |ui| {
+                                        if bevy_inspector_egui::reflect_inspector::ui_for_value(value, ui, &registry) {
+                                            changed_files.push(f);
+                                        }
+                                    });
+                                }
+                                _ => {
+                                    ui.weak("…");
+                                }
+                            }
+                        }
+                        ui.end_row();
+                    }
+                }
+            });
+        });
+    });
+    changed_files.dedup();
+    for file in changed_files {
+        document.changed(collection, file, now);
+        shell.check_due = Some(now + CHECK_DELAY);
+    }
+    if let Some((file, entry)) = open {
+        shell.choose(collection, file, entry);
+        shell.table = false;
+    }
+}
+
+/// The names of a struct's simple fields (see [`is_simple`]).
+fn simple_fields(value: &mut dyn bevy::reflect::PartialReflect) -> Vec<String> {
+    let bevy::reflect::ReflectMut::Struct(fields) = value.reflect_mut() else { return Vec::new() };
+    let mut names = Vec::new();
+    for index in 0..fields.field_len() {
+        let name = fields.name_at(index).unwrap_or_default().to_string();
+        if fields.field_at(index).is_some_and(is_simple) {
+            names.push(name);
+        }
+    }
+    names
+}
+
+/// Whether a value fits in a table cell: text, a number, a tick, or a choice
+/// (or an optional one) with nothing more inside.
+fn is_simple(value: &dyn bevy::reflect::PartialReflect) -> bool {
+    use bevy::reflect::ReflectRef;
+    match value.reflect_ref() {
+        ReflectRef::Opaque(_) => true,
+        ReflectRef::Enum(choice) => (0..choice.field_len())
+            .all(|i| choice.field_at(i).is_some_and(|f| matches!(f.reflect_ref(), ReflectRef::Opaque(_)))),
+        _ => false,
+    }
+}
+
 /// Shows an entry's every field, to edit. Returns whether it changed (the
 /// caller then tells the document).
 fn edit_entry(ui: &mut egui::Ui, world: &World, document: &mut Document, (c, f, i): EntryRef) -> bool {
@@ -360,9 +471,41 @@ fn edit_entry(ui: &mut egui::Ui, world: &World, document: &mut Document, (c, f, 
 /// the right, and the 3D view in the middle, with names over the markers.
 fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document: &mut Document, now: f64) {
     let mut go_to = None;
+    let mut action = None;
     world.resource_scope(|world, mut selection: Mut<Selection>| {
         let places = world.resource::<Places>();
+        let chosen_place = places.list.iter().find(|place| selection.is(place)).cloned();
         egui::Panel::left("places").resizable(true).default_size(240.0).show_inside(root, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Add:");
+                for (kind, label) in [
+                    (PlaceKind::Npc, "NPC"),
+                    (PlaceKind::Spawner, "Spawner"),
+                    (PlaceKind::RespawnPoint, "Respawn point"),
+                ] {
+                    if ui.button(label).on_hover_text("Where the camera is looking").clicked() {
+                        action = Some(WorldAction::Add(kind));
+                    }
+                }
+            });
+            if let Some(place) = &chosen_place {
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Copy").clicked() {
+                        action = Some(WorldAction::Copy(place.clone()));
+                    }
+                    if ui.button("Delete").clicked() {
+                        action = Some(WorldAction::Delete(place.clone()));
+                    }
+                    if ui
+                        .button("Make absolute")
+                        .on_hover_text("Place it at this spot in the world, not relative to its settlement")
+                        .clicked()
+                    {
+                        action = Some(WorldAction::MakeAbsolute(place.clone()));
+                    }
+                });
+            }
+            ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for kind in PlaceKind::ALL {
                     let of_kind: Vec<&Place> = places.list.iter().filter(|place| place.kind == kind).collect();
@@ -380,6 +523,10 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                                 }
                             }
                         });
+                }
+                ui.separator();
+                if ui.button("Save and play here").on_hover_text(PLAY_HERE_HELP).clicked() {
+                    action = Some(WorldAction::PlayHere);
                 }
                 ui.separator();
                 ui.weak("Click a marker to choose it, and drag it to move it.");
@@ -405,6 +552,9 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
             camera.go_to(to_bevy(x, y, 0.0));
         }
     }
+    if let Some(action) = action {
+        world_action(world, shell, document, action, now);
+    }
 
     // The camera draws only in what's left between the panels (and only
     // takes the mouse there).
@@ -426,6 +576,71 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
         }
     }
     name_markers(root, world, rect);
+}
+
+/// Something done from the World tab's buttons.
+enum WorldAction {
+    Add(PlaceKind),
+    Copy(Place),
+    Delete(Place),
+    MakeAbsolute(Place),
+    PlayHere,
+}
+
+const PLAY_HERE_HELP: &str = "Saves, then starts the game (--local) with a new character at the camera's spot. \
+It uses a profile of its own (\"editor\"), with admin powers, so your usual character is left alone.";
+
+fn world_action(world: &mut World, shell: &mut Shell, document: &mut Document, action: WorldAction, now: f64) {
+    let Some(settlements) = world.get_resource::<WorldInfo>().map(settlements) else {
+        shell.status = "The world hasn't loaded yet.".to_string();
+        return;
+    };
+    let mut cameras = world.query::<&EditorCamera>();
+    let focus = cameras.single(world).map(|camera| from_bevy(camera.focus)).unwrap_or_default();
+    let chosen = match action {
+        WorldAction::Add(kind) => match add_place(document, kind, focus, &settlements, now) {
+            Ok(key) => Some((kind, key)),
+            Err(error) => {
+                shell.status = format!("Couldn't add it: {error}.");
+                None
+            }
+        },
+        WorldAction::Copy(place) => copy_place(document, &place, &settlements, now).map(|key| (place.kind, key)),
+        WorldAction::Delete(place) => {
+            delete_place(document, &place, now);
+            None
+        }
+        WorldAction::MakeAbsolute(place) => {
+            make_absolute(document, &place, now);
+            Some((place.kind, place.key))
+        }
+        WorldAction::PlayHere => {
+            save_all(shell, document);
+            let project = world.resource::<Project>().clone();
+            shell.status = match play_here(&project, focus) {
+                Ok(()) => "Starting the game…".to_string(),
+                Err(error) => format!("Couldn't start the game: {error}"),
+            };
+            return;
+        }
+    };
+    world.resource_mut::<Selection>().0 = chosen;
+    shell.check_due = Some(now + CHECK_DELAY);
+}
+
+/// Starts the game in `--local` mode with a new character at a spot, as an
+/// admin, on a profile of its own.
+fn play_here(project: &Project, (x, y): (f32, f32)) -> Result<(), String> {
+    let world = project.world.to_string_lossy().to_string();
+    std::process::Command::new("cargo")
+        .args(["run", "-p", "venture_client", "--", "--local", "--new-character", "--admin", "--world", &world])
+        .env("VENTURE_PROFILE", "editor")
+        .env("VENTURE_CAMERA", format!("{x},{y},0.6,0.4,14"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 /// How far from the camera's point markers get their names shown, in metres.
