@@ -15,7 +15,27 @@ like the finished game, with a character walking around it.
   with A* pathfinding around water, cliffs, trees and rocks; a glowing move
   marker; follow camera; custom cursors.
 
-## Next: the look
+## Now: soul (the vertical slice's look and feel)
+
+The prototype plays; this phase is about giving the graphics soul, to nail
+the vibe for the vertical slice, before more mechanics and content. In order:
+
+1. **The interface:** layouts in the content pack (`content/ui/layouts/`,
+   see [ui-layouts.md](ui-layouts.md)), so designers can move, resize and
+   restyle every window, with textures and fonts from the content. Then an
+   art pass over the theme.
+2. **Characters:** real models to replace the placeholder shapes: a template
+   human (for players and NPCs) with ready-made animations (running,
+   swimming and so on), then a character creator (sliders for build and
+   face, hair styles and colours, outfits) used to make NPCs from the same
+   parts, and later offered to players. See
+   [plan-characters.md](plan-characters.md).
+3. **The environment:** ground, grass, trees, water and sky (the list below).
+
+After this phase: back to mechanics and content (class advancement, skills
+that do something, more quests and places).
+
+## Next: the look (environment)
 
 - **Ground texture splatting:** blend real (or procedural) textures per
   material, instead of vertex colour plus detail noise.

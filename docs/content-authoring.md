@@ -48,6 +48,8 @@ content/
   sounds/*.wav         sounds (sent to clients)
   sounds.ron           the game's own sounds: hits, misses, levelling up
   ui/theme.ron, ui/*   the interface's look: frame pictures, tab icons, font (sent to clients)
+  ui/layouts/*.ron     where each window's parts go (see ui-layouts.md)
+  ui/styles.ron        the interface's colours, text styles and bar colours
   creatures/*.ron      creatures: stats, attack, behaviour and look
   spawners/*.ron       where creatures live
   respawn_points.ron   where knocked-out players wake up

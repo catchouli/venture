@@ -100,6 +100,7 @@ src/
   ui/                the interface
     character_window/  the character window: mod.rs (the tabs), stats.rs, skills.rs,
                        abilities.rs, inventory.rs, equipment.rs, quests.rs, emotes.rs
+    layout.rs          builds windows from the content's layout files (docs/ui-layouts.md)
     theme.rs           the interface's look: each frame, button, slot and bar drawn
                        with the content's theme pictures (nine-slices), or plain
     toolbar.rs (an icon button for each of the window's tabs), chat.rs, dialogue_window.rs,

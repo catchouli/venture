@@ -18,6 +18,8 @@
 //!   abilities/*.ron        what abilities do (sent to clients)
 //!   skills/*.ron           gathering and making skills (sent to clients)
 //!   ui/theme.ron, ui/*.png the interface's look (sent to clients)
+//!   ui/layouts/*.ron       where each window's parts go (sent to clients)
+//!   ui/styles.ron          the interface's text styles and colours (sent to clients)
 //!   npcs/*.ron          who lives where (server only)
 //!   shops/*.ron         what shops sell (server only)
 //!   quests/*.ron        quests and their stages (server only)
@@ -36,6 +38,7 @@ mod definitions;
 pub mod dialogue;
 #[cfg(feature = "scripts")]
 pub mod dialogue_commands;
+pub mod layout;
 mod load;
 #[cfg(feature = "scripts")]
 pub mod script_hooks;

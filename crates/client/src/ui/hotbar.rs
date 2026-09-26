@@ -11,6 +11,9 @@
 //!
 //! A press and release without moving is a click: it uses the ability or does
 //! the action, wherever it was clicked.
+//!
+//! How the bar looks is its layout (`ui/layouts/hotbar.ron`): this copies its
+//! slot template for each slot, and fills the slots in.
 
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
@@ -20,16 +23,14 @@ use crate::content::ContentStore;
 use crate::interaction::abilities::{AbilityCooldowns, UseAbility};
 use crate::interaction::actions::{Action, PerformAction};
 use crate::network::{ClientState, FromServer, ToServer};
-use crate::ui::character_window::{BOX_COLOUR, HoverBox};
+use crate::ui::layout::{LayoutBuilt, LayoutSystems, Ui, UiRoot};
 use crate::ui::text_input::KeyboardFocus;
-use crate::ui::theme::{Piece, Themed};
 use crate::ui::tooltip::Tooltip;
 use crate::ui::vitals::Vitals;
-use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER};
 
-/// Size of a slot, in pixels.
-const SLOT_SIZE: f32 = 44.0;
-/// Size of an icon in its slot, in pixels.
+/// The hotbar's layout (`ui/layouts/hotbar.ron`).
+const LAYOUT: &str = "hotbar";
+/// Size of the icon that follows the mouse while dragging, in pixels.
 const ICON_SIZE: f32 = 36.0;
 /// How far the mouse must move while held before it's a drag, in pixels.
 const DRAG_THRESHOLD: f32 = 5.0;
@@ -46,12 +47,8 @@ const KEYS: [KeyCode; HOTBAR_SLOTS] = [
     KeyCode::Digit9,
     KeyCode::Digit0,
 ];
-/// Colour of the shade over an ability cooling down.
-const COOLDOWN_SHADE: Color = Color::srgba(0.0, 0.0, 0.0, 0.6);
 /// Tint of an ability there isn't enough mana for.
 const NO_MANA_TINT: Color = Color::srgb(0.45, 0.5, 0.75);
-/// Colour of the key numbers.
-const KEY_COLOUR: Color = Color::srgb(0.9, 0.85, 0.7);
 
 /// Shows the hotbar.
 pub struct HotbarPlugin;
@@ -60,10 +57,21 @@ impl Plugin for HotbarPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<HotbarLayout>()
             .init_resource::<Drag>()
-            .add_systems(Startup, spawn_bar)
+            .add_systems(Startup, spawn_ghost)
             .add_systems(
                 Update,
-                (record_layout, show_bar, show_slots, show_cooldowns, use_keys, start_dragging, drag_and_drop).chain(),
+                (
+                    fill_in_layout,
+                    record_layout,
+                    show_bar,
+                    show_slots,
+                    show_cooldowns,
+                    use_keys,
+                    start_dragging,
+                    drag_and_drop,
+                )
+                    .chain()
+                    .after(LayoutSystems),
             )
             .add_systems(OnExit(ClientState::Playing), |mut layout: ResMut<HotbarLayout>| {
                 *layout = HotbarLayout::default();
@@ -84,10 +92,6 @@ impl Default for HotbarLayout {
 /// Something that can be dragged onto the hotbar (and clicked to use it).
 #[derive(Component, Clone)]
 pub struct Draggable(pub HotbarEntry);
-
-/// The bar.
-#[derive(Component)]
-struct Bar;
 
 /// A slot, by position (0 for key 1).
 #[derive(Component)]
@@ -127,41 +131,8 @@ struct Held {
     dragging: bool,
 }
 
-fn spawn_bar(mut commands: Commands) {
-    commands
-        .spawn((
-            Bar,
-            Node {
-                position_type: PositionType::Absolute,
-                bottom: px(10),
-                width: percent(100),
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            // Above names and speech bubbles, like the windows.
-            WINDOW_LAYER,
-            Visibility::Hidden,
-        ))
-        .with_children(|centre| {
-            centre
-                .spawn((
-                    Node {
-                        column_gap: px(4),
-                        padding: UiRect::all(px(7)),
-                        border: UiRect::all(px(1)),
-                        border_radius: BorderRadius::all(px(4)),
-                        ..default()
-                    },
-                    BackgroundColor(WINDOW_BACKGROUND),
-                    BorderColor::all(BORDER_COLOUR),
-                    Themed(Piece::Panel),
-                ))
-                .with_children(|bar| {
-                    for (index, key) in KEYS.iter().enumerate() {
-                        spawn_slot(bar, index, key_name(*key));
-                    }
-                });
-        });
+/// Makes the icon that follows the mouse while dragging (hidden until then).
+fn spawn_ghost(mut commands: Commands) {
     commands.spawn((
         DragGhost,
         ImageNode::default(),
@@ -171,62 +142,32 @@ fn spawn_bar(mut commands: Commands) {
     ));
 }
 
-fn spawn_slot(bar: &mut ChildSpawnerCommands, index: usize, key: &str) {
-    let fill = Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
-    bar.spawn((
-        Slot(index),
-        Button,
-        HoverBox,
-        Tooltip::default(),
-        RelativeCursorPosition::default(),
-        Node {
-            width: px(SLOT_SIZE),
-            height: px(SLOT_SIZE),
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            border_radius: BorderRadius::all(px(3)),
-            overflow: Overflow::clip(),
-            ..default()
-        },
-        BackgroundColor(BOX_COLOUR),
-        Themed(Piece::Slot),
-    ))
-    .with_children(|slot| {
-        slot.spawn((
-            SlotIcon(index),
-            ImageNode::default(),
-            Node { width: px(ICON_SIZE), height: px(ICON_SIZE), ..default() },
-            Visibility::Hidden,
-        ));
-        slot.spawn((
-            SlotLabel(index),
-            Text::default(),
-            TextFont { font_size: FontSize::Px(11.0), ..default() },
-            TextColor(Color::WHITE),
-            Node { position_type: PositionType::Absolute, ..default() },
-        ));
-        // The shade grows up from the bottom, so it shrinks downwards as the ability gets ready.
-        slot.spawn((
-            CooldownShade(index),
-            Node { bottom: px(0), height: percent(0), ..fill.clone() },
-            BackgroundColor(COOLDOWN_SHADE),
-        ));
-        slot.spawn(Node { justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..fill })
-            .with_child((
-                CooldownText(index),
-                Text::default(),
-                TextFont { font_size: FontSize::Px(15.0), ..default() },
-                TextColor(Color::WHITE),
-                TextShadow { offset: Vec2::splat(1.0), ..default() },
-            ));
-        slot.spawn((
-            Text::new(key),
-            TextFont { font_size: FontSize::Px(10.0), ..default() },
-            TextColor(KEY_COLOUR),
-            TextShadow { offset: Vec2::splat(1.0), ..default() },
-            Node { position_type: PositionType::Absolute, left: px(3), top: px(1), ..default() },
-        ));
-    });
+/// Fills in the hotbar's layout whenever it's built: a copy of its slot
+/// template for each slot, with its key's number, and the parts the other
+/// systems fill in marked.
+fn fill_in_layout(mut built: MessageReader<LayoutBuilt>, mut ui: Ui) {
+    for _ in built.read().filter(|built| built.layout == LAYOUT) {
+        for (index, copy) in ui.copy(LAYOUT, "slot", HOTBAR_SLOTS).into_iter().enumerate() {
+            let commands = ui.commands();
+            commands.entity(copy.root).insert((Slot(index), Tooltip::default(), RelativeCursorPosition::default()));
+            let part = |id: &str| copy.ids.get(id).copied();
+            if let Some(icon) = part("icon") {
+                commands.entity(icon).insert((SlotIcon(index), Visibility::Hidden));
+            }
+            if let Some(label) = part("label") {
+                commands.entity(label).insert(SlotLabel(index));
+            }
+            if let Some(shade) = part("cooldown_shade") {
+                commands.entity(shade).insert(CooldownShade(index));
+            }
+            if let Some(text) = part("cooldown_text") {
+                commands.entity(text).insert(CooldownText(index));
+            }
+            if let Some(key) = part("key") {
+                commands.entity(key).insert(Text::new(key_name(KEYS[index])));
+            }
+        }
+    }
 }
 
 /// The number shown on a slot for its key.
@@ -256,10 +197,12 @@ fn record_layout(mut events: MessageReader<FromServer>, mut layout: ResMut<Hotba
 }
 
 /// Shows the bar only while playing.
-fn show_bar(state: Res<State<ClientState>>, mut bar: Single<&mut Visibility, With<Bar>>) {
+fn show_bar(state: Res<State<ClientState>>, mut roots: Query<(&UiRoot, &mut Visibility)>) {
     let wanted = if *state.get() == ClientState::Playing { Visibility::Inherited } else { Visibility::Hidden };
-    if **bar != wanted {
-        **bar = wanted;
+    for (root, mut visibility) in &mut roots {
+        if root.0 == LAYOUT && *visibility != wanted {
+            *visibility = wanted;
+        }
     }
 }
 
@@ -291,8 +234,9 @@ fn show_slots(
     mut slots: Query<(&Slot, &mut Tooltip)>,
     mut icons: Query<(&SlotIcon, &mut ImageNode, &mut Visibility)>,
     mut labels: Query<(&SlotLabel, &mut Text)>,
+    rebuilt: Query<(), Added<SlotIcon>>,
 ) {
-    if !layout.is_changed() && !content.is_changed() {
+    if !layout.is_changed() && !content.is_changed() && rebuilt.is_empty() {
         return;
     }
     let described: Vec<_> =

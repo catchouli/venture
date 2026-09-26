@@ -34,8 +34,6 @@ pub struct BarColours {
 /// Health bars' colours.
 pub const HEALTH_BAR: BarColours =
     BarColours { fill: Color::srgb(0.75, 0.15, 0.12), back: Color::srgb(0.24, 0.05, 0.04) };
-/// Mana bars' colours.
-pub const MANA_BAR: BarColours = BarColours { fill: Color::srgb(0.18, 0.35, 0.8), back: Color::srgb(0.05, 0.08, 0.24) };
 /// Experience bars' colours.
 pub const EXPERIENCE_BAR: BarColours =
     BarColours { fill: Color::srgb(0.85, 0.7, 0.3), back: Color::srgb(0.22, 0.16, 0.05) };

@@ -11,6 +11,7 @@ pub mod connection_overlay;
 pub mod cursor;
 pub mod dialogue_window;
 pub mod hotbar;
+pub mod layout;
 pub mod shop;
 pub mod target_frame;
 pub mod text_input;
@@ -30,6 +31,7 @@ impl Plugin for UiPlugin {
         app.add_plugins((
             text_input::TextInputPlugin,
             theme::ThemePlugin,
+            layout::LayoutPlugin,
             chat::ChatPlugin,
             dialogue_window::DialogueWindowPlugin,
             character_window::CharacterWindowPlugin,
