@@ -18,6 +18,8 @@ const STRIDE_LENGTH: f32 = 2.6;
 pub const RUN_SPEED: f32 = 5.0;
 /// How quickly the animation blends between standing and running (per second).
 const BLEND_RATE: f32 = 8.0;
+/// How long a swing of a weapon lasts, in seconds.
+const SWING_SECONDS: f32 = 0.45;
 /// How long a wave lasts, in seconds.
 const WAVE_SECONDS: f32 = 1.8;
 /// How long a wave takes to blend in and out, in seconds.
@@ -43,12 +45,36 @@ pub struct Gait {
     running: f32,
     /// Seconds into a wave, if the character is waving.
     waving: Option<f32>,
+    /// Seconds into a swing, if the character is swinging a weapon.
+    swinging: Option<f32>,
 }
 
 impl Gait {
     /// Starts a friendly wave of the right hand (or starts it over).
     pub fn wave(&mut self) {
         self.waving = Some(0.0);
+    }
+
+    /// Starts a swing of the weapon (or fist), as in an attack.
+    pub fn swing(&mut self) {
+        self.swinging = Some(0.0);
+    }
+
+    /// Whether the character is in the middle of a swing (for creatures'
+    /// own attack animations), and how far through it, from 0 to 1.
+    pub fn swing_progress(&self) -> Option<f32> {
+        self.swinging.map(|time| time / SWING_SECONDS)
+    }
+
+    /// The right arm's angle for a swing, if swinging: raised up and forward,
+    /// then brought down hard.
+    fn swing_angle(&self) -> Option<f32> {
+        let progress = self.swing_progress()?;
+        Some(if progress < 0.35 {
+            -2.6 * (progress / 0.35)
+        } else {
+            -2.6 + 2.4 * ((progress - 0.35) / 0.65).min(1.0).powf(0.5)
+        })
     }
 
     /// How much of the wave is showing, from `0.0` to `1.0`, and how far into it.
@@ -203,6 +229,8 @@ pub struct Look {
     pub trousers: Handle<StandardMaterial>,
     /// Each worn item: its shape, and its main and trim colours.
     pub worn: Vec<Worn>,
+    /// Whether they have big pointed ears (goblins do).
+    pub pointy_ears: bool,
 }
 
 /// A worn item, ready to draw.
@@ -233,7 +261,13 @@ impl CharacterAssets {
             tunic: material(materials, PLAIN_TUNIC, 0.9),
             trousers: material(materials, PLAIN_TROUSERS, 0.9),
             worn: look.worn.iter().map(|item| worn(materials, item)).collect(),
+            pointy_ears: false,
         }
+    }
+
+    /// A sphere of radius 1, for building other bodies (such as creatures').
+    pub fn unit_sphere(&self) -> Handle<Mesh> {
+        self.meshes.unit_sphere.clone()
     }
 }
 
@@ -271,6 +305,7 @@ pub fn appearance_look(materials: &mut Assets<StandardMaterial>, appearance: &Ap
         tunic: material(materials, appearance.tunic, 0.8),
         trousers: material(materials, appearance.trousers, 0.9),
         worn: outfit.iter().map(|item| worn(materials, item)).collect(),
+        pointy_ears: false,
     }
 }
 
@@ -361,7 +396,8 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
     let robe = look.wearing(LookStyle::Robe);
     let plates = look.wearing(LookStyle::Plates);
     let leg_plates = look.wearing(LookStyle::LegPlates);
-    let weapon = look.worn.iter().find(|item| matches!(item.style, LookStyle::Sword | LookStyle::Staff));
+    let weapon =
+        look.worn.iter().find(|item| matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club));
     let joint = |kind| Joint { owner, kind };
 
     // A mesh part, placed relative to its parent.
@@ -410,6 +446,14 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
             // Neck, head and hair. The top of the hair is 1.8 m above the ground.
             body.spawn(part(&m.neck, &look.skin, Transform::from_xyz(0.0, 0.60, 0.0)));
             body.spawn(sphere(&look.skin, Vec3::new(0.0, 0.72, 0.0), Vec3::new(0.106, 0.127, 0.115)));
+            if look.pointy_ears {
+                for x in [-1.0, 1.0] {
+                    let ear = Transform::from_xyz(0.12 * x, 0.73, -0.01)
+                        .with_rotation(Quat::from_rotation_z(-0.9 * x))
+                        .with_scale(Vec3::new(0.025, 0.09, 0.035));
+                    body.spawn((Mesh3d(m.unit_sphere.clone()), MeshMaterial3d(look.skin.clone()), ear));
+                }
+            }
             match build.hair {
                 // Cropped close to the head.
                 HairLength::Short => {
@@ -510,6 +554,19 @@ fn spawn_weapon(elbow: &mut ChildSpawnerCommands, m: &CharacterMeshes, weapon: &
                 sword.spawn(part(&m.unit_cube, &weapon.main, Vec3::new(0.0, 0.42, 0.0), Vec3::new(0.05, 0.64, 0.012)));
             });
         }
+        LookStyle::Club => {
+            // Thick at the end, held out forward like the sword.
+            let grip = Transform::from_translation(hand).with_rotation(Quat::from_rotation_x(1.35));
+            elbow.spawn((grip, Visibility::default())).with_children(|club| {
+                club.spawn(part(
+                    &m.unit_cylinder,
+                    &weapon.trim,
+                    Vec3::new(0.0, 0.12, 0.0),
+                    Vec3::new(0.025, 0.3, 0.025),
+                ));
+                club.spawn(part(&m.unit_sphere, &weapon.main, Vec3::new(0.0, 0.33, 0.0), Vec3::new(0.06, 0.11, 0.06)));
+            });
+        }
         LookStyle::Staff => {
             elbow.spawn((Transform::from_translation(hand), Visibility::default())).with_children(|staff| {
                 staff.spawn(part(
@@ -549,6 +606,9 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
         if let Some(time) = gait.waving {
             gait.waving = Some(time + dt).filter(|&time| time < WAVE_SECONDS);
         }
+        if let Some(time) = gait.swinging {
+            gait.swinging = Some(time + dt).filter(|&time| time < SWING_SECONDS);
+        }
     }
 
     let breathing = (time.elapsed_secs() * 2.0).sin();
@@ -576,7 +636,10 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
                 // away from the body. Waving raises the right arm out and up.
                 let leg = phase + side.phase_offset();
                 let raise = if side == Side::Right { 1.9 * wave } else { 0.0 };
-                Quat::from_rotation_z(side.sign() * (0.08 + raise)) * Quat::from_rotation_x(0.6 * leg.sin() * run)
+                // A swing takes over the right arm.
+                let swing = gait.swing_angle().filter(|_| side == Side::Right);
+                let forward = swing.unwrap_or(0.6 * leg.sin() * run);
+                Quat::from_rotation_z(side.sign() * (0.08 + raise)) * Quat::from_rotation_x(forward)
             }
             JointKind::Elbow(side) => {
                 // Waving bends the raised forearm and swings it from side to side.

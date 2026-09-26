@@ -6,6 +6,18 @@ use crate::class::ClassRules;
 use crate::dice::Dice;
 use crate::progression::proficiency_bonus;
 
+/// How long a character must go without fighting before their health comes
+/// back on its own, in seconds.
+pub const OUT_OF_COMBAT_SECONDS: f32 = 6.0;
+/// How often health comes back out of combat, in seconds.
+pub const REGENERATION_SECONDS: f32 = 3.0;
+
+/// Health that comes back every [`REGENERATION_SECONDS`] out of combat (our
+/// own rule): a twentieth of the most health, and at least 1.
+pub fn health_regeneration(max_health: u32) -> u32 {
+    (max_health / 20).max(1)
+}
+
 /// Armour class with no armour and an average Dexterity (SRD 5.1).
 const BASE_ARMOUR_CLASS: i32 = 10;
 /// Each point of Dexterity modifier speeds attacks up by this fraction.
@@ -129,6 +141,12 @@ mod tests {
         assert_eq!(max_mana(&fighter(), 1, 0), 3);
         assert_eq!(max_mana(&fighter(), 4, 1), 16);
         assert_eq!(max_mana(&fighter(), 4, -5), 0);
+    }
+
+    #[test]
+    fn health_comes_back_slowly() {
+        assert_eq!(health_regeneration(12), 1);
+        assert_eq!(health_regeneration(100), 5);
     }
 
     #[test]

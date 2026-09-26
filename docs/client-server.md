@@ -274,8 +274,8 @@ movement command (`MoveTo`, `Steer`, `Stop`) ends following. Deselecting on
 the client sends `Stop`.
 
 **Selecting** a target is purely client-side, since it changes nothing on its
-own. Actions on the target (following and talking now, attacking later) are
-commands the server validates.
+own. Actions on the target (following, talking and attacking) are commands
+the server validates.
 
 ## Chat
 
@@ -360,6 +360,33 @@ look is their body type and how each item they wear looks (`worn`).
 then to `admin.rs`, which checks the player really is an admin before doing
 anything; anyone else is told only admins can use them.
 
+## Creatures and fighting
+
+**Creatures** are a third kind of entity (`EntityKind::Creature { level,
+look }`). Spawners in `creatures.rs` create and remove them. That file also
+decides what they do: wander, pick a fight, chase, give up. Snapshots carry a
+creature's health as a fraction (`EntityState.health`) for health bars.
+
+**Attacking:** the client sends `Attack { target }`. The server refuses
+players ("Players can't fight each other"), NPCs, and targets further away
+than a move may go (`max_move_distance` in `server.ron`). Otherwise the player's character chases the target into melee range
+(2.6 m) and swings at its attack speed. Any movement order stops it.
+
+**Every blow is resolved in `combat.rs`** with `venture_rpg`: a d20 roll plus
+the attack bonus against armour class, then damage, doubled dice on a natural
+20. The result goes to everyone within 60 m as `Attacked { attacker, target,
+result: Miss | Hit(n) | Critical(n) }`. The client shows it (swing, floating
+number, flash) and decides nothing. Health changes only through `Health`'s
+methods. A player's own health comes as `Vitals { health, max_health }`
+whenever it changes.
+
+**Deaths:** a creature that dies is announced with `Died { id }`, lies there
+two seconds, then leaves. Its killer gets its experience and maybe a level
+(full health, and the level-up effect for everyone). A player knocked out
+wakes at the nearest respawn point with full health. Creatures fighting them
+give up and heal. Out of combat for 6 seconds, health comes back by a
+twentieth of the maximum every 3 seconds.
+
 ## Actions and chat commands
 
 The things a player can do are **actions**, defined in one place on the
@@ -371,12 +398,13 @@ same, and a new action is added once.
 A chat message starting with `/` names an action and is never sent as chat:
 - `/follow`: follow the selected player;
 - `/talk`: talk to the selected NPC;
+- `/attack`: attack the selected creature (or click it again);
 - `/wave`: wave hello (the server shows it to everyone within 40 m, as an
   `Emoted` message; emotes share chat's rate limit);
 - `/town`: go back to the starting town's square;
 - `/help`: list the commands (shown by the client itself).
 
-Actions become ordinary protocol commands (`Follow`, `Interact`,
+Actions become ordinary protocol commands (`Follow`, `Interact`, `Attack`,
 `ReturnToTown`), which the server validates like any other. Actions on the
 selected target are sent even when they can't work (`/follow` with an NPC
 selected), so the server decides and explains in a `Notice`; the client only

@@ -33,6 +33,11 @@ impl Plugin for NameplatesPlugin {
     }
 }
 
+/// How high above its feet a character's name floats, in metres, if not the
+/// usual height (such as for small creatures).
+#[derive(Component, Clone, Copy)]
+pub struct NameplateHeight(pub f32);
+
 /// Gives a character a floating name (and speech bubbles above it).
 #[derive(Component)]
 #[require(Speech)]
@@ -149,14 +154,14 @@ fn show_speech_bubbles(
 fn place_labels(
     mut commands: Commands,
     camera: Single<(&Camera, &GlobalTransform)>,
-    owners: Query<(&GlobalTransform, &Nameplate)>,
+    owners: Query<(&GlobalTransform, &Nameplate, Option<&NameplateHeight>)>,
     mut labels: Query<(Entity, &NameLabel, &mut Node, &mut Visibility, &ComputedNode)>,
     descendants: Query<&Children>,
     mut texts: Query<&mut Text, With<LabelText>>,
 ) {
     let (camera, camera_transform) = *camera;
     for (entity, label, mut node, mut visibility, computed) in &mut labels {
-        let Ok((owner_transform, nameplate)) = owners.get(label.owner) else {
+        let Ok((owner_transform, nameplate, height)) = owners.get(label.owner) else {
             commands.entity(entity).despawn();
             continue;
         };
@@ -167,7 +172,7 @@ fn place_labels(
                 text.0.clone_from(&nameplate.0);
             }
         }
-        let head = owner_transform.translation() + Vec3::Y * HEIGHT;
+        let head = owner_transform.translation() + Vec3::Y * height.map_or(HEIGHT, |height| height.0);
         let near = head.distance(camera_transform.translation()) < MAX_DISTANCE;
         match camera.world_to_viewport(camera_transform, head).ok().filter(|_| near) {
             Some(screen) => {

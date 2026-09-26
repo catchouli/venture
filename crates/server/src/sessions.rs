@@ -6,7 +6,9 @@ use venture_navigation::Point;
 use venture_protocol::{BodyType, ClassChoice, EntityKind, ServerMessage};
 
 use crate::character::{Admin, Character, class_or_default};
+use crate::combat::{Health, max_health};
 use crate::content::LoadedContent;
+use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
 use crate::equipment::{Equipment, player_look};
 use crate::inventory::{Change, Inventory};
@@ -80,6 +82,8 @@ struct Sessions<'w, 's> {
     content: Res<'w, LoadedContent>,
     players: Query<'w, 's, (Entity, &'static NetworkId, SavedParts)>,
     npcs: Query<'w, 's, (&'static Npc, &'static NetworkId, &'static DisplayName, &'static Position)>,
+    creatures:
+        Query<'w, 's, (&'static Creature, &'static NetworkId, &'static DisplayName, &'static Position), Without<Dead>>,
 }
 
 fn handle_session_requests(mut requests: MessageReader<SessionRequest>, mut sessions: Sessions) {
@@ -185,6 +189,7 @@ impl Sessions<'_, '_> {
             None => Equipment::starting(&class, &pack.items),
         };
         let look = player_look(&character, &equipment, &pack.items);
+        let health = Health::full(max_health(&character, &equipment, pack));
         let inventory = Inventory::from_saved(saved.inventory, saved.miasma);
         let quests = QuestLog::from_saved(saved.quests);
         let admin = self.admins.0.iter().any(|admin| admin.eq_ignore_ascii_case(&name.0));
@@ -205,6 +210,9 @@ impl Sessions<'_, '_> {
         for (npc, &NetworkId(npc_id), npc_name, &npc_position) in &self.npcs {
             self.link.send(connection, &appeared(npc_id, npc_name, npc.kind(), npc_position));
         }
+        for (creature, &NetworkId(creature_id), creature_name, &creature_position) in &self.creatures {
+            self.link.send(connection, &appeared(creature_id, creature_name, creature.kind(), creature_position));
+        }
         // Tell everyone else about the newcomer.
         let others: Vec<ConnectionId> = self.players.iter().map(|(_, _, (player, ..))| player.connection).collect();
         self.link.broadcast(others.iter().copied(), &appeared(id, &name, kind, position));
@@ -219,7 +227,7 @@ impl Sessions<'_, '_> {
             name,
             position,
             Mover::default(),
-            (inventory, quests, character, equipment),
+            (inventory, quests, character, equipment, health),
         ));
         if admin {
             player.insert(Admin);

@@ -9,6 +9,6 @@ mod following;
 mod movement;
 mod rules;
 
-pub use following::{FOLLOW_DISTANCE, Follow, FollowOutcome, INTERACT_DISTANCE, TALK_RANGE};
+pub use following::{FOLLOW_DISTANCE, Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, TALK_RANGE};
 pub use movement::{Movement, RUN_SPEED, TICK_RATE, clamp_move_goal, plan_route, steering_direction, step};
 pub use rules::Rules;

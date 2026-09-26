@@ -1,0 +1,30 @@
+// Creatures around the starting town. Numbers follow the RPG rules (see
+// crates/rpg): attacks hit if d20 + bonus reaches the target's armour class.
+// speed is attacks per second. Aggressive creatures attack players who come
+// within aggro_radius metres; the rest only fight back.
+[
+    (
+        id: "rabbit",
+        name: "Rabbit",
+        level: 1,
+        health: 4,
+        armour_class: 8,
+        attack: (damage: "1d2", bonus: 0, speed: 0.6),
+        wander_radius: 6.0,
+        experience: 10,
+        look: (shape: Rabbit, main: (0.55, 0.44, 0.33), trim: (0.93, 0.90, 0.85)),
+    ),
+    (
+        id: "goblin",
+        name: "Goblin",
+        level: 2,
+        health: 9,
+        armour_class: 12,
+        attack: (damage: "1d4", bonus: 2, speed: 0.7),
+        aggressive: true,
+        aggro_radius: 9.0,
+        wander_radius: 5.0,
+        experience: 35,
+        look: (shape: Goblin, main: (0.42, 0.58, 0.28), trim: (0.40, 0.30, 0.20)),
+    ),
+]

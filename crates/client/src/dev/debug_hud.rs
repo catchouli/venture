@@ -34,7 +34,8 @@ struct HudText;
 fn spawn_hud(mut commands: Commands) {
     let font = TextFont { font_size: FontSize::Px(15.0), ..default() };
     let shadow = TextShadow { offset: Vec2::splat(1.5), ..default() };
-    let debug = Node { position_type: PositionType::Absolute, left: px(10), top: px(10), ..default() };
+    // (Below the player frame.)
+    let debug = Node { position_type: PositionType::Absolute, left: px(10), top: px(78), ..default() };
     // Bottom right, clear of the chat box in the bottom left.
     let help = Node { position_type: PositionType::Absolute, right: px(10), bottom: px(10), ..default() };
     commands.spawn((HudText, Text::default(), font.clone(), shadow, debug));

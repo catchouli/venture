@@ -83,22 +83,25 @@ src/
   characters/        characters in the world
     model.rs           the placeholder character and its animation
     player.rs          your character: prediction, steering, following, correction
-    remote.rs          other players and NPCs, interpolated between snapshots
+    remote.rs          other players, NPCs and creatures, interpolated between snapshots
+    creatures.rs       the placeholder creature models (rabbit, goblin) and their animation
+    combat_effects.rs  swings, floating damage numbers, hit flashes, and the dead falling over
     nameplates.rs      names above characters, with orbs on the target and speech bubbles
     speech.rs          what characters said recently (shown in the bubbles)
     level_up.rs        the level-up effect
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
-    admin_commands.rs  /setlevel, /reset and /setclass, for admins
-    orders.rs          ordering the character about: run, follow, walk over to talk
+    admin_commands.rs  /setlevel, /reset, /setclass and /setgender, for admins
+    orders.rs          ordering the character about: run, follow, walk over to talk, attack
     targeting.rs       what's hovered and selected
-    clicks.rs          left clicks: select, follow, talk, or run there
+    clicks.rs          left clicks: select, follow, talk, attack, or run there
     move_marker.rs     the glowing move marker
   ui/                the interface
     character_window/  the character window: mod.rs (the tabs), stats.rs,
                        skills.rs, bag.rs, equipment.rs, quests.rs, emotes.rs
     toolbar.rs (buttons for the window's tabs), chat.rs, dialogue_window.rs,
     shop.rs, character_creation.rs,
+    vitals.rs (your name, level and health, top left),
     target_frame.rs, connection_overlay.rs, cursor.rs, text_input.rs,
     tooltip.rs, widgets.rs (shared pieces such as the close button)
   dev/               development tools

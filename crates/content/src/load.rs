@@ -4,15 +4,18 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::client::{ClientContent, parse_appearances, parse_items, parse_skills};
+use crate::definitions::CreatureDef;
 use crate::definitions::{
     AppearanceDef, ClassDef, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS,
-    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef, ShopDef, SkillDef,
+    MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef,
 };
 use venture_protocol::EquipSlot;
 use venture_rpg::MAX_LEVEL;
 
 /// The file saying what new characters start with.
 const NEW_CHARACTERS_FILE: &str = "new_characters.ron";
+/// The file listing where players wake up after dying.
+const RESPAWN_POINTS_FILE: &str = "respawn_points.ron";
 /// The largest an icon file may be, in bytes.
 const MAX_ICON_BYTES: usize = 64 * 1024;
 /// The first bytes of every PNG file.
@@ -48,6 +51,12 @@ pub struct ContentPack {
     pub quests: BTreeMap<String, QuestDef>,
     /// Skills, by id.
     pub skills: BTreeMap<String, SkillDef>,
+    /// Creatures, by id.
+    pub creatures: BTreeMap<String, CreatureDef>,
+    /// Spawners, in file order.
+    pub spawners: Vec<SpawnerDef>,
+    /// Where players wake up after dying.
+    pub respawn_points: Vec<RespawnPoint>,
     /// Classes, in the order players are offered them (the first is the default).
     pub classes: Vec<ClassDef>,
     /// NPCs, in file order.
@@ -160,6 +169,53 @@ impl ContentPack {
                         }
                     }
                     pack.new_characters = new_characters;
+                }
+                Err(message) => errors.push(error(file, message.to_string())),
+            }
+        }
+
+        for (relative, text) in read_files(folder, "creatures", "ron", &mut errors) {
+            match ron::from_str::<Vec<CreatureDef>>(&text) {
+                Ok(creatures) => {
+                    for creature in creatures {
+                        check_creature(&creature, &relative, &mut errors);
+                        if pack.creatures.contains_key(&creature.id) {
+                            errors.push(error(
+                                &relative,
+                                format!("there's already a creature called \"{}\"", creature.id),
+                            ));
+                        }
+                        pack.creatures.insert(creature.id.clone(), creature);
+                    }
+                }
+                Err(message) => errors.push(error(&relative, message.to_string())),
+            }
+        }
+        for (relative, text) in read_files(folder, "spawners", "ron", &mut errors) {
+            match ron::from_str::<Vec<SpawnerDef>>(&text) {
+                Ok(spawners) => {
+                    for spawner in spawners {
+                        check_spawner(&spawner, &pack, &relative, &mut errors);
+                        if pack.spawners.iter().any(|other| other.id == spawner.id) {
+                            errors
+                                .push(error(&relative, format!("there's already a spawner called \"{}\"", spawner.id)));
+                        }
+                        pack.spawners.push(spawner);
+                    }
+                }
+                Err(message) => errors.push(error(&relative, message.to_string())),
+            }
+        }
+        if let Ok(text) = std::fs::read_to_string(folder.join(RESPAWN_POINTS_FILE)) {
+            let file = Path::new(RESPAWN_POINTS_FILE);
+            match ron::from_str::<Vec<RespawnPoint>>(&text) {
+                Ok(points) => {
+                    for point in &points {
+                        if !placement_is_finite(&point.at) {
+                            errors.push(error(file, format!("\"{}\": its position must be a real number", point.name)));
+                        }
+                    }
+                    pack.respawn_points = points;
                 }
                 Err(message) => errors.push(error(file, message.to_string())),
             }
@@ -359,6 +415,51 @@ fn check_class(class: &ClassDef, pack: &ContentPack, file: &Path, errors: &mut V
             problem(format!("{} must unlock at a level from 1 to {MAX_LEVEL}", offer.skill));
         }
     }
+}
+
+fn check_creature(creature: &CreatureDef, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, format!("creature \"{}\": {message}", creature.id)));
+    if creature.name.trim().is_empty() {
+        problem("it needs a name".to_string());
+    }
+    if creature.health == 0 {
+        problem("its health must be at least 1".to_string());
+    }
+    if !(1..=MAX_LEVEL).contains(&creature.level) {
+        problem(format!("its level must be from 1 to {MAX_LEVEL}"));
+    }
+    if !(creature.attack.speed > 0.0 && creature.attack.speed.is_finite()) {
+        problem("its attack speed must be more than 0".to_string());
+    }
+    let radii = [creature.aggro_radius, creature.wander_radius];
+    if !radii.iter().all(|radius| (0.0..=MAX_WANDER_RADIUS).contains(radius)) {
+        problem(format!("its aggro_radius and wander_radius must be from 0 to {MAX_WANDER_RADIUS} metres"));
+    }
+}
+
+fn check_spawner(spawner: &SpawnerDef, pack: &ContentPack, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, format!("spawner \"{}\": {message}", spawner.id)));
+    if !pack.creatures.contains_key(&spawner.creature) {
+        problem(format!("there's no creature called \"{}\"", spawner.creature));
+    }
+    if !(0.0..=MAX_WANDER_RADIUS).contains(&spawner.radius) {
+        problem(format!("its radius must be from 0 to {MAX_WANDER_RADIUS} metres"));
+    }
+    if !(spawner.respawn_seconds > 0.0 && spawner.respawn_seconds.is_finite()) {
+        problem("respawn_seconds must be more than 0".to_string());
+    }
+    if !placement_is_finite(&spawner.at) {
+        problem("its position must be a real number".to_string());
+    }
+}
+
+/// Whether a placement's numbers are real numbers (not infinite or NaN).
+fn placement_is_finite(placement: &Placement) -> bool {
+    let (x, y) = match placement {
+        Placement::StartingSettlement { offset } | Placement::Settlement { offset, .. } => *offset,
+        Placement::Position(position) => *position,
+    };
+    x.is_finite() && y.is_finite()
 }
 
 fn check_quest(quest: &QuestDef, file: &Path, errors: &mut Vec<ContentError>) {

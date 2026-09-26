@@ -4,8 +4,12 @@
 
 use bevy::prelude::*;
 use venture_protocol::{EntityId, EntityState, ServerMessage};
-use venture_simulation::{Follow, FollowOutcome, INTERACT_DISTANCE, Movement, clamp_move_goal, plan_route, step};
+use venture_simulation::{
+    Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, Movement, clamp_move_goal, plan_route, step,
+};
 
+use crate::combat::{Attacking, Health};
+use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position};
 use crate::link::Link;
 use crate::npcs::{Npc, NpcInteraction};
@@ -23,7 +27,9 @@ impl Plugin for GameplayPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Tick>().add_systems(
             FixedUpdate,
-            (act_on_requests, update_followers, simulate, send_snapshot).chain().in_set(ServerSystems::Gameplay),
+            (act_on_requests, update_followers, update_attackers, simulate, send_snapshot)
+                .chain()
+                .in_set(ServerSystems::Gameplay),
         );
     }
 }
@@ -42,6 +48,8 @@ fn act_on_requests(
     mut movers: Query<(&Position, &mut Mover)>,
     entities: Query<(Entity, &NetworkId, &Position, &DisplayName)>,
     npcs: Query<(), With<Npc>>,
+    creatures: Query<(), With<Creature>>,
+    dead: Query<(), With<Dead>>,
     players: Query<(&Player, &NetworkId, &DisplayName)>,
 ) {
     let find = |id: EntityId| entities.iter().find(|(_, network_id, ..)| network_id.0 == id);
@@ -56,7 +64,7 @@ fn act_on_requests(
         };
         // Any new order replaces following and walking over to talk.
         let mut stop_following = || {
-            commands.entity(player).remove::<(Following, PendingInteraction)>();
+            commands.entity(player).remove::<(Following, PendingInteraction, Attacking)>();
         };
         match &request.action {
             PlayerAction::MoveTo(goal) => {
@@ -90,6 +98,8 @@ fn act_on_requests(
                 let Some((target, _, &Position(target_position), name)) = find(*target_id) else { continue };
                 if target == player {
                     tell("Talking to yourself won't get you far.".to_string());
+                } else if creatures.contains(target) {
+                    tell(format!("The {} doesn't have much to say.", name.0));
                 } else if !npcs.contains(target) {
                     tell(format!("{} is another player. To talk to them, use the chat box.", name.0));
                 } else if distance(position, target_position) > rules.0.max_move_distance {
@@ -104,6 +114,22 @@ fn act_on_requests(
                     commands
                         .entity(player)
                         .insert((Following { target, follow: Follow::default() }, PendingInteraction { target }));
+                }
+            }
+            PlayerAction::Attack(target_id) => {
+                let Some((target, _, &Position(target_position), name)) = find(*target_id) else { continue };
+                if dead.contains(target) {
+                    continue;
+                } else if players.contains(target) {
+                    tell(format!("You can't attack {}. Players can't fight each other.", name.0));
+                } else if !creatures.contains(target) {
+                    tell(format!("You can't attack {}.", name.0));
+                } else if distance(position, target_position) > rules.0.max_move_distance {
+                    tell(format!("The {} is too far away to attack.", name.0));
+                } else {
+                    // Run into reach (see `update_attackers`), then combat takes over.
+                    stop_following();
+                    commands.entity(player).insert(Attacking { target, cooldown: 0.0, follow: Follow::default() });
                 }
             }
             PlayerAction::ReturnToTown => {
@@ -168,6 +194,35 @@ fn update_followers(
     }
 }
 
+/// Keeps players who are attacking something within reach of it (combat
+/// does the attacking), and stops them when it's dead or gone.
+fn update_attackers(
+    mut commands: Commands,
+    world: Res<ServerWorld>,
+    rules: Res<GameRules>,
+    targets: Query<&Position, Without<Dead>>,
+    mut attackers: Query<(Entity, &mut Attacking, &Position, &mut Mover)>,
+) {
+    for (entity, mut attacking, &Position(position), mut mover) in &mut attackers {
+        let Ok(&Position(target)) = targets.get(attacking.target) else {
+            mover.0 = Movement::Idle;
+            commands.entity(entity).remove::<Attacking>();
+            continue;
+        };
+        if distance(position, target) <= MELEE_RANGE {
+            mover.0 = Movement::Idle;
+            continue;
+        }
+        let outcome = attacking
+            .follow
+            .update(position, target, &mut mover.0, rules.0.max_move_distance, |x, y| world.is_blocked(x, y));
+        if outcome == FollowOutcome::Stop {
+            mover.0 = Movement::Idle;
+            commands.entity(entity).remove::<Attacking>();
+        }
+    }
+}
+
 /// Moves everything for one tick.
 fn simulate(time: Res<Time>, world: Res<ServerWorld>, mut movers: Query<(&mut Position, &mut Mover)>) {
     let dt = time.delta_secs();
@@ -181,7 +236,7 @@ fn send_snapshot(
     mut tick: ResMut<Tick>,
     mut link: ResMut<Link>,
     players: Query<&Player>,
-    entities: Query<(&NetworkId, &Position, &Mover)>,
+    entities: Query<(&NetworkId, &Position, &Mover, Option<&Health>, Has<Creature>)>,
 ) {
     tick.0 += 1;
     if players.is_empty() {
@@ -189,7 +244,11 @@ fn send_snapshot(
     }
     let states: Vec<EntityState> = entities
         .iter()
-        .map(|(&NetworkId(id), &Position((x, y)), mover)| EntityState { id, x, y, moving: mover.0.is_moving() })
+        .map(|(&NetworkId(id), &Position((x, y)), mover, health, creature)| {
+            // Only creatures' health is shown to everyone; players' is private.
+            let health = health.filter(|_| creature).map(Health::fraction);
+            EntityState { id, x, y, moving: mover.0.is_moving(), health }
+        })
         .collect();
     let everyone: Vec<_> = players.iter().map(|player| player.connection).collect();
     link.broadcast(everyone, &ServerMessage::Snapshot { tick: tick.0, entities: states });

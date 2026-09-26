@@ -104,10 +104,11 @@ fn perform_actions(
             }
             (Action::Talk, Some((entity, Targetable { id, kind: TargetKind::Npc }))) => orders.talk_to(entity, id),
             (Action::Talk, Some((_, Targetable { id, .. }))) => orders.ask(ClientMessage::Interact { target: id }),
-            // Fighting comes in the next step of the combat plan (docs/plan-combat.md).
-            (Action::Attack, _) => {
-                system.write(SystemMessage("There's nothing to fight here yet.".to_string()));
+            (Action::Attack, None) => {
+                system.write(SystemMessage("Select a creature to attack first.".to_string()));
             }
+            (Action::Attack, Some((entity, Targetable { id, kind: TargetKind::Enemy }))) => orders.attack(entity, id),
+            (Action::Attack, Some((_, Targetable { id, .. }))) => orders.ask(ClientMessage::Attack { target: id }),
             (Action::Town, _) => orders.ask(ClientMessage::ReturnToTown),
             (Action::Wave, _) => orders.ask(ClientMessage::Emote(Emote::Wave)),
             (Action::Help, _) => {

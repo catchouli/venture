@@ -1,5 +1,6 @@
 //! The interface drawn over the game: chat, the dialogue window, the toolbar,
-//! the character window (stats, skills, bag, equipment, quests and emotes),
+//! the player frame (health), the character window (stats, skills, bag,
+//! equipment, quests and emotes),
 //! shops, character creation, the target frame, the connection overlay, text
 //! fields, tooltips and the cursor.
 
@@ -14,6 +15,7 @@ pub mod target_frame;
 pub mod text_input;
 pub mod toolbar;
 pub mod tooltip;
+pub mod vitals;
 pub mod widgets;
 
 use bevy::prelude::*;
@@ -31,6 +33,7 @@ impl Plugin for UiPlugin {
             toolbar::ToolbarPlugin,
             shop::ShopPlugin,
             tooltip::TooltipPlugin,
+            vitals::VitalsPlugin,
             character_creation::CharacterCreationPlugin,
             target_frame::TargetFramePlugin,
             connection_overlay::ConnectionOverlayPlugin,

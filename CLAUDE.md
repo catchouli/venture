@@ -11,7 +11,8 @@
   Inventories only change through `Inventory::apply` (`inventory.rs`), which is checked and all-or-nothing;
   quest logs only through `QuestLog::advance` (`quests.rs`), which only moves forward; characters (class, level,
   stats, points, skills) only through `Character`'s methods (`character.rs`); equipment only in `equipment.rs`. Admin powers live only in `admin.rs`, which
-  checks the player is an admin every time.
+  checks the player is an admin every time. Creatures are only created, moved and removed in `creatures.rs`;
+  health only changes through `Health`'s methods, and hits, deaths and experience only happen in `combat.rs`.
   Keep it that way.
 - Content scripts never change the game directly: they queue `ScriptCommand`s (`scripting.rs`), which
   `npcs.rs` validates and applies. New script abilities go through that same path.
