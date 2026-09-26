@@ -10,8 +10,9 @@ use crate::characters::nameplates::Nameplate;
 use crate::characters::player::LocalPlayer;
 use crate::network::ToServer;
 use crate::ui::character_window::{
-    EXPERIENCE_COLOUR, HEADING_COLOUR, Pages, QUIET_COLOUR, Sheet, TEXT_COLOUR, Tab, bar, heading, small_button, text,
+    HEADING_COLOUR, Pages, QUIET_COLOUR, Sheet, TEXT_COLOUR, Tab, heading, small_button, text,
 };
+use crate::ui::widgets::{EXPERIENCE_BAR, bar};
 /// Colour of unspent points.
 const POINTS_COLOUR: Color = Color::srgb(0.6, 0.9, 0.55);
 
@@ -81,7 +82,7 @@ fn fill_page(mut commands: Commands, pages: Res<Pages>) {
     commands.entity(pages.of(Tab::Stats)).with_children(|page| {
         page.spawn((Field::Name, text("", 18.0, HEADING_COLOUR)));
         page.spawn((Field::ClassAndLevel, text("", 13.0, TEXT_COLOUR)));
-        page.spawn(bar(10.0, EXPERIENCE_COLOUR, 0.0, ExperienceFill));
+        page.spawn(bar(10.0, EXPERIENCE_BAR, 0.0, (), ExperienceFill));
         page.spawn((Field::Experience, text("", 12.0, QUIET_COLOUR)));
 
         page.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|row| {

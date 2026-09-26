@@ -1,5 +1,5 @@
 //! The player frame, in the top-left corner: the player's name, level,
-//! health and mana. The server sends health and mana whenever they change
+//! health, mana and experience. The server sends health and mana whenever they change
 //! ([`ServerMessage::Vitals`]); the level comes from the character sheet.
 
 use bevy::prelude::*;
@@ -10,14 +10,12 @@ use crate::characters::player::LocalPlayer;
 use crate::network::{ClientState, FromServer};
 use crate::ui::character_window::Sheet;
 use crate::ui::theme::{Piece, Themed};
-use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND};
+use crate::ui::widgets::{BORDER_COLOUR, BarColours, EXPERIENCE_BAR, HEALTH_BAR, MANA_BAR, WINDOW_BACKGROUND, bar};
 
 /// Width of the frame, in pixels.
 const WIDTH: f32 = 220.0;
-/// Colour of the health bar, and of its empty part.
-const HEALTH_COLOURS: (Color, Color) = (Color::srgb(0.75, 0.15, 0.12), Color::srgb(0.2, 0.05, 0.05));
-/// Colour of the mana bar, and of its empty part.
-const MANA_COLOURS: (Color, Color) = (Color::srgb(0.18, 0.35, 0.8), Color::srgb(0.05, 0.08, 0.2));
+/// Bars shorter than this (in pixels) have no numbers on them.
+const MIN_NUMBERS_HEIGHT: f32 = 12.0;
 /// Colour of the name.
 const NAME_COLOUR: Color = Color::srgb(0.96, 0.9, 0.75);
 
@@ -63,15 +61,16 @@ struct NameText;
 enum Bar {
     Health,
     Mana,
+    Experience,
 }
 
 /// A bar's fill.
 #[derive(Component)]
-struct BarFill(Bar);
+struct VitalFill(Bar);
 
 /// A bar's numbers.
 #[derive(Component)]
-struct BarText(Bar);
+struct VitalText(Bar);
 
 fn spawn_frame(mut commands: Commands) {
     commands
@@ -101,48 +100,36 @@ fn spawn_frame(mut commands: Commands) {
                 TextFont { font_size: FontSize::Px(14.0), ..default() },
                 TextColor(NAME_COLOUR),
             ));
-            spawn_bar(frame, Bar::Health, HEALTH_COLOURS, 14.0);
-            spawn_bar(frame, Bar::Mana, MANA_COLOURS, 12.0);
+            spawn_bar(frame, Bar::Health, HEALTH_BAR, 14.0);
+            spawn_bar(frame, Bar::Mana, MANA_BAR, 12.0);
+            spawn_bar(frame, Bar::Experience, EXPERIENCE_BAR, 8.0);
         });
 }
 
-/// A bar with its numbers centred over it.
-fn spawn_bar(frame: &mut ChildSpawnerCommands, bar: Bar, (fill, empty): (Color, Color), height: f32) {
-    frame
-        .spawn((
-            Node { width: percent(100), height: px(height), border_radius: BorderRadius::all(px(3)), ..default() },
-            BackgroundColor(empty),
-            Themed(Piece::BarBack),
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                BarFill(bar),
-                Node {
-                    width: percent(100),
-                    height: percent(100),
-                    border_radius: BorderRadius::all(px(3)),
-                    ..default()
-                },
-                BackgroundColor(fill),
-                Themed(Piece::BarFill),
+/// A bar, with its numbers centred over it (if it's tall enough for them).
+fn spawn_bar(frame: &mut ChildSpawnerCommands, which: Bar, colours: BarColours, height: f32) {
+    let mut spawned = frame.spawn(bar(height, colours, 1.0, (), VitalFill(which)));
+    if height < MIN_NUMBERS_HEIGHT {
+        return;
+    }
+    spawned.with_children(|parent| {
+        parent
+            .spawn(Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            })
+            .with_child((
+                VitalText(which),
+                Text::default(),
+                TextFont { font_size: FontSize::Px(height - 3.0), ..default() },
+                TextColor(Color::WHITE),
+                TextShadow { offset: Vec2::splat(1.0), ..default() },
             ));
-            parent
-                .spawn(Node {
-                    position_type: PositionType::Absolute,
-                    width: percent(100),
-                    height: percent(100),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                })
-                .with_child((
-                    BarText(bar),
-                    Text::default(),
-                    TextFont { font_size: FontSize::Px(height - 3.0), ..default() },
-                    TextColor(Color::WHITE),
-                    TextShadow { offset: Vec2::splat(1.0), ..default() },
-                ));
-        });
+    });
 }
 
 fn record_vitals(mut events: MessageReader<FromServer>, mut vitals: ResMut<Vitals>) {
@@ -161,9 +148,9 @@ fn show_frame(
     sheet: Res<Sheet>,
     player: Option<Single<&Nameplate, With<LocalPlayer>>>,
     mut frame: Single<&mut Visibility, With<PlayerFrame>>,
-    mut name: Single<&mut Text, (With<NameText>, Without<BarText>)>,
-    mut fills: Query<(&BarFill, &mut Node)>,
-    mut numbers: Query<(&BarText, &mut Text), Without<NameText>>,
+    mut name: Single<&mut Text, (With<NameText>, Without<VitalText>)>,
+    mut fills: Query<(&VitalFill, &mut Node)>,
+    mut numbers: Query<(&VitalText, &mut Text), Without<NameText>>,
 ) {
     let playing = *state.get() == ClientState::Playing;
     **frame = if playing { Visibility::Inherited } else { Visibility::Hidden };
@@ -173,15 +160,20 @@ fn show_frame(
         name.0 = label;
     }
     let Some(vitals) = vitals.0 else { return };
+    let experience = sheet.0.as_ref().map_or((0, 1), |sheet| (sheet.experience, sheet.experience_to_next));
     let amounts = |bar| match bar {
-        Bar::Health => (vitals.health, vitals.max_health),
-        Bar::Mana => (vitals.mana, vitals.max_mana),
+        Bar::Health => (u64::from(vitals.health), u64::from(vitals.max_health)),
+        Bar::Mana => (u64::from(vitals.mana), u64::from(vitals.max_mana)),
+        Bar::Experience => experience,
     };
-    for (BarFill(bar), mut node) in &mut fills {
+    for (VitalFill(bar), mut node) in &mut fills {
         let (now, most) = amounts(*bar);
-        node.width = percent(now as f32 / most.max(1) as f32 * 100.0);
+        let wanted = percent(now as f32 / most.max(1) as f32 * 100.0);
+        if node.width != wanted {
+            node.width = wanted;
+        }
     }
-    for (BarText(bar), mut text) in &mut numbers {
+    for (VitalText(bar), mut text) in &mut numbers {
         let (now, most) = amounts(*bar);
         let wanted = format!("{now} / {most}");
         if text.0 != wanted {

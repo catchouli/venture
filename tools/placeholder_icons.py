@@ -175,6 +175,18 @@ def wooden_chestguard():
     ]
 
 
+def wooden_buckler():
+    iron = (120, 122, 132)
+    return [
+        (circle(16, 16, 12), iron),  # the rim
+        (detail(circle(16, 16, 10)), LIGHT_WOOD),
+        (detail(capsule(9, 12, 23, 12, 0.7)), WOOD),  # board edges
+        (detail(capsule(7, 16, 25, 16, 0.7)), WOOD),
+        (detail(capsule(9, 20, 23, 20, 0.7)), WOOD),
+        (circle(16, 16, 3.5), iron),  # the boss
+    ]
+
+
 def wooden_legguards():
     return [
         (rounded_box(10.5, 17, 5, 12, 2.5), LIGHT_WOOD),
@@ -365,6 +377,7 @@ ICONS = {
     "wooden_chestguard.png": wooden_chestguard,
     "wooden_legguards.png": wooden_legguards,
     "plain_robes.png": plain_robes,
+    "wooden_buckler.png": wooden_buckler,
     "rest.png": rest,
     "whack.png": whack,
     "air_blast.png": air_blast,

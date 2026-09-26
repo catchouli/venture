@@ -22,6 +22,64 @@ pub const WINDOW_LAYER: GlobalZIndex = GlobalZIndex(5);
 /// Colour of window backgrounds.
 pub const WINDOW_BACKGROUND: Color = Color::srgba(0.05, 0.04, 0.03, 0.85);
 
+/// The colours of a kind of bar: its fill, and the darker empty part behind it.
+#[derive(Clone, Copy, Debug)]
+pub struct BarColours {
+    /// The full part.
+    pub fill: Color,
+    /// The empty part.
+    pub back: Color,
+}
+
+/// Health bars' colours.
+pub const HEALTH_BAR: BarColours =
+    BarColours { fill: Color::srgb(0.75, 0.15, 0.12), back: Color::srgb(0.24, 0.05, 0.04) };
+/// Mana bars' colours.
+pub const MANA_BAR: BarColours = BarColours { fill: Color::srgb(0.18, 0.35, 0.8), back: Color::srgb(0.05, 0.08, 0.24) };
+/// Experience bars' colours.
+pub const EXPERIENCE_BAR: BarColours =
+    BarColours { fill: Color::srgb(0.85, 0.7, 0.3), back: Color::srgb(0.22, 0.16, 0.05) };
+
+/// A bar (health, mana, experience) `height` pixels high, filled `fraction`
+/// of the way (0 to 1). `back` and `fill` are bundles (such as markers) added
+/// to the bar and its fill, to find them later. With the theme, the empty
+/// part is `bar_back` tinted `colours.back`, the full part `bar_fill` tinted
+/// `colours.fill`, and `bar_frame` is drawn over both.
+pub fn bar(height: f32, colours: BarColours, fraction: f32, back: impl Bundle, fill: impl Bundle) -> impl Bundle {
+    let corners = BorderRadius::all(px(3));
+    (
+        back,
+        Node { height: px(height), width: percent(100), border_radius: corners, ..default() },
+        BackgroundColor(colours.back),
+        Themed(Piece::BarBack),
+        children![
+            (
+                fill,
+                Node {
+                    height: percent(100),
+                    width: percent(fraction.clamp(0.0, 1.0) * 100.0),
+                    border_radius: corners,
+                    ..default()
+                },
+                BackgroundColor(colours.fill),
+                Themed(Piece::BarFill),
+            ),
+            (
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0),
+                    right: px(0),
+                    top: px(0),
+                    bottom: px(0),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Themed(Piece::BarFrame),
+            ),
+        ],
+    )
+}
+
 /// The layout of a window's frame (a column, with room inside for the
 /// theme's border), to fill in with its position and size.
 pub fn window_frame() -> Node {

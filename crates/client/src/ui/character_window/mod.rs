@@ -1,21 +1,20 @@
 //! The character window: everything about the player's own character, in
 //! tabs. Each tab has a key (see [`Tab::key`]): Stats (**C**), Skills (**K**),
-//! Abilities (**L**), Bag (**B**), Gear (**G**), Quests (**J**) and Emotes
-//! (**O**). Pressing a tab's key opens the window on that tab, or closes it
-//! if it's already showing. (Tabs' first letters are used where they're
-//! free; W, A, S, D, Q, E, R and F move the character and camera.)
-//!
-//! The tabs are icons (from the theme), with the open tab's name as the
-//! window's title.
+//! Abilities (**L**), Inventory (**I**), Gear (**G**), Quests (**J**) and
+//! Emotes (**O**), and a button on the toolbar (see [`crate::ui::toolbar`]).
+//! Either opens the window on that tab, or closes it if it's already
+//! showing. The window's title is the open tab's name. (Tabs' first letters
+//! are used where they're free; W, A, S, D, Q, E, R and F move the character
+//! and camera.)
 //!
 //! This module is the window itself (the tab bar, which tab is open, and the
 //! latest [`CharacterSheet`] from the server). Each tab is its own module,
 //! which fills in its page.
 
 pub mod abilities;
-pub mod bag;
 pub mod emotes;
 pub mod equipment;
+pub mod inventory;
 pub mod quests;
 pub mod skills;
 pub mod stats;
@@ -28,21 +27,15 @@ use venture_protocol::{CharacterSheet, ServerMessage};
 use crate::dev::settings::DevSettings;
 use crate::network::{ClientState, FromServer};
 use crate::ui::text_input::KeyboardFocus;
-use crate::ui::theme::{Piece, Theme, Themed};
+use crate::ui::theme::{Piece, Themed};
 use crate::ui::widgets::{BORDER_COLOUR, WINDOW_BACKGROUND, WINDOW_LAYER, spawn_close_button, window_frame};
 
 /// Width of the window, in pixels.
 pub const WINDOW_WIDTH: f32 = 340.0;
-/// Size of a tab, in pixels.
-const TAB_SIZE: f32 = 36.0;
-/// Size of a tab's icon, in pixels.
-const TAB_ICON_SIZE: f32 = 26.0;
 /// How far below the top of the screen the window sits (under the toolbar), in pixels.
 const TOP: f32 = 50.0;
 /// Colour of the open tab's label.
 const OPEN_TAB_COLOUR: Color = Color::srgb(0.96, 0.9, 0.75);
-/// Colour of the other tabs' labels.
-const TAB_COLOUR: Color = Color::srgb(0.62, 0.58, 0.5);
 /// Colour of section headings within pages.
 pub const HEADING_COLOUR: Color = Color::srgb(0.96, 0.9, 0.75);
 /// Colour of ordinary text within pages.
@@ -62,13 +55,13 @@ impl Plugin for CharacterWindowPlugin {
         app.init_resource::<OpenTab>()
             .init_resource::<Sheet>()
             .add_systems(Startup, spawn_window)
-            .add_systems(Update, (record_sheet, switch_tabs, show_open_tab, highlight_boxes, show_tab_icons).chain())
+            .add_systems(Update, (record_sheet, switch_tabs, show_open_tab, highlight_boxes).chain())
             .add_systems(OnExit(ClientState::Playing), (close_window, forget_sheet))
             .add_plugins((
                 stats::StatsPlugin,
                 skills::SkillsPlugin,
                 abilities::AbilitiesPlugin,
-                bag::BagPlugin,
+                inventory::InventoryPlugin,
                 equipment::EquipmentPlugin,
                 quests::QuestsPlugin,
                 emotes::EmotesPlugin,
@@ -86,7 +79,7 @@ pub enum Tab {
     /// Actions and abilities.
     Abilities,
     /// The inventory.
-    Bag,
+    Inventory,
     /// What's worn.
     Equipment,
     /// The quest journal.
@@ -98,7 +91,7 @@ pub enum Tab {
 impl Tab {
     /// Every tab, in the order they're shown.
     pub const ALL: [Tab; 7] =
-        [Tab::Stats, Tab::Skills, Tab::Abilities, Tab::Bag, Tab::Equipment, Tab::Quests, Tab::Emotes];
+        [Tab::Stats, Tab::Skills, Tab::Abilities, Tab::Inventory, Tab::Equipment, Tab::Quests, Tab::Emotes];
 
     /// Its label.
     pub fn label(self) -> &'static str {
@@ -106,7 +99,7 @@ impl Tab {
             Tab::Stats => "Stats",
             Tab::Skills => "Skills",
             Tab::Abilities => "Abilities",
-            Tab::Bag => "Bag",
+            Tab::Inventory => "Inventory",
             Tab::Equipment => "Gear",
             Tab::Quests => "Quests",
             Tab::Emotes => "Emotes",
@@ -119,7 +112,7 @@ impl Tab {
             Tab::Stats => KeyCode::KeyC,
             Tab::Skills => KeyCode::KeyK,
             Tab::Abilities => KeyCode::KeyL,
-            Tab::Bag => KeyCode::KeyB,
+            Tab::Inventory => KeyCode::KeyI,
             Tab::Equipment => KeyCode::KeyG,
             Tab::Quests => KeyCode::KeyJ,
             Tab::Emotes => KeyCode::KeyO,
@@ -132,7 +125,7 @@ impl Tab {
             Tab::Stats => "C",
             Tab::Skills => "K",
             Tab::Abilities => "L",
-            Tab::Bag => "B",
+            Tab::Inventory => "I",
             Tab::Equipment => "G",
             Tab::Quests => "J",
             Tab::Emotes => "O",
@@ -145,7 +138,7 @@ impl Tab {
             Tab::Stats => "stats",
             Tab::Skills => "skills",
             Tab::Abilities => "abilities",
-            Tab::Bag => "bag",
+            Tab::Inventory => "inventory",
             Tab::Equipment => "gear",
             Tab::Quests => "quests",
             Tab::Emotes => "emotes",
@@ -172,10 +165,6 @@ pub struct Sheet(pub Option<CharacterSheet>);
 #[derive(Component)]
 pub struct CharacterWindow;
 
-/// A tab's button in the tab bar.
-#[derive(Component)]
-struct TabButton(Tab);
-
 /// A tab's page. Tab modules fill theirs in (see [`Pages`]).
 #[derive(Component)]
 struct Page(Tab);
@@ -187,14 +176,6 @@ struct CloseButton;
 /// The window's title (the open tab's name).
 #[derive(Component)]
 struct Title;
-
-/// A tab's icon.
-#[derive(Component)]
-struct TabIcon(Tab);
-
-/// A tab's short name, shown when the theme has no icon for it.
-#[derive(Component)]
-struct TabLabel(Tab);
 
 /// Each tab's page entity, for its module to fill in at startup.
 #[derive(Resource)]
@@ -254,45 +235,6 @@ pub fn spawn_window(mut commands: Commands) {
                     ));
                     spawn_close_button(header, CloseButton);
                 });
-            window
-                .spawn(Node { column_gap: px(3), justify_content: JustifyContent::Center, ..default() })
-                .with_children(|bar| {
-                    for tab in Tab::ALL {
-                        bar.spawn((
-                            TabButton(tab),
-                            Button,
-                            crate::ui::tooltip::Tooltip {
-                                title: tab.label().to_string(),
-                                body: format!("Key: {}", tab.key_name()),
-                            },
-                            Node {
-                                width: px(TAB_SIZE),
-                                height: px(TAB_SIZE),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                border_radius: BorderRadius::top(px(4)),
-                                ..default()
-                            },
-                            BackgroundColor(Color::NONE),
-                            Themed(Piece::Tab),
-                        ))
-                        .with_children(|button| {
-                            button.spawn((
-                                TabIcon(tab),
-                                ImageNode::default(),
-                                Node { width: px(TAB_ICON_SIZE), height: px(TAB_ICON_SIZE), ..default() },
-                                Visibility::Hidden,
-                            ));
-                            button.spawn((
-                                TabLabel(tab),
-                                Text::new(&tab.label()[..3]),
-                                TextFont { font_size: FontSize::Px(11.0), ..default() },
-                                TextColor(TAB_COLOUR),
-                                Node { position_type: PositionType::Absolute, ..default() },
-                            ));
-                        });
-                    }
-                });
             for tab in Tab::ALL {
                 let page = window
                     .spawn((
@@ -311,25 +253,6 @@ pub fn spawn_window(mut commands: Commands) {
     commands.insert_resource(Pages(pages));
 }
 
-/// Gives the tabs their icons from the theme (or their short names, if it has none).
-fn show_tab_icons(
-    theme: Res<Theme>,
-    mut icons: Query<(&TabIcon, &mut ImageNode, &mut Visibility)>,
-    mut labels: Query<(&TabLabel, &mut Visibility), Without<TabIcon>>,
-) {
-    if !theme.is_changed() {
-        return;
-    }
-    for (TabIcon(tab), mut image, mut visibility) in &mut icons {
-        let icon = theme.tab_icon(tab.id());
-        *visibility = if icon.is_some() { Visibility::Inherited } else { Visibility::Hidden };
-        image.image = icon.unwrap_or_default();
-    }
-    for (TabLabel(tab), mut visibility) in &mut labels {
-        *visibility = if theme.tab_icon(tab.id()).is_some() { Visibility::Hidden } else { Visibility::Inherited };
-    }
-}
-
 fn record_sheet(mut events: MessageReader<FromServer>, mut sheet: ResMut<Sheet>) {
     for FromServer(message) in events.read() {
         if let ServerMessage::Character(new_sheet) = message {
@@ -339,12 +262,11 @@ fn record_sheet(mut events: MessageReader<FromServer>, mut sheet: ResMut<Sheet>)
 }
 
 /// Each tab's key (unless the player is typing) or button opens it; the ✕
-/// closes the window. A shop opening shows the bag, to sell from.
+/// closes the window. A shop opening shows the inventory, to sell from.
 fn switch_tabs(
     mut events: MessageReader<FromServer>,
     keys: Res<ButtonInput<KeyCode>>,
     focus: Res<KeyboardFocus>,
-    buttons: Query<(&Interaction, &TabButton), Changed<Interaction>>,
     close: Query<&Interaction, (With<CloseButton>, Changed<Interaction>)>,
     dev: Res<DevSettings>,
     mut opened_for_dev: Local<bool>,
@@ -355,21 +277,20 @@ fn switch_tabs(
             open.toggle(tab);
         }
     }
-    for (interaction, button) in &buttons {
-        if *interaction == Interaction::Pressed {
-            open.0 = Some(button.0);
-        }
-    }
     if close.iter().any(|interaction| *interaction == Interaction::Pressed) {
         open.0 = None;
     }
     if events.read().any(|FromServer(message)| matches!(message, ServerMessage::ShopOpened { .. })) {
-        open.0 = Some(Tab::Bag);
+        open.0 = Some(Tab::Inventory);
     }
     if !*opened_for_dev {
         *opened_for_dev = true;
-        // (`equipment` is the gear tab's old name.)
-        let named = |tab: Tab, name: &str| name == tab.id() || (tab == Tab::Equipment && name == "equipment");
+        // (`equipment` and `bag` are old names.)
+        let named = |tab: Tab, name: &str| {
+            name == tab.id()
+                || (tab == Tab::Equipment && name == "equipment")
+                || (tab == Tab::Inventory && name == "bag")
+        };
         if let Some(tab) = Tab::ALL.into_iter().find(|tab| dev.open.iter().any(|name| named(*tab, name))) {
             open.0 = Some(tab);
         }
@@ -382,8 +303,6 @@ fn show_open_tab(
     state: Res<State<ClientState>>,
     mut window: Single<&mut Visibility, With<CharacterWindow>>,
     mut pages: Query<(&Page, &mut Node)>,
-    mut tabs: Query<(&TabButton, &mut Themed, &mut BackgroundColor)>,
-    mut labels: Query<(&TabLabel, &mut TextColor)>,
     mut title: Single<&mut Text, With<Title>>,
 ) {
     let playing = *state.get() == ClientState::Playing;
@@ -396,14 +315,6 @@ fn show_open_tab(
     }
     if let Some(tab) = open.0 {
         title.0 = tab.label().to_string();
-    }
-    for (tab, mut themed, mut background) in &mut tabs {
-        let chosen = Some(tab.0) == open.0;
-        themed.0 = if chosen { Piece::TabOpen } else { Piece::Tab };
-        background.0 = if chosen { Color::srgba(1.0, 1.0, 1.0, 0.1) } else { Color::NONE };
-    }
-    for (label, mut colour) in &mut labels {
-        colour.0 = if Some(label.0) == open.0 { OPEN_TAB_COLOUR } else { TAB_COLOUR };
     }
 }
 
@@ -437,31 +348,6 @@ pub fn heading(text: &str) -> impl Bundle {
         ],
     )
 }
-
-/// A bar (such as experience) `height` pixels high, filled `fraction` of the
-/// way (0 to 1) with `fill` (a bundle with a marker, to find it and change its
-/// width) in `colour`.
-pub fn bar(height: f32, colour: Color, fraction: f32, fill: impl Bundle) -> impl Bundle {
-    (
-        Node { height: px(height), width: percent(100), border_radius: BorderRadius::all(px(3)), ..default() },
-        BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.08)),
-        Themed(Piece::BarBack),
-        children![(
-            fill,
-            Node {
-                height: percent(100),
-                width: percent(fraction.clamp(0.0, 1.0) * 100.0),
-                border_radius: BorderRadius::all(px(3)),
-                ..default()
-            },
-            BackgroundColor(colour),
-            Themed(Piece::BarFill),
-        )],
-    )
-}
-
-/// The colour of experience bars.
-pub const EXPERIENCE_COLOUR: Color = Color::srgb(0.85, 0.7, 0.3);
 
 /// A thin line across (under headings).
 pub fn divider() -> impl Bundle {

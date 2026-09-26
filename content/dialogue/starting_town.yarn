@@ -35,7 +35,7 @@ Hilda: The fire isn't lit yet, I'm afraid. Come back soon and I'll have blades t
         <<give_item old_pipe>>
         <<set_quest tomas_pipe found>>
     <<else>>
-        Hilda: I've got it here, but your hands are full. Make some room in your bag and come back.
+        Hilda: I've got it here, but your hands are full. Make some room in your inventory and come back.
     <<endif>>
 -> What will you make?
     Hilda: Swords, axes, pickaxes. Whatever a body needs to make their way out there.

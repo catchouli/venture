@@ -298,14 +298,14 @@ none of it. So a purchase can't take the Miasma and then fail to hand over the
 goods, nothing can be duplicated, and counts never go negative, whichever
 module asks for the change. Whenever an inventory changes, the server sends
 the player the whole thing (`Inventory { slots, miasma }`), which is small, and the
-client's bag window shows it. Item names, descriptions and icons come from
+client's inventory tab shows it. Item names, descriptions and icons come from
 the content pack's client files.
 
 ## Shops
 
 A shop opens when an NPC's dialogue runs `<<open_shop ...>>`: the server
 ends the conversation and sends `ShopOpened { npc, name, stock }`. The client
-shows the shop beside the bag. `Buy { index, count }` and `Sell { slot, count }`
+shows the shop beside the inventory. `Buy { index, count }` and `Sell { slot, count }`
 (counts from 1 to 100, checked by the gate) each become one inventory
 `Change`, Miasma for goods or goods for Miasma, so a trade happens completely
 or not at all. The server answers every trade with a `Notice` saying how it
@@ -345,7 +345,7 @@ the server checks the level, the points and the class, and says in a
 
 **Equipment** lives in its own component, changed only in `equipment.rs`.
 `Equip { slot }` (an inventory slot) and `Unequip { slot }` (an equipment
-slot) swap items between the bag and the slots as one inventory `Change`, so
+slot) swap items between the inventory and the slots as one inventory `Change`, so
 nothing is lost or duplicated; an item filling several slots (a robe: body
 and legs) replaces whatever is in any of them. What's worn feeds the
 character's secondary stats (armour, the weapon's damage and speed).
