@@ -7,6 +7,7 @@
 //! - `VENTURE_EDITOR_FOCUS=x,y`: where the camera looks (metres).
 //! - `VENTURE_EDITOR_PLACE=town_guard`: choose this placed thing on the World
 //!   tab (by id, or name for respawn points), and look at it.
+//! - `VENTURE_EDITOR_DISTANCE=metres`: how far the camera is from where it looks.
 //! - `VENTURE_SCREENSHOT_DELAY=seconds`: wait longer before the picture.
 
 use bevy::prelude::*;
@@ -62,6 +63,9 @@ fn choose_view(mut shell: ResMut<Shell>, document: Res<Document>, mut camera: Si
     });
     if let Some(focus) = focus {
         camera.go_to(focus);
+    }
+    if let Some(distance) = std::env::var("VENTURE_EDITOR_DISTANCE").ok().and_then(|text| text.parse().ok()) {
+        camera.distance = distance;
     }
 }
 

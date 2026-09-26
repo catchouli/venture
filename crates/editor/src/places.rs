@@ -12,11 +12,16 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::EguiWantsInput;
+use venture_client::characters::creatures::spawn_creature;
+use venture_client::characters::humans::HumanLook;
+use venture_client::characters::model::{CharacterAssets, appearance_look, spawn_character};
 use venture_client::common::coords::{from_bevy, to_bevy};
+use venture_client::content::ContentStore;
 use venture_client::world::query::{ground_height, raycast_ground};
 use venture_client::world::source::WorldInfo;
 use venture_client::world::streaming::ChunkStore;
-use venture_content::{CreatureDef, NpcDef, Placement, RespawnPoint, Settlements, SpawnerDef};
+use venture_content::{AppearanceDef, CreatureDef, NpcDef, Placement, RespawnPoint, Settlements, SpawnerDef};
+use venture_protocol::CreatureLook;
 
 use crate::camera::EditorCamera;
 use crate::document::{Document, Entry};
@@ -135,6 +140,20 @@ pub struct Place {
     /// For spawners: how far from it creatures appear, and how far away
     /// aggressive ones notice players (if they do).
     pub radii: Option<(f32, Option<f32>)>,
+    /// How its marker looks.
+    pub look: PlaceLook,
+}
+
+/// How a placed thing's marker looks: the game's own models where there are
+/// some to show.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PlaceLook {
+    /// A person, in their appearance (if it exists).
+    Person(Option<AppearanceDef>),
+    /// A creature (if it exists).
+    Creature(Option<CreatureLook>),
+    /// Just a marker.
+    Point,
 }
 
 /// Every placed thing, worked out from the document.
@@ -168,13 +187,25 @@ struct Drag {
     moving: bool,
 }
 
-/// A marker in the world for a placed thing.
+/// A marker in the world for a placed thing, standing on the ground where it is.
 #[derive(Component)]
 pub struct PlaceMarker {
     /// What it marks.
     pub kind: PlaceKind,
     /// Its entry's key.
     pub key: String,
+    /// How it looks (to tell when it needs making again).
+    look: PlaceLook,
+}
+
+/// How high above a marker's feet its middle is (for picking it), and where
+/// its name goes.
+pub fn marker_heights(kind: PlaceKind) -> (f32, f32) {
+    match kind {
+        PlaceKind::Npc => (0.9, 2.0),
+        PlaceKind::Spawner => (0.5, 1.3),
+        PlaceKind::RespawnPoint => (0.1, 0.6),
+    }
 }
 
 /// Meshes and materials for markers.
@@ -215,6 +246,12 @@ fn list_places(document: Res<Document>, world: Option<Res<WorldInfo>>, mut place
         return;
     }
     let settlements = world.map(|world| settlements(&world)).unwrap_or_default();
+    let appearances: HashMap<String, AppearanceDef> = document
+        .find::<AppearanceDef>()
+        .map(|(_, all)| {
+            all.files().iter().flat_map(|file| file.entries.iter().map(|a| (a.id.clone(), a.clone()))).collect()
+        })
+        .unwrap_or_default();
     let creatures: HashMap<String, CreatureDef> = document
         .find::<CreatureDef>()
         .map(|(_, creatures)| {
@@ -222,12 +259,15 @@ fn list_places(document: Res<Document>, world: Option<Res<WorldInfo>>, mut place
         })
         .unwrap_or_default();
     let mut list = Vec::new();
-    add_places::<NpcDef>(&document, &settlements, &mut list, |_| None);
-    add_places::<SpawnerDef>(&document, &settlements, &mut list, |spawner| {
-        let aggro = creatures.get(&spawner.creature).filter(|creature| creature.aggressive).map(|c| c.aggro_radius);
-        Some((spawner.radius, aggro))
+    add_places::<NpcDef>(&document, &settlements, &mut list, |npc| {
+        (None, PlaceLook::Person(appearances.get(&npc.appearance).cloned()))
     });
-    add_places::<RespawnPoint>(&document, &settlements, &mut list, |_| None);
+    add_places::<SpawnerDef>(&document, &settlements, &mut list, |spawner| {
+        let creature = creatures.get(&spawner.creature);
+        let aggro = creature.filter(|creature| creature.aggressive).map(|creature| creature.aggro_radius);
+        (Some((spawner.radius, aggro)), PlaceLook::Creature(creature.map(|creature| creature.look)))
+    });
+    add_places::<RespawnPoint>(&document, &settlements, &mut list, |_| (None, PlaceLook::Point));
     places.list = list;
     places.made_from = Some(key);
 }
@@ -236,35 +276,41 @@ fn add_places<T: Placeable>(
     document: &Document,
     settlements: &Settlements,
     list: &mut Vec<Place>,
-    radii: impl Fn(&T) -> Option<(f32, Option<f32>)>,
+    extras: impl Fn(&T) -> (Option<(f32, Option<f32>)>, PlaceLook),
 ) {
     let Some((collection, kind)) = document.find::<T>() else { return };
     for (f, file) in kind.files().iter().enumerate() {
         for (i, entry) in file.entries.iter().enumerate() {
+            let (radii, look) = extras(entry);
             list.push(Place {
                 kind: T::KIND,
                 entry: (collection, f, i),
                 key: entry.key(),
                 label: entry.label(),
                 position: entry.at().position(settlements),
-                radii: radii(entry),
+                radii,
+                look,
             });
         }
     }
 }
 
-/// Makes the markers match the places: new ones appear, gone ones go, and
-/// moved ones move (unless one is being dragged).
+/// Makes the markers match the places: new ones appear, gone ones go, moved
+/// ones move (unless one is being dragged), and ones that look different are
+/// made again.
 fn sync_markers(
     mut commands: Commands,
     places: Res<Places>,
     assets: Option<Res<MarkerAssets>>,
+    shapes: Res<CharacterAssets>,
+    content: Res<ContentStore>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     store: Res<ChunkStore>,
     drag: Res<Drag>,
     mut markers: Query<(Entity, &PlaceMarker, &mut Transform)>,
 ) {
     let Some(assets) = assets else { return };
-    if !places.is_changed() {
+    if !places.is_changed() && !content.is_changed() {
         return;
     }
     let mut existing: HashMap<(PlaceKind, String), Entity> =
@@ -272,55 +318,57 @@ fn sync_markers(
     for place in &places.list {
         let Some((x, y)) = place.position else { continue };
         let height = ground_height(&store, x, y).unwrap_or(0.0);
-        let at = Transform::from_translation(to_bevy(x, y, height) + marker_lift(place.kind));
-        match existing.remove(&(place.kind, place.key.clone())) {
-            Some(entity) => {
+        let at = Transform::from_translation(to_bevy(x, y, height));
+        if let Some(entity) = existing.remove(&(place.kind, place.key.clone())) {
+            let Ok((_, marker, mut transform)) = markers.get_mut(entity) else { continue };
+            if marker.look == place.look {
                 let dragged = drag.moving && drag.pressed.is_some_and(|(pressed, _)| pressed == entity);
-                if let Ok((_, _, mut transform)) = markers.get_mut(entity)
-                    && !dragged
-                {
-                    *transform = at;
+                if !dragged && transform.translation != at.translation {
+                    transform.translation = at.translation;
                 }
+                continue;
             }
-            None => {
-                let (mesh, material) = assets.shapes[&place.kind].clone();
-                commands.spawn((
-                    Name::new(format!("Marker: {}", place.label)),
-                    PlaceMarker { kind: place.kind, key: place.key.clone() },
-                    Mesh3d(mesh),
-                    MeshMaterial3d(material),
-                    at,
-                ));
-            }
+            commands.entity(entity).despawn();
         }
+        let marker = match &place.look {
+            PlaceLook::Person(Some(appearance)) => {
+                let look = appearance_look(&mut materials, appearance);
+                let person = spawn_character(&mut commands, &shapes, at, &look);
+                let models = content.character_models.as_ref();
+                commands.entity(person).insert(HumanLook::of_appearance(Some(appearance), models));
+                person
+            }
+            PlaceLook::Creature(Some(look)) => spawn_creature(&mut commands, &shapes, &mut materials, at, look),
+            _ => {
+                let (mesh, material) = assets.shapes[&place.kind].clone();
+                let lift = Vec3::Y * marker_heights(place.kind).0;
+                commands
+                    .spawn((at, Visibility::default()))
+                    .with_child((Mesh3d(mesh), MeshMaterial3d(material), Transform::from_translation(lift)))
+                    .id()
+            }
+        };
+        commands.entity(marker).insert((
+            Name::new(format!("Marker: {}", place.label)),
+            PlaceMarker { kind: place.kind, key: place.key.clone(), look: place.look.clone() },
+        ));
     }
     for (_, entity) in existing {
         commands.entity(entity).despawn();
     }
 }
 
-/// How high a marker's centre is above the ground.
-fn marker_lift(kind: PlaceKind) -> Vec3 {
-    Vec3::Y
-        * match kind {
-            PlaceKind::Npc => 0.85,
-            PlaceKind::Spawner => 0.45,
-            PlaceKind::RespawnPoint => 0.08,
-        }
-}
-
 /// Markers placed before their ground loaded settle onto it.
-fn keep_on_ground(store: Res<ChunkStore>, mut markers: Query<(&PlaceMarker, &mut Transform)>) {
+fn keep_on_ground(store: Res<ChunkStore>, mut markers: Query<&mut Transform, With<PlaceMarker>>) {
     if !store.is_changed() {
         return;
     }
-    for (marker, mut transform) in &mut markers {
+    for mut transform in &mut markers {
         let (x, y) = from_bevy(transform.translation);
-        if let Some(height) = ground_height(&store, x, y) {
-            let wanted = height + marker_lift(marker.kind).y;
-            if (transform.translation.y - wanted).abs() > 0.01 {
-                transform.translation.y = wanted;
-            }
+        if let Some(height) = ground_height(&store, x, y)
+            && (transform.translation.y - height).abs() > 0.01
+        {
+            transform.translation.y = height;
         }
     }
 }
@@ -360,10 +408,11 @@ fn pick_and_drag(
         let picked = markers
             .iter()
             .filter_map(|(entity, marker, transform)| {
-                let along = (transform.translation - ray.origin).dot(*ray.direction);
+                let middle = transform.translation + Vec3::Y * marker_heights(marker.kind).0;
+                let along = (middle - ray.origin).dot(*ray.direction);
                 let closest = ray.origin + *ray.direction * along;
                 let size = PICK_RADIUS + along * 0.004;
-                (along > 0.0 && closest.distance(transform.translation) < size).then_some((along, entity, marker))
+                (along > 0.0 && closest.distance(middle) < size).then_some((along, entity, marker))
             })
             .min_by(|a, b| a.0.total_cmp(&b.0));
         match picked {
@@ -382,8 +431,8 @@ fn pick_and_drag(
             return;
         }
         drag.moving = true;
-        if let (Some(ground), Ok((_, marker, mut transform))) = (raycast_ground(&store, ray), markers.get_mut(entity)) {
-            transform.translation = ground + marker_lift(marker.kind);
+        if let (Some(ground), Ok((_, _, mut transform))) = (raycast_ground(&store, ray), markers.get_mut(entity)) {
+            transform.translation = ground;
         }
         return;
     }
