@@ -18,7 +18,7 @@ impl Plugin for WorldSourcePlugin {
         let source = match app.world().resource::<ServerChoice>() {
             ServerChoice::Remote { base_url } => WorldSource::Http { base_url: format!("{base_url}/world") },
             #[cfg(not(target_arch = "wasm32"))]
-            ServerChoice::Local { world_folder } => WorldSource::Folder(world_folder.clone()),
+            ServerChoice::Local { world_folder, .. } => WorldSource::Folder(world_folder.clone()),
         };
         app.insert_resource(source)
             .add_systems(Startup, start_loading_manifest)

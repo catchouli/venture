@@ -74,7 +74,7 @@ use venture_simulation::{Rules, TICK_RATE};
 pub use config::ServerConfig;
 pub use content::{ContentSetup, SharedClientContent};
 pub use link::{ConnectionId, Link, LinkEvent, LinkSender};
-pub use profiles::ProfileStore;
+pub use profiles::{ProfileKey, ProfileStore};
 pub use world::ServerWorld;
 
 /// Everything the game server needs to run.
@@ -93,11 +93,27 @@ pub struct GameServer {
     pub spawn_override: Option<(f32, f32)>,
     /// The names of characters with admin powers.
     pub admins: Vec<String>,
+    /// Whether every character has admin powers (only for a server running
+    /// inside a development client, which nobody else can join; never set
+    /// from the config file).
+    pub everyone_is_admin: bool,
 }
 
-/// The names of characters with admin powers (see [`admin`]).
+/// Who has admin powers (see [`admin`]).
 #[derive(Resource, Clone, Default)]
-pub struct Admins(pub Vec<String>);
+pub struct Admins {
+    /// Characters with admin powers, by name.
+    pub names: Vec<String>,
+    /// Whether everyone has them (see [`GameServer::everyone_is_admin`]).
+    pub everyone: bool,
+}
+
+impl Admins {
+    /// Whether the character with this name has admin powers.
+    pub fn includes(&self, name: &str) -> bool {
+        self.everyone || self.names.iter().any(|admin| admin.eq_ignore_ascii_case(name))
+    }
+}
 
 /// The game rules this server plays by.
 #[derive(Resource, Clone, Copy)]
@@ -141,7 +157,7 @@ impl GameServer {
             .insert_resource(self.profiles)
             .insert_resource(self.link)
             .insert_resource(GameRules(self.rules))
-            .insert_resource(Admins(self.admins))
+            .insert_resource(Admins { names: self.admins, everyone: self.everyone_is_admin })
             .insert_resource(sessions::SpawnPoint(self.spawn_override))
             .configure_sets(
                 FixedUpdate,

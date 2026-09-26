@@ -110,7 +110,19 @@ cargo run -p venture_client -- --local                        # a server inside 
 
 `--local` runs the real server code inside the client, connected through an
 in-memory link instead of the network (with `--world <folder>` to choose the
-world). Profiles are kept in `local_data/`.
+world). Profiles are kept in `local_data/`. Two flags help while working on
+the game:
+
+- `--new-character` deletes your local character first (freeing its name),
+  so the game asks you to make a new one.
+- `--admin` gives every character on the local server admin powers
+  (`/setlevel`, `/reset`, `/setclass`, `/setgender`). Only you can join a
+  local server, and the real server can't turn this on: its admins are
+  only the names in `server.ron`.
+
+```sh
+cargo run -p venture_client -- --local --new-character --admin
+```
 
 Development builds optimise dependencies (Bevy) and the world generator, but
 not the rest of our code, so they compile quickly and still run smoothly.

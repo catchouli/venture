@@ -157,6 +157,18 @@ impl ProfileStore {
         Ok(())
     }
 
+    /// Deletes a profile, if there is one, freeing its character's name (for
+    /// starting over in development).
+    pub fn remove(&self, key: &ProfileKey) {
+        let mut names = self.names.write().expect("the name index isn't poisoned");
+        names.retain(|_, owner| owner != key);
+        match std::fs::remove_file(self.path(key)) {
+            Ok(()) => info!("Deleted profile {}.", key.0),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => error!("Couldn't delete profile {}: {error}", key.0),
+        }
+    }
+
     /// Takes a name for a new character, if nobody else has it (ignoring case).
     pub fn claim_name(&self, name: &str, key: &ProfileKey) -> bool {
         let mut names = self.names.write().expect("the name index isn't poisoned");
@@ -243,6 +255,18 @@ mod tests {
         assert_eq!(profile.abilities, Some(vec!["rest".to_string(), "whack".to_string()]));
         let hotbar = profile.hotbar.unwrap();
         assert_eq!(hotbar[0], Some(HotbarEntry::Ability("whack".to_string())));
+    }
+
+    #[test]
+    fn removing_a_profile_frees_its_name() {
+        let folder = test_folder("remove");
+        let store = ProfileStore::new(&folder).unwrap();
+        let (old, new) = (ProfileKey::from_token("old"), ProfileKey::from_token("new"));
+        assert!(store.claim_name("Wren", &old));
+        store.save(&old, &Profile::new("Wren".to_string(), (0.0, 0.0)));
+        store.remove(&old);
+        assert!(store.load(&old).is_none());
+        assert!(store.claim_name("wren", &new));
     }
 
     #[test]

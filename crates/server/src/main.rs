@@ -79,7 +79,16 @@ fn main() {
     ));
     let content = ContentSetup { folder: paths.content.clone(), pack, client: client_content, watch: true };
     let admins = config.admins.clone();
-    let server = GameServer { world, profiles, link, rules: config.rules(), content, spawn_override: None, admins };
+    let server = GameServer {
+        world,
+        profiles,
+        link,
+        rules: config.rules(),
+        content,
+        spawn_override: None,
+        admins,
+        everyone_is_admin: false,
+    };
     server.install(&mut app);
     app.run();
 }

@@ -200,7 +200,7 @@ impl Sessions<'_, '_> {
         let hotbar = Hotbar::from_saved(saved.hotbar.take(), &character);
         let inventory = Inventory::from_saved(saved.inventory, saved.miasma);
         let quests = QuestLog::from_saved(saved.quests);
-        let admin = self.admins.0.iter().any(|admin| admin.eq_ignore_ascii_case(&name.0));
+        let admin = self.admins.includes(&name.0);
         let kind = EntityKind::Player { level: character.level(), look: look.clone() };
 
         // Tell the newcomer about themselves, and everyone and everything already here.
