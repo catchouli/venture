@@ -142,6 +142,7 @@ mod tests {
             id: "pipe".to_string(),
             name: "The Pipe".to_string(),
             stages: vec![stage("asked"), stage("found"), stage("done")],
+            notes: String::new(),
         }
     }
 

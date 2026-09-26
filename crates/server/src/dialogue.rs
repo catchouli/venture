@@ -371,12 +371,14 @@ mod tests {
             stackable: false,
             value: 4,
             equip: None,
+            notes: String::new(),
         };
         let stage = |id: &str| venture_content::QuestStage { id: id.to_string(), journal: String::new() };
         let quest = venture_content::QuestDef {
             id: "loaf".to_string(),
             name: "The Loaf".to_string(),
             stages: vec![stage("asked"), stage("done")],
+            notes: String::new(),
         };
         let mut pack = ContentPack::default();
         pack.items.insert("bread".to_string(), item);

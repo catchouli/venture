@@ -1,9 +1,7 @@
-// What new characters start with, whatever their class.
 (
     miasma: 25,
     items: [
         (item: "bread", count: 1),
     ],
-    // Abilities everyone knows.
     abilities: ["rest"],
 )

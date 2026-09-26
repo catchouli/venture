@@ -71,6 +71,9 @@ pub struct AppearanceDef {
     /// Their head size (see `height`).
     #[serde(default)]
     pub head: Option<i8>,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// How far picked sliders go either way (less than players can choose, so
@@ -140,6 +143,9 @@ pub struct NpcDef {
     /// How far from home (in metres) the NPC may wander. Zero keeps it in place.
     #[serde(default)]
     pub wander_radius: f32,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// Where something is placed in the world. Placing things relative to
@@ -190,6 +196,9 @@ pub struct ItemDef {
     /// If it can be worn or wielded: where, what it does, and how it looks.
     #[serde(default)]
     pub equip: Option<Equippable>,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// What an equippable item does when worn.
@@ -264,6 +273,9 @@ pub struct AbilityDef {
     /// How it looks: the colour and size of its flash, bolt or glow.
     #[serde(default)]
     pub visual: AbilityVisual,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 impl AbilityDef {
@@ -299,6 +311,9 @@ pub struct SkillDef {
     pub description: String,
     /// Its picture: a PNG file in `icons/`.
     pub icon: String,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// The interface's look: the image for each piece of it (window frames,
@@ -494,6 +509,9 @@ pub struct ShopDef {
     pub name: String,
     /// What it sells, in the order shown.
     pub stock: Vec<ShopItem>,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// Something a shop sells.
@@ -525,6 +543,9 @@ pub struct QuestDef {
     pub name: String,
     /// The stages, in order. The last one completes the quest.
     pub stages: Vec<QuestStage>,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// One stage of a quest.
@@ -599,6 +620,9 @@ pub struct ClassDef {
     /// The abilities the class can learn with ability points.
     #[serde(default)]
     pub abilities: Vec<ClassAbility>,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// A number of one kind of item.
@@ -654,6 +678,9 @@ pub struct CreatureDef {
     pub experience: u64,
     /// How it looks.
     pub look: CreatureLook,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 fn default_aggro_radius() -> f32 {
@@ -693,6 +720,9 @@ pub struct SpawnerDef {
     pub radius: f32,
     /// How long after one dies the next appears, in seconds.
     pub respawn_seconds: f32,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// A place players wake up after dying. They wake at the nearest one.
@@ -707,6 +737,9 @@ pub struct RespawnPoint {
     pub name: String,
     /// Where it is.
     pub at: Placement,
+    /// Notes for authors (the game ignores them).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// The most characters in an NPC's name.
@@ -734,6 +767,7 @@ mod tests {
             height: Some(9),
             build: None,
             head: None,
+            notes: String::new(),
         }
     }
 

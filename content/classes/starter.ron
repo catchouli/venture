@@ -1,13 +1,3 @@
-// The classes players choose from when they make a character. The first is
-// the default (for characters made before classes existed).
-//
-// rules: hit_die is the health die per level (SRD 5.1: d10 for fighters, d6
-// for wizards); mana_per_level and casting_stat set mana (see
-// crates/rpg/src/derived.rs). stats are a new character's stats.
-// starting_equipment is worn from the start (items in items/ that can be
-// equipped); starting_abilities are known from the start (on top of everyone's,
-// in new_characters.ron); abilities can be learned with ability points, from a
-// level, for a cost.
 [
     (
         id: "fighter",

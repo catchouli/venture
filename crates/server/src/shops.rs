@@ -178,6 +178,7 @@ mod tests {
             stackable,
             value,
             equip: None,
+            notes: String::new(),
         };
         BTreeMap::from([("bread".to_string(), item("bread", false, 4)), ("pipe".to_string(), item("pipe", false, 0))])
     }
@@ -187,6 +188,7 @@ mod tests {
             id: "bakery".to_string(),
             name: "The Bakery".to_string(),
             stock: vec![ShopItem { item: "bread".to_string(), price: 5 }],
+            notes: String::new(),
         }
     }
 
