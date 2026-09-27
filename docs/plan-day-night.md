@@ -34,18 +34,26 @@ photograph to the next.
    blue: white at midday, orange to red at sunset). Below the horizon it
    hands over to the moon (dim and cool) in twilight, when both are faint,
    so shadows never jump.
-3. **Keyframe skies** (to do): photographs for morning, day, evening and
-   night, each imported with its sun painted out of the skybox (filled from
-   the sky around it) and out of its light (as today), and with its level,
-   horizon colour and sun direction recorded. The game draws the sun and
-   moon discs itself, where they really are, so there's never a second sun.
-4. **Blending** (to do): a small sky material samples the two skies either
-   side of the time, weighted smoothly, and adds the sun, the moon and stars
-   at night. Their baked light (about 140 000 RGB9E5 texels each) is
-   blended on the CPU and uploaded again a few times a second during a
-   transition: cheap, WebGL2-friendly, and needing no changes to Bevy. Only
-   the two skies in use (and the next) are loaded. Clouds from different
-   photographs cross-fade, which reads as the weather changing.
+3. **Keyframe skies:** photographs for day (DaySkyHDRI070B), evening
+   (EveningSkyHDRI047B, which is dawn too, turned to the rising sun) and
+   night (NightSkyHDRI008), imported with their suns and a night sky's
+   trails painted out (see [textures.md](textures.md)). The game draws the
+   sun and moon itself, where they really are, so there's never a second
+   sun. `content/skies/cycle.ron` sets which sky shows when, and how
+   bright: night until 01:30, dawn (the evening sky) at 03:00 as the sun
+   rises, day from 05:00 to 19:00, evening at 20:48 and night from 22:18.
+4. **Blending** (`world/sky.rs`, `shaders/sky.wgsl`): the sky is drawn on
+   the inside of a big sphere round the camera (in place of Bevy's
+   one-cubemap skybox), sampling the two keyframe skies either side of the
+   time, weighted smoothly, each turned its own way (following the sun, or
+   for the stars, round the pole star a turn a day), with the sun's disc and
+   glow and the moon's disc (with darker seas) where they are. The skies'
+   baked light (about 140 000 RGB9E5 texels each) is blended on the CPU and
+   uploaded again whenever the blend has moved on by 1%: cheap,
+   WebGL2-friendly, and needing no changes to Bevy. All three skies are
+   loaded (about 75 MB of GPU memory for their pictures; a lower fidelity
+   tier could keep only the two in use). Clouds from different photographs
+   cross-fade, which reads as the weather changing.
 5. **Exposure and haze by time** (`world/daylight.rs`): the sky and the
    light it casts dim through dusk to a night level, the exposure opens
    about two and a half stops at night, and the haze takes the horizon's
@@ -56,11 +64,11 @@ photograph to the next.
 1. **Done:** the clock, the sun's path and colour, the moon, sky
    brightness, exposure and haze by time, `/time` (with the one day sky,
    turned so its sun's glow follows the sun).
-2. Sun removal and metadata in `import_sky`; morning, evening and night
-   skies. (Needs a night HDRI, and ideally a morning one, from ambientCG;
-   without a morning sky, dawn uses the evening one turned east.)
-3. The two-sky blend, blended sky light, sun and moon discs, stars, haze
-   from the blended horizon.
+2. **Done:** sun removal and trail painting in `import_sky`; the evening
+   and night skies (dawn uses the evening sky turned east; a morning HDRI
+   would be an easy upgrade).
+3. **Done:** the two-sky blend, blended sky light, sun and moon discs,
+   turning stars, haze from the blended horizons.
 4. Tuning, and hooks for play: night-only monsters, NPC schedules, lit
    windows and torches.
 

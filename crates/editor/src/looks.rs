@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use venture_client::characters::{humans, model, monsters};
 use venture_client::content::{CONTENT_SOURCE, ContentStore, SkyFiles};
 use venture_content::characters::{CharacterModels, parse_character_models};
-use venture_content::sky::{SkyLight, parse_sky};
+use venture_content::sky::{SKY_CYCLE_FILE, SkyLight, parse_sky, parse_sky_cycle};
 use venture_content::{AppearanceDef, ItemDef};
 
 use crate::document::Document;
@@ -49,6 +49,8 @@ fn load_character_models(mut commands: Commands, project: Res<crate::Project>) {
     store.version = Some("editor".to_string());
     store.character_models = models;
     store.skies = read_skies(&project.content);
+    store.sky_cycle =
+        std::fs::read_to_string(project.content.join(SKY_CYCLE_FILE)).ok().and_then(|text| parse_sky_cycle(&text).ok());
     commands.insert_resource(store);
 }
 

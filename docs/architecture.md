@@ -91,7 +91,8 @@ src/
     water_material.rs + shaders/water.wgsl       water's shader (waves, reflections)
     props.rs           tree, rock and bush meshes
     query.rs           ground height, raycasts, blocked cells
-    lighting.rs        sun, moon, sky and ambient light, by the time of day
+    lighting.rs        sun, moon, skies and their light, by the time of day
+    sky.rs + shaders/sky.wgsl   drawing the sky: two skies blended, the sun and moon
     time_of_day.rs     the clock the server set, running on
     daylight.rs        the sun's colour and brightness, sky level and exposure by sun height
   characters/        characters in the world
