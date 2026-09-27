@@ -4,7 +4,7 @@ How the world gets made. **The generator makes the land. Authors decide what
 goes on it.** The generator lays out terrain, rivers, biomes and settlement
 sites from a seed. A **world edit app** then lets a person put things on top
 of that land:
-- NPCs, creature spawners and other content;
+- NPCs, monster spawners and other content;
 - individual trees and forests, and clearings;
 - paths and roads;
 - buildings, blocked out as floorplans.

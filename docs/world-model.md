@@ -11,7 +11,7 @@ How the world is represented as data. The types live in `crates/world`.
 - In the client, world `x` is Bevy's X axis, world `y` is Bevy's Z axis, and
   height is Bevy's Y (up) axis (Bevy is Y-up and right-handed). This mapping lives only in
   `crates/client/src/coords.rs`.
-- **Nothing is locked to a grid.** Characters, creatures and objects have
+- **Nothing is locked to a grid.** Characters, monsters and objects have
   continuous positions. Grids are only how the terrain is stored.
 
 ## Terrain cells and chunks

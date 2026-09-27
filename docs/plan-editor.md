@@ -2,14 +2,14 @@
 
 A desktop app for authoring everything the game defines, visually. It starts
 by editing what exists today, both what's placed in the world (NPCs,
-creature spawners, respawn points) and the rules and things of the game
-(classes, abilities, items, skills, creatures). It then grows into the world
+monster spawners, respawn points) and the rules and things of the game
+(classes, abilities, items, skills, monsters). It then grows into the world
 edit app of [world-authoring.md](world-authoring.md): props, generator
 plug-ins (trees, then buildings), areas, roads and towns.
 
 **Status:** milestones 0 and 1 are done, and most of 2 (see
 [editor.md](editor.md)): the property panel, references, renaming, the
-`starting` flag and the class and creature previews. From milestone 4,
+`starting` flag and the class and monster previews. From milestone 4,
 grips are tuned live on the Items tab. The tabs for
 classes, abilities, items and the rest already edit every field, through
 reflection; milestone 2 makes them friendlier (dropdowns for ids, colour
@@ -22,7 +22,7 @@ pickers, dice as text, previews).
    There's no editor database, and everything stays reviewable and
    mergeable in git.
 2. **One schema.** The editor edits the content crate's own definition types
-   (`ClassDef`, `CreatureDef`, `NpcDef`...), so it can't disagree with the
+   (`ClassDef`, `MonsterDef`, `NpcDef`...), so it can't disagree with the
    game about what a field means. Adding a field to a definition makes it
    appear in the editor.
 3. **Things in the world are entities; their definitions are components.**
@@ -33,7 +33,7 @@ pickers, dice as text, previews).
    game server's own runtime components, such as health, are made from
    them when the content loads.)
 4. **What you see is the game.** The editor reuses the client's terrain,
-   prop, character and creature rendering, so an NPC looks in the editor
+   prop, character and monster rendering, so an NPC looks in the editor
    exactly as in the game.
 5. **Live.** Saving writes files, and a running game (the dev server, or
    `--local`) hot-reloads them within a second. It already keeps the last
@@ -59,7 +59,7 @@ pickers, dice as text, previews).
   editor and client turn it on, so the server and the Bevy-free crates
   stay as they are.
 - **The client becomes a library plus a thin binary.** Its plugins (world
-  rendering, characters, creatures, content assets) become usable from the
+  rendering, characters, monsters, content assets) become usable from the
   editor. The game itself doesn't change.
 - **One app with tabs**, not a separate app per job. A tab (or tool) is a
   plug-in: a Bevy plugin that registers its panels. The generator tools
@@ -68,7 +68,7 @@ pickers, dice as text, previews).
 ## The layout
 
 ```
-┌ World │ Classes │ Abilities │ Items │ Skills │ Creatures │ Looks ────────── [Save] [Play here] ┐
+┌ World │ Classes │ Abilities │ Items │ Skills │ Monsters │ Looks ────────── [Save] [Play here] ┐
 │ Outliner / list    │  3D view (World tab)                              │ Properties (inspector) │
 │  ▸ NPCs (4)        │  or a table of every entry (other tabs)           │  name   [Guard Aldren] │
 │  ▸ Spawners (8)    │                                                   │  appearance [guard  ▾] │
@@ -102,13 +102,13 @@ anything.
 - **Outliner** of NPCs, spawners and respawn points, with search. Clicking
   one flies the camera to it.
 - **In the 3D view:** NPCs as their real models; spawners as their
-  creature, with the spawn radius drawn on the ground (and the aggro radius
+  monster, with the spawn radius drawn on the ground (and the aggro radius
   for aggressive ones); respawn points and settlement centres as markers.
 - **Tools:** select (click), move (drag along the ground; it follows the
   terrain), duplicate, delete, and add from a palette. Everything is placed
   at a world position (placing relative to settlements was dropped: the
   editor makes exact spots easy).
-- **Properties:** every field, with references (appearance, creature,
+- **Properties:** every field, with references (appearance, monster,
   script, dialogue, shop) as dropdowns of what exists, and "open" buttons to
   jump to them.
 - **Table view:** all NPCs or all spawners in a spreadsheet, for editing
@@ -135,15 +135,15 @@ duplicate, delete and "where is this used?".
   every reference in the content. Profiles can be migrated separately if
   it's ever needed.
 
-### 3. Creatures, with real models
+### 3. Monsters, with real models
 
-- A **creature model registry**, like `characters.ron`: models, animation
-  clips, scale and tint. The client draws creatures from it (the
+- A **monster model registry**, like `characters.ron`: models, animation
+  clips, scale and tint. The client draws monsters from it (the
   placeholder shapes stay as the fallback).
 - Import what fits from `~/assets` (the Bestiary kit has the Imp and the
   Puglin; whether they share the humanoid skeleton, and so its animations,
   needs checking) and give goblins and rabbits models.
-- **The Creatures tab:** stats (level, health, armour class, attack, speed,
+- **The Monsters tab:** stats (level, health, armour class, attack, speed,
   experience), behaviour (aggressive, radii), and a **model picker** with a
   turning preview. A preview shows what an attack does against a level N
   character, from `venture_rpg`.

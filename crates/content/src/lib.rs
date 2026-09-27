@@ -12,8 +12,8 @@
 //!   sounds.ron          the game's own sounds: hits, misses, levelling up (sent to clients)
 //!   new_characters.ron  what new characters start with (server only)
 //!   classes/*.ron       the classes players choose from (server only)
-//!   creatures/*.ron     creatures that can be fought (server only)
-//!   spawners/*.ron      where creatures live (server only)
+//!   monsters/*.ron     monsters that can be fought (server only)
+//!   spawners/*.ron      where monsters live (server only)
 //!   respawn_points.ron  where players wake up after dying (server only)
 //!   abilities/*.ron        what abilities do (sent to clients)
 //!   skills/*.ron           gathering and making skills (sent to clients)
@@ -50,10 +50,10 @@ pub use client::{
     parse_game_sounds, parse_items, parse_skills, parse_theme,
 };
 pub use definitions::{
-    AbilityDef, AbilityEffect, AbilityVisual, AppearanceDef, ClassAbility, ClassDef, Colour, CreatureAttack,
-    CreatureDef, Equippable, GameSounds, ItemCount, ItemDef, ItemEffect, NewCharacterDef, NpcDef, OutfitStyle,
-    QuestDef, QuestStage, RespawnPoint, ShopDef, ShopItem, SkillDef, SpawnerDef, THEME_PIECES, ThemeBorder, ThemeDef,
-    ThemePiece, WeaponDef,
+    AbilityDef, AbilityEffect, AbilityVisual, AppearanceDef, ClassAbility, ClassDef, Colour, Equippable, GameSounds,
+    ItemCount, ItemDef, ItemEffect, MonsterAttack, MonsterDef, NewCharacterDef, NpcDef, OutfitStyle, QuestDef,
+    QuestStage, RespawnPoint, ShopDef, ShopItem, SkillDef, SpawnerDef, THEME_PIECES, ThemeBorder, ThemeDef, ThemePiece,
+    WeaponDef,
 };
 pub use load::{ContentError, ContentPack};
 pub use venture_protocol::Refers;

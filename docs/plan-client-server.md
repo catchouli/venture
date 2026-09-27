@@ -136,5 +136,5 @@ Original plan:
 ## Later
 
 Combat and targeting (with the sword cursor), gathering skills (felling trees
-from the props the generator already places), creatures, real accounts, and
+from the props the generator already places), monsters, real accounts, and
 WebTransport for play over the internet.

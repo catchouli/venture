@@ -45,8 +45,8 @@ and `cargo fmt --check`.
 
 Controls: **left-click** the ground to run there, or run with **WASD**
 (relative to the camera), and **Space** jumps. **Right-drag** or the **arrow keys** rotate and tilt
-the camera, and the **mouse wheel** zooms. Click a player, NPC or creature to **select**
-it; click again to **follow** a player, **talk** to an NPC or **attack** a creature. **Escape** deselects. **Enter** chats. The character window's tabs each have a key (and a button on the toolbar, top right): **C** stats,
+the camera, and the **mouse wheel** zooms. Click a player, NPC or monster to **select**
+it; click again to **follow** a player, **talk** to an NPC or **attack** a monster. **Escape** deselects. **Enter** chats. The character window's tabs each have a key (and a button on the toolbar, top right): **C** stats,
 **K** skills, **L** abilities, **I** inventory, **G** gear, **J** quests, **O** emotes.
 The **hotbar** down the bottom right uses abilities and actions with keys **1** to **0**
 (or a click). Drag abilities and actions onto it from the character window.

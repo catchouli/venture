@@ -34,7 +34,7 @@ impl Plugin for NameplatesPlugin {
 }
 
 /// How high above its feet a character's name floats, in metres, if not the
-/// usual height (such as for small creatures).
+/// usual height (such as for small monsters).
 #[derive(Component, Clone, Copy)]
 pub struct NameplateHeight(pub f32);
 

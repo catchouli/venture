@@ -78,7 +78,7 @@ with server authority**, and it avoids trusting the client:
    matches the prediction and nothing visible happens. If it differs (packet
    loss, or a cheat attempt), the client smoothly corrects towards the
    server's position, snapping only if the error is large.
-4. **Other** players and creatures aren't predicted. They're shown slightly
+4. **Other** players and monsters aren't predicted. They're shown slightly
    in the past, interpolating between the last two server updates, which
    looks smooth.
 
@@ -375,12 +375,12 @@ looks (`worn`, the placeholder shapes), and the outfit parts it puts on them
 then to `admin.rs`, which checks the player really is an admin before doing
 anything; anyone else is told only admins can use them.
 
-## Creatures and fighting
+## Monsters and fighting
 
-**Creatures** are a third kind of entity (`EntityKind::Creature { level,
-look }`). Spawners in `creatures.rs` create and remove them. That file also
+**Monsters** are a third kind of entity (`EntityKind::Monster { level,
+look }`). Spawners in `monsters.rs` create and remove them. That file also
 decides what they do: wander, pick a fight, chase, give up. Snapshots carry a
-creature's health as a fraction (`EntityState.health`) for health bars.
+monster's health as a fraction (`EntityState.health`) for health bars.
 
 **Attacking:** the client sends `Attack { target }`. The server refuses
 players ("Players can't fight each other"), NPCs, and targets further away
@@ -395,10 +395,10 @@ number, flash) and decides nothing. Health changes only through `Health`'s
 methods. A player's own health comes as `Vitals { health, max_health }`
 whenever it changes.
 
-**Deaths:** a creature that dies is announced with `Died { id }`, lies there
+**Deaths:** a monster that dies is announced with `Died { id }`, lies there
 two seconds, then leaves. Its killer gets its experience and maybe a level
 (full health, and the level-up effect for everyone). A player knocked out
-wakes at the nearest respawn point with full health. Creatures fighting them
+wakes at the nearest respawn point with full health. Monsters fighting them
 give up and heal. Out of combat for 6 seconds, health comes back by a
 twentieth of the maximum every 3 seconds.
 
@@ -407,7 +407,7 @@ twentieth of the maximum every 3 seconds.
 **Using an ability:** the client sends `UseAbility { ability, target }`. The gate
 passes it to `abilities.rs`, the only code that uses abilities. It checks four
 things: the player knows the ability, it isn't cooling down (`Cooldowns`), they
-have the mana (`Mana`, in `combat.rs`), and the target is a living creature.
+have the mana (`Mana`, in `combat.rs`), and the target is a living monster.
 Then it tells everyone within 60 m with `AbilityUsed { user, ability, target }`,
 which clients play (a swing, a bolt flying off, a glow, a sound):
 - A weapon ability becomes a `Strike` with the ability's dice, resolved by
@@ -454,7 +454,7 @@ same, and a new action is added once.
 A chat message starting with `/` names an action and is never sent as chat:
 - `/follow`: follow the selected player;
 - `/talk`: talk to the selected NPC;
-- `/attack`: attack the selected creature (or click it again, or use it from the hotbar);
+- `/attack`: attack the selected monster (or click it again, or use it from the hotbar);
 - `/wave`: wave hello (the server shows it to everyone within 40 m, as an
   `Emoted` message; emotes share chat's rate limit);
 - `/town`: go back to the starting town's square;

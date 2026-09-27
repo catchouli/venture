@@ -52,8 +52,8 @@ content/
   ui/theme.ron, ui/*   the interface's look: frame pictures, tab icons, font (sent to clients)
   ui/layouts/*.ron     where each window's parts go (see ui-layouts.md)
   ui/styles.ron        the interface's colours, text styles and bar colours
-  creatures/*.ron      creatures: stats, attack, behaviour and look
-  spawners/*.ron       where creatures live
+  monsters/*.ron      monsters: stats, attack, behaviour and look
+  spawners/*.ron       where monsters live
   respawn_points.ron   where knocked-out players wake up
   new_characters.ron   what new characters start with
   npcs/*.ron           who lives where
@@ -64,7 +64,7 @@ content/
 ```
 
 **Notes, not comments.** The game's data files (classes, abilities,
-appearances, items, skills, creatures, spawners, respawn points, new
+appearances, items, skills, monsters, spawners, respawn points, new
 characters, NPCs, shops and quests) are written by the editor (see
 [plan-editor.md](plan-editor.md)), which rewrites a whole file when it saves.
 So they hold no comments: what the fields mean is explained here, and
@@ -72,7 +72,7 @@ anything worth saying about a particular entry goes in its `notes` field,
 which every entry has and the game ignores:
 
 ```ron
-(id: "goblin_east", creature: "goblin", at: (2408.0, 2128.0),
+(id: "goblin_east", monster: "goblin", at: (2408.0, 2128.0),
  radius: 10.0, respawn_seconds: 45.0, notes: "A little way out, on open ground."),
 ```
 
@@ -338,7 +338,7 @@ on one shared skeleton, animated by one file of animations. They live in
   (metres, and degrees about X, Y, then Z). `covers` hides the body under the
   part (`Torso`, `Arms`, `Hands`, `Hips`, `Legs`, `Feet`) so skin doesn't
   poke through, and `hides_hair` is for hoods and helmets.
-- **creatures** are whole models for creatures (`"puglin": (model:
+- **monsters** are whole models for monsters (`"puglin": (model:
   "puglin.gltf", scale: 0.9)`). They're on the characters' skeleton, so
   they play the same animations.
 - **plain_clothes** fill in wherever nothing worn covers the body.
@@ -413,7 +413,7 @@ everyone knows:
 (miasma: 25, items: [(item: "bread", count: 1)], abilities: ["rest"])
 ```
 
-### Creatures
+### Monsters
 
 ```ron
 [
@@ -436,23 +436,23 @@ everyone knows:
 
 The shapes are placeholder models drawn by the client (`Rabbit` and `Goblin`
 so far), coloured with `main` and `trim`. `model: Some("puglin")` in the
-`look` dresses the creature in a creature model from `characters.ron`
-instead, once the models have loaded (the shape stays until then). A creature led more than 30 m from
+`look` dresses the monster in a monster model from `characters.ron`
+instead, once the models have loaded (the shape stays until then). A monster led more than 30 m from
 home gives up, goes back, and heals.
 
 ### Spawners
 
 ```ron
 [
-    (id: "goblin_north", creature: "goblin", at: (2328.0, 2083.0),
+    (id: "goblin_north", monster: "goblin", at: (2328.0, 2083.0),
      radius: 10.0, respawn_seconds: 45.0),
 ]
 ```
 
-Each spawner keeps one creature alive somewhere walkable within `radius`
+Each spawner keeps one monster alive somewhere walkable within `radius`
 metres of `at` (placed like NPCs), and brings a new one `respawn_seconds`
 after it dies. A spawner with no walkable ground in its radius (say, in a
-lake) logs a warning and spawns nothing. Changing spawners or creatures
+lake) logs a warning and spawns nothing. Changing spawners or monsters
 restarts all spawners.
 
 ### Respawn points
@@ -656,7 +656,7 @@ with the wrong number of arguments, is caught when the content is checked.
 | **Logic** | Quest steps, event reactions, special NPC behaviour | [Rhai](https://rhai.rs) scripts (`.rhai`) | Designers with a little scripting |
 
 Heavy systems (combat, movement, AI pathfinding, economy maths) stay in Rust.
-Scripts react to events. They never run every frame for every creature.
+Scripts react to events. They never run every frame for every monster.
 
 ### Data: RON
 

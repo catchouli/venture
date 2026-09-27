@@ -30,10 +30,10 @@ use crate::ServerSystems;
 use crate::character::{Character, class_or_default};
 use crate::combat::{AbilityHit, Attacking, Health, Mana, Resting, Strike};
 use crate::content::LoadedContent;
-use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, NetworkId, Player, Position};
 use crate::equipment::Equipment;
 use crate::link::{ConnectionId, Link};
+use crate::monsters::{Dead, Monster};
 use crate::requests::AbilityRequest;
 
 /// Players within this distance (in metres) see an ability being used.
@@ -130,7 +130,7 @@ struct Casting<'w, 's> {
         ),
     >,
     targets: Query<'w, 's, (Entity, &'static NetworkId, &'static Position, &'static DisplayName)>,
-    creatures: Query<'w, 's, (), (With<Creature>, Without<Dead>)>,
+    monsters: Query<'w, 's, (), (With<Monster>, Without<Dead>)>,
     players: Query<'w, 's, (), With<Player>>,
     viewers: Query<'w, 's, (&'static Player, &'static Position)>,
 }
@@ -219,7 +219,7 @@ impl Casting<'_, '_> {
             AbilityEffect::Heal { .. } => self.fire(player, &def, None),
             AbilityEffect::Strike { .. } | AbilityEffect::Bolt { .. } => {
                 let Some(target_id) = target else {
-                    return self.tell(connection, format!("Select a creature to use {} on first.", def.name));
+                    return self.tell(connection, format!("Select a monster to use {} on first.", def.name));
                 };
                 // An unknown id is something that has just gone: nothing to say.
                 let Some((target, _, &Position(target_at), name)) =
@@ -231,7 +231,7 @@ impl Casting<'_, '_> {
                 if self.players.contains(target) {
                     return self.tell(connection, format!("You can't attack {name}. Players can't fight each other."));
                 }
-                if !self.creatures.contains(target) {
+                if !self.monsters.contains(target) {
                     return self.tell(connection, format!("You can't attack {name}."));
                 }
                 let gap = distance(at, target_at);

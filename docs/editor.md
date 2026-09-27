@@ -16,7 +16,7 @@ as for `--local`.
 
 - **World tab:** the baked world, drawn as in the game, with everything
   placed in it: NPCs (in their real models), spawners (showing their
-  creature, with the area creatures appear in drawn on the ground, and the
+  monster, with the area monsters appear in drawn on the ground, and the
   distance aggressive ones notice players from), and respawn points.
   - On the left is every placed thing near where the camera is looking
     (**Only within** sets how near, or untick it to list everything): click
@@ -34,7 +34,7 @@ as for `--local`.
     W, A, S and D (or the arrow keys) move over the ground; hold Shift to
     go faster.
 - **A tab for each kind of content:** classes, abilities, items, skills,
-  creatures, spawners, NPCs, appearances, shops, quests, respawn points,
+  monsters, spawners, NPCs, appearances, shops, quests, respawn points,
   and what new characters start with.
   - On the left are the files and their entries. **Copy** adds a copy
     just after the chosen entry, with a new id; there's also **Delete**,
@@ -63,7 +63,7 @@ as for `--local`.
   - The **Character models** tab edits the rest of `characters.ron`:
     animations, bodies, hair, parts and what players can choose.
   - Classes show what they're like at each level (health, mana, armour,
-    attack, damage, points), and creatures how often they hit and how hard,
+    attack, damage, points), and monsters how often they hit and how hard,
     worked out by the game's own rules.
   - **Table** shows every entry at once, a row each, with a column for each
     simple field (text, numbers, ticks, plain choices), for changing many
@@ -89,14 +89,14 @@ aren't kept, so notes about an entry go in its `notes` field (see
   changed file's text before and after), and checks.
 - `places.rs`: the World tab's placed things. The document stays the one
   truth; each placed thing has a marker entity kept in step with it (the
-  game's own character and creature models, through `looks.rs`, which points
+  game's own character and monster models, through `looks.rs`, which points
   `content://` at the content folder). Dragging moves only the marker until
   it's let go, then the entry's placement is rewritten, as one undo step.
 - `fields.rs`: the property panel, drawn from the types' reflection. Fields
   naming other content are marked in the content crate with
   `#[reflect(@Refers::Item)]` (see `Refers`), which gives them their
   dropdowns and lets renames follow them.
-- `previews.rs`: the class and creature previews.
+- `previews.rs`: the class and monster previews.
 - `grips.rs`: the grip stage: a person on a little stage of their own,
   drawn by its own camera into a picture in the Items tab. Grip changes go
   into the document's character models, which `looks.rs` hands to the

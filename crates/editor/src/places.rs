@@ -12,15 +12,15 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::EguiWantsInput;
-use venture_client::characters::creatures::spawn_creature;
 use venture_client::characters::humans::HumanLook;
 use venture_client::characters::model::{CharacterAssets, appearance_look, spawn_character};
+use venture_client::characters::monsters::spawn_monster;
 use venture_client::common::coords::{from_bevy, to_bevy};
 use venture_client::content::ContentStore;
 use venture_client::world::query::{ground_height, raycast_ground};
 use venture_client::world::streaming::ChunkStore;
-use venture_content::{AppearanceDef, CreatureDef, NpcDef, RespawnPoint, SpawnerDef};
-use venture_protocol::CreatureLook;
+use venture_content::{AppearanceDef, MonsterDef, NpcDef, RespawnPoint, SpawnerDef};
+use venture_protocol::MonsterLook;
 
 use crate::camera::EditorCamera;
 use crate::document::{Document, Entry};
@@ -49,7 +49,7 @@ impl Plugin for PlacesPlugin {
 pub enum PlaceKind {
     /// A non-player character.
     Npc,
-    /// A creature spawner.
+    /// A monster spawner.
     Spawner,
     /// Where knocked-out players wake up.
     RespawnPoint,
@@ -103,7 +103,7 @@ impl Placeable for SpawnerDef {
         &mut self.at
     }
     fn label(&self) -> String {
-        format!("{} ({})", self.creature, self.id)
+        format!("{} ({})", self.monster, self.id)
     }
 }
 
@@ -136,7 +136,7 @@ pub struct Place {
     pub label: String,
     /// Where it is in the world (metres).
     pub position: (f32, f32),
-    /// For spawners: how far from it creatures appear, and how far away
+    /// For spawners: how far from it monsters appear, and how far away
     /// aggressive ones notice players (if they do).
     pub radii: Option<(f32, Option<f32>)>,
     /// How its marker looks.
@@ -149,8 +149,8 @@ pub struct Place {
 pub enum PlaceLook {
     /// A person, in their appearance (if it exists).
     Person(Option<AppearanceDef>),
-    /// A creature (if it exists).
-    Creature(Option<CreatureLook>),
+    /// A monster (if it exists).
+    Monster(Option<MonsterLook>),
     /// Just a marker.
     Point,
 }
@@ -239,10 +239,10 @@ fn list_places(document: Res<Document>, mut places: ResMut<Places>) {
             all.files().iter().flat_map(|file| file.entries.iter().map(|a| (a.id.clone(), a.clone()))).collect()
         })
         .unwrap_or_default();
-    let creatures: HashMap<String, CreatureDef> = document
-        .find::<CreatureDef>()
-        .map(|(_, creatures)| {
-            creatures.files().iter().flat_map(|file| file.entries.iter().map(|c| (c.id.clone(), c.clone()))).collect()
+    let monsters: HashMap<String, MonsterDef> = document
+        .find::<MonsterDef>()
+        .map(|(_, monsters)| {
+            monsters.files().iter().flat_map(|file| file.entries.iter().map(|c| (c.id.clone(), c.clone()))).collect()
         })
         .unwrap_or_default();
     let mut list = Vec::new();
@@ -250,9 +250,9 @@ fn list_places(document: Res<Document>, mut places: ResMut<Places>) {
         (None, PlaceLook::Person(appearances.get(&npc.appearance).cloned()))
     });
     add_places::<SpawnerDef>(&document, &mut list, |spawner| {
-        let creature = creatures.get(&spawner.creature);
-        let aggro = creature.filter(|creature| creature.aggressive).map(|creature| creature.aggro_radius);
-        (Some((spawner.radius, aggro)), PlaceLook::Creature(creature.map(|creature| creature.look.clone())))
+        let monster = monsters.get(&spawner.monster);
+        let aggro = monster.filter(|monster| monster.aggressive).map(|monster| monster.aggro_radius);
+        (Some((spawner.radius, aggro)), PlaceLook::Monster(monster.map(|monster| monster.look.clone())))
     });
     add_places::<RespawnPoint>(&document, &mut list, |_| (None, PlaceLook::Point));
     places.list = list;
@@ -324,7 +324,7 @@ fn sync_markers(
                 commands.entity(person).insert(HumanLook::of_appearance(Some(appearance), models, &content.items));
                 person
             }
-            PlaceLook::Creature(Some(look)) => spawn_creature(&mut commands, &shapes, &mut materials, at, look),
+            PlaceLook::Monster(Some(look)) => spawn_monster(&mut commands, &shapes, &mut materials, at, look),
             _ => {
                 let (mesh, material) = assets.shapes[&place.kind].clone();
                 let lift = Vec3::Y * marker_heights(place.kind).0;
@@ -528,11 +528,10 @@ pub fn add_place(document: &mut Document, kind: PlaceKind, point: (f32, f32), no
             add_new::<NpcDef>(document, point, "npc", &template, now)
         }
         PlaceKind::Spawner => {
-            let creature = first_key(document.find::<CreatureDef>().map(|(_, all)| keys_of(all.files())))
-                .ok_or("make a creature first")?;
-            let template = format!(
-                r#"(id: "{{id}}", creature: "{creature}", at: (0.0, 0.0), radius: 8.0, respawn_seconds: 30.0)"#
-            );
+            let monster = first_key(document.find::<MonsterDef>().map(|(_, all)| keys_of(all.files())))
+                .ok_or("make a monster first")?;
+            let template =
+                format!(r#"(id: "{{id}}", monster: "{monster}", at: (0.0, 0.0), radius: 8.0, respawn_seconds: 30.0)"#);
             add_new::<SpawnerDef>(document, point, "spawner", &template, now)
         }
         PlaceKind::RespawnPoint => {

@@ -1116,33 +1116,33 @@ fn character_sheets_list_every_skill_starting_at_level_1() {
     assert_eq!(skills, [("fishing", 1, 0, 100), ("mining", 1, 0, 100)]);
 }
 
-/// A pack with one creature near the spawn point (at (103, 100)) and a
+/// A pack with one monster near the spawn point (at (103, 100)) and a
 /// respawn point at a camp.
-fn creature_pack(creature: &str) -> ContentPack {
-    let spawner = r#"[(id: "one", creature: "beast", at: (103.0, 100.0), respawn_seconds: 1.0)]"#;
+fn monster_pack(monster: &str) -> ContentPack {
+    let spawner = r#"[(id: "one", monster: "beast", at: (103.0, 100.0), respawn_seconds: 1.0)]"#;
     let respawn = r#"[(name: "the camp", at: (80.0, 80.0)), (name: "far away", at: (10.0, 10.0))]"#;
-    let extra = [("creatures/beast.ron", creature), ("spawners/one.ron", spawner), ("respawn_points.ron", respawn)];
+    let extra = [("monsters/beast.ron", monster), ("spawners/one.ron", spawner), ("respawn_points.ron", respawn)];
     content_with_files("[]", "", None, &extra)
 }
 
-/// The (first) creature's id.
-fn creature_id(server: &mut TestServer) -> EntityId {
+/// The (first) monster's id.
+fn monster_id(server: &mut TestServer) -> EntityId {
     let world = server.app.world_mut();
-    let mut creatures = world.query_filtered::<&NetworkId, With<venture_server::creatures::Creature>>();
-    creatures.iter(world).next().expect("a creature").0
+    let mut monsters = world.query_filtered::<&NetworkId, With<venture_server::monsters::Monster>>();
+    monsters.iter(world).next().expect("a monster").0
 }
 
 #[test]
-fn killing_a_creature_gives_experience_and_it_comes_back() {
+fn killing_a_monster_gives_experience_and_it_comes_back() {
     // Easy to hit (armour class 0), and worth a level.
     let rabbit = r#"[(id: "beast", name: "Rabbit", level: 1, health: 4, armour_class: 0,
         attack: (damage: "1", bonus: 0, speed: 0.5), experience: 150,
         look: (shape: Rabbit, main: (0.5, 0.4, 0.3), trim: (0.9, 0.9, 0.9)))]"#;
-    let mut server = TestServer::with_content("hunt", creature_pack(rabbit));
+    let mut server = TestServer::with_content("hunt", monster_pack(rabbit));
     server.run(2);
     let (hunter, messages) = create(&mut server, TOKEN_A, "Hunter", "fighter");
     let me = welcome_id(&messages);
-    let rabbit = creature_id(&mut server);
+    let rabbit = monster_id(&mut server);
 
     hunter.send(&ClientMessage::Attack { target: rabbit });
     server.run(200);
@@ -1157,18 +1157,18 @@ fn killing_a_creature_gives_experience_and_it_comes_back() {
     assert!(messages.iter().any(|m| matches!(m, ServerMessage::PlayerChanged { level: 2, celebrate: true, .. })));
     assert!(messages.contains(&ServerMessage::EntityLeft { id: rabbit }), "the body goes");
     let back = messages.iter().any(
-        |m| matches!(m, ServerMessage::EntityAppeared { id, kind: EntityKind::Creature { .. }, .. } if *id != rabbit),
+        |m| matches!(m, ServerMessage::EntityAppeared { id, kind: EntityKind::Monster { .. }, .. } if *id != rabbit),
     );
     assert!(back, "and a new rabbit comes");
 }
 
 #[test]
-fn aggressive_creatures_attack_and_knocked_out_players_wake_at_the_nearest_respawn_point() {
+fn aggressive_monsters_attack_and_knocked_out_players_wake_at_the_nearest_respawn_point() {
     // It always hits, for far more than anyone's health.
     let goblin = r#"[(id: "beast", name: "Goblin", level: 2, health: 50, armour_class: 12,
         attack: (damage: "100", bonus: 50, speed: 2.0), aggressive: true, experience: 30,
         look: (shape: Goblin, main: (0.3, 0.5, 0.2), trim: (0.4, 0.3, 0.2)))]"#;
-    let mut server = TestServer::with_content("ambush", creature_pack(goblin));
+    let mut server = TestServer::with_content("ambush", monster_pack(goblin));
     server.run(2);
     let (victim, messages) = create(&mut server, TOKEN_A, "Victim", "fighter");
     let me = welcome_id(&messages);
@@ -1204,7 +1204,7 @@ fn latest_mana(messages: &[ServerMessage]) -> Option<(u32, u32)> {
     })
 }
 
-/// A creature that's easy to hit and hard to kill, and barely fights back.
+/// A monster that's easy to hit and hard to kill, and barely fights back.
 const PUNCHBAG: &str = r#"[(id: "beast", name: "Punchbag", level: 1, health: 500, armour_class: 0,
     attack: (damage: "1", bonus: -20, speed: 0.2), experience: 1,
     look: (shape: Rabbit, main: (0.5, 0.4, 0.3), trim: (0.9, 0.9, 0.9)))]"#;
@@ -1219,12 +1219,12 @@ fn attacked_with(messages: &[ServerMessage], attacker: EntityId, target: EntityI
 
 #[test]
 fn weapon_abilities_run_up_then_hit_and_cool_down() {
-    let mut server = TestServer::with_content("whack", creature_pack(PUNCHBAG));
+    let mut server = TestServer::with_content("whack", monster_pack(PUNCHBAG));
     server.run(2);
     let (fighter, messages) = create(&mut server, TOKEN_A, "Hitter", "fighter");
     let me = welcome_id(&messages);
     assert_eq!(latest_mana(&messages), Some((3, 3)));
-    let beast = creature_id(&mut server);
+    let beast = monster_id(&mut server);
 
     // It's 3 m away, a little out of reach: run up, then whack it.
     fighter.send(&ClientMessage::UseAbility { ability: "whack".to_string(), target: Some(beast) });
@@ -1250,11 +1250,11 @@ fn weapon_abilities_run_up_then_hit_and_cool_down() {
 
 #[test]
 fn spells_fly_to_their_target_and_land_when_they_arrive() {
-    let mut server = TestServer::with_content("blast", creature_pack(PUNCHBAG));
+    let mut server = TestServer::with_content("blast", monster_pack(PUNCHBAG));
     server.run(2);
     let (mage, messages) = create(&mut server, TOKEN_A, "Caster", "mage");
     let me = welcome_id(&messages);
-    let beast = creature_id(&mut server);
+    let beast = monster_id(&mut server);
 
     // 3 m at 10 m/s: it lands 0.3 seconds (6 ticks) later.
     mage.send(&ClientMessage::UseAbility { ability: "blast".to_string(), target: Some(beast) });
@@ -1273,7 +1273,7 @@ fn spells_fly_to_their_target_and_land_when_they_arrive() {
 
 #[test]
 fn resting_sits_down_until_moving_but_not_in_a_fight() {
-    let mut server = TestServer::with_content("rest", creature_pack(PUNCHBAG));
+    let mut server = TestServer::with_content("rest", monster_pack(PUNCHBAG));
     server.run(2);
     let (rester, messages) = create(&mut server, TOKEN_A, "Sleepy", "fighter");
     let me = welcome_id(&messages);
@@ -1291,7 +1291,7 @@ fn resting_sits_down_until_moving_but_not_in_a_fight() {
     server.run(3);
     assert_eq!(resting(&rester.receive()), Some(false), "moving stands them up");
 
-    let beast = creature_id(&mut server);
+    let beast = monster_id(&mut server);
     rester.send(&ClientMessage::Attack { target: beast });
     server.run(40);
     rester.send(&ClientMessage::UseAbility { ability: "rest".to_string(), target: None });
@@ -1300,16 +1300,16 @@ fn resting_sits_down_until_moving_but_not_in_a_fight() {
 }
 
 #[test]
-fn a_creature_dies_only_once_however_many_blows_land_together() {
+fn a_monster_dies_only_once_however_many_blows_land_together() {
     let frail = r#"[(id: "beast", name: "Moth", level: 1, health: 1, armour_class: 0,
         attack: (damage: "1", bonus: 0, speed: 0.1), experience: 5,
         look: (shape: Rabbit, main: (0.5, 0.4, 0.3), trim: (0.9, 0.9, 0.9)))]"#;
-    let mut server = TestServer::with_content("overkill", creature_pack(frail));
+    let mut server = TestServer::with_content("overkill", monster_pack(frail));
     server.run(2);
     let (hunter, _) = create(&mut server, TOKEN_A, "Swatter", "fighter");
     let world = server.app.world_mut();
     let player = world.query_filtered::<Entity, With<venture_server::entities::Player>>().single(world).unwrap();
-    let moth = world.query_filtered::<Entity, With<venture_server::creatures::Creature>>().single(world).unwrap();
+    let moth = world.query_filtered::<Entity, With<venture_server::monsters::Monster>>().single(world).unwrap();
     // Five blows in one tick: (almost certainly) at least one hits, but it only dies once.
     for _ in 0..5 {
         world.write_message(venture_server::combat::Strike { attacker: player, target: moth, ability: None });

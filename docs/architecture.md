@@ -24,7 +24,7 @@ venture_worldgen ──► venture_world     (the bake tool; nothing at runtime 
 | `venture_rpg` | The RPG rules: stats and modifiers, dice, experience and levels, points per level, health, mana, armour class, attack speed, and attack resolution. Based on the SRD 5.1 (CC BY 4.0), adapted for real time. |
 | `venture_protocol` | The messages between client and server, their encoding (postcard), size limits, and shared validation rules for names, chat and tokens. |
 | `venture_content` | The content pack: class, appearance, item, shop, quest and NPC definitions, loading with every problem reported by file, script and dialogue checks (with the `scripts` feature), the client manifest, and the `check` tool. |
-| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles (with unique names), characters and admin powers, gameplay, creatures, abilities and the hotbar, combat, inventories, shops, quests, NPCs, private NPC conversations (Yarn Spinner), the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
+| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles (with unique names), characters and admin powers, gameplay, monsters, abilities and the hotbar, combat, inventories, shops, quests, NPCs, private NPC conversations (Yarn Spinner), the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
 | `venture_client` | The game client: a view of the server's game, with rendering, input, prediction, actions and chat commands, chat, the dialogue window and debug tools. A library (its plugins, shared with the editor) and a thin binary. |
 | `venture_editor` | The editor: the content's data files edited through the content crate's own types (by reflection), with undo, checking and saving, and the world shown with the client's rendering. See [editor.md](editor.md). |
 
@@ -93,8 +93,8 @@ src/
     model.rs           the placeholder character (shown until the models load) and the
                        gait every character's animation follows
     player.rs          your character: prediction, steering, following, correction
-    remote.rs          other players, NPCs and creatures, interpolated between snapshots
-    creatures.rs       the placeholder creature models (rabbit, goblin) and their animation
+    remote.rs          other players, NPCs and monsters, interpolated between snapshots
+    monsters.rs       the placeholder monster models (rabbit, goblin) and their animation
     combat_effects.rs  swings, floating damage numbers, hit flashes, and the dead falling over
     nameplates.rs      names above characters, with orbs on the target and speech bubbles
     speech.rs          what characters said recently (shown in the bubbles)

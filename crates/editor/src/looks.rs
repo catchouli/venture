@@ -1,4 +1,4 @@
-//! The game's character and creature models, in the editor: the same
+//! The game's character and monster models, in the editor: the same
 //! rendering as the game (from `venture_client`), reading the models straight
 //! from the content folder rather than downloading them.
 
@@ -6,7 +6,7 @@ use std::path::Path;
 
 use bevy::asset::io::AssetSourceBuilder;
 use bevy::prelude::*;
-use venture_client::characters::{creatures, humans, model};
+use venture_client::characters::{humans, model, monsters};
 use venture_client::content::{CONTENT_SOURCE, ContentStore};
 use venture_content::characters::{CharacterModels, parse_character_models};
 use venture_content::{AppearanceDef, ItemDef};
@@ -20,12 +20,12 @@ pub fn register_content_source(app: &mut App, content: &Path) {
     app.register_asset_source(CONTENT_SOURCE, AssetSourceBuilder::platform_default(&folder.to_string_lossy(), None));
 }
 
-/// Shows people and creatures with the game's models.
+/// Shows people and monsters with the game's models.
 pub struct LooksPlugin;
 
 impl Plugin for LooksPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((model::CharacterPlugin, humans::HumansPlugin, creatures::CreaturesPlugin))
+        app.add_plugins((model::CharacterPlugin, humans::HumansPlugin, monsters::MonstersPlugin))
             .add_systems(Startup, load_character_models)
             .add_systems(Update, keep_appearances);
     }

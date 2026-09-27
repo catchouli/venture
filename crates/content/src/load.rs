@@ -7,7 +7,7 @@ use crate::characters::{CharacterModels, check_character_models, parse_character
 use crate::client::{
     ClientContent, parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
 };
-use crate::definitions::CreatureDef;
+use crate::definitions::MonsterDef;
 use crate::definitions::{
     AbilityDef, AbilityEffect, AppearanceDef, ClassDef, GameSounds, ItemDef, ItemEffect, MAX_HIT_DIE,
     MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef,
@@ -85,8 +85,8 @@ pub struct ContentPack {
     pub character_models: Option<CharacterModels>,
     /// The interface's layouts, by name (the file name without `.ron`).
     pub layouts: BTreeMap<String, UiNode>,
-    /// Creatures, by id.
-    pub creatures: BTreeMap<String, CreatureDef>,
+    /// Monsters, by id.
+    pub monsters: BTreeMap<String, MonsterDef>,
     /// Spawners, in file order.
     pub spawners: Vec<SpawnerDef>,
     /// Where players wake up after dying.
@@ -315,18 +315,16 @@ impl ContentPack {
             }
         }
 
-        for (relative, text) in read_files(folder, "creatures", "ron", &mut errors) {
-            match ron::from_str::<Vec<CreatureDef>>(&text) {
-                Ok(creatures) => {
-                    for creature in creatures {
-                        check_creature(&creature, &relative, &mut errors);
-                        if pack.creatures.contains_key(&creature.id) {
-                            errors.push(error(
-                                &relative,
-                                format!("there's already a creature called \"{}\"", creature.id),
-                            ));
+        for (relative, text) in read_files(folder, "monsters", "ron", &mut errors) {
+            match ron::from_str::<Vec<MonsterDef>>(&text) {
+                Ok(monsters) => {
+                    for monster in monsters {
+                        check_monster(&monster, &relative, &mut errors);
+                        if pack.monsters.contains_key(&monster.id) {
+                            errors
+                                .push(error(&relative, format!("there's already a monster called \"{}\"", monster.id)));
                         }
-                        pack.creatures.insert(creature.id.clone(), creature);
+                        pack.monsters.insert(monster.id.clone(), monster);
                     }
                 }
                 Err(message) => errors.push(error(&relative, message.to_string())),
@@ -609,10 +607,10 @@ fn check_model_names(pack: &ContentPack, errors: &mut Vec<ContentError>) {
             errors.push(error(Path::new("items"), message));
         }
     }
-    for creature in pack.creatures.values() {
-        if let Some(model) = creature.look.model.as_ref().filter(|model| !models.creatures.contains_key(*model)) {
-            let message = format!("creature \"{}\": there's no creature model called \"{model}\"", creature.id);
-            errors.push(error(Path::new("creatures"), message));
+    for monster in pack.monsters.values() {
+        if let Some(model) = monster.look.model.as_ref().filter(|model| !models.monsters.contains_key(*model)) {
+            let message = format!("monster \"{}\": there's no monster model called \"{model}\"", monster.id);
+            errors.push(error(Path::new("monsters"), message));
         }
     }
     for appearance in pack.appearances.values() {
@@ -690,21 +688,21 @@ fn check_class(class: &ClassDef, pack: &ContentPack, file: &Path, errors: &mut V
     }
 }
 
-fn check_creature(creature: &CreatureDef, file: &Path, errors: &mut Vec<ContentError>) {
-    let mut problem = |message: String| errors.push(error(file, format!("creature \"{}\": {message}", creature.id)));
-    if creature.name.trim().is_empty() {
+fn check_monster(monster: &MonsterDef, file: &Path, errors: &mut Vec<ContentError>) {
+    let mut problem = |message: String| errors.push(error(file, format!("monster \"{}\": {message}", monster.id)));
+    if monster.name.trim().is_empty() {
         problem("it needs a name".to_string());
     }
-    if creature.health == 0 {
+    if monster.health == 0 {
         problem("its health must be at least 1".to_string());
     }
-    if !(1..=MAX_LEVEL).contains(&creature.level) {
+    if !(1..=MAX_LEVEL).contains(&monster.level) {
         problem(format!("its level must be from 1 to {MAX_LEVEL}"));
     }
-    if !(creature.attack.speed > 0.0 && creature.attack.speed.is_finite()) {
+    if !(monster.attack.speed > 0.0 && monster.attack.speed.is_finite()) {
         problem("its attack speed must be more than 0".to_string());
     }
-    let radii = [creature.aggro_radius, creature.wander_radius];
+    let radii = [monster.aggro_radius, monster.wander_radius];
     if !radii.iter().all(|radius| (0.0..=MAX_WANDER_RADIUS).contains(radius)) {
         problem(format!("its aggro_radius and wander_radius must be from 0 to {MAX_WANDER_RADIUS} metres"));
     }
@@ -712,8 +710,8 @@ fn check_creature(creature: &CreatureDef, file: &Path, errors: &mut Vec<ContentE
 
 fn check_spawner(spawner: &SpawnerDef, pack: &ContentPack, file: &Path, errors: &mut Vec<ContentError>) {
     let mut problem = |message: String| errors.push(error(file, format!("spawner \"{}\": {message}", spawner.id)));
-    if !pack.creatures.contains_key(&spawner.creature) {
-        problem(format!("there's no creature called \"{}\"", spawner.creature));
+    if !pack.monsters.contains_key(&spawner.monster) {
+        problem(format!("there's no monster called \"{}\"", spawner.monster));
     }
     if !(0.0..=MAX_WANDER_RADIUS).contains(&spawner.radius) {
         problem(format!("its radius must be from 0 to {MAX_WANDER_RADIUS} metres"));

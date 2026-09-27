@@ -1,6 +1,6 @@
 //! The target frame, at the top middle of the screen: the selected target's
-//! name, their level (for players and creatures), a health bar for
-//! creatures, and an ✕ to deselect.
+//! name, their level (for players and monsters), a health bar for
+//! monsters, and an ✕ to deselect.
 
 use bevy::prelude::*;
 
@@ -33,7 +33,7 @@ struct TargetName;
 #[derive(Component)]
 struct TargetLevel;
 
-/// The health bar's row (shown only for creatures).
+/// The health bar's row (shown only for monsters).
 #[derive(Component)]
 struct HealthBar;
 
@@ -129,7 +129,7 @@ fn update_frame(
         }
         None => level_node.display = Display::None,
     }
-    // Only creatures show health: NPCs can't be attacked, and other players' health is private.
+    // Only monsters show health: NPCs can't be attacked, and other players' health is private.
     let shown_health = health.filter(|_| kind == TargetKind::Enemy);
     let (mut bar_node, mut bar_visibility) = bar.into_inner();
     match shown_health {

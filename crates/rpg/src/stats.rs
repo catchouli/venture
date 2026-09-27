@@ -1,4 +1,4 @@
-//! The five stats every character and creature has, and the
+//! The five stats every character and monster has, and the
 //! modifier each gives (SRD 5.1).
 
 use serde::{Deserialize, Serialize};

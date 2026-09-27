@@ -36,7 +36,7 @@ by a deterministic generator, then shaped and filled by hand.
   active play, not a single click.
 - **Cursor:** a custom ornate pointer. It changes to show what a click will
   do: a pointer with a trailing arrow to follow a selected player, and a
-  sword to attack a selected creature.
+  sword to attack a selected monster.
 
 ## Chat
 
@@ -54,10 +54,10 @@ by a deterministic generator, then shaped and filled by hand.
 ## Targeting
 
 - **Selecting:** clicking a character selects it: players now, NPCs and
-  creatures later. The selected character's name gets a glowing orb on each
+  monsters later. The selected character's name gets a glowing orb on each
   side.
 - **Target frame:** a box at the top middle of the screen shows the selected
-  target's name. For creatures it also shows a health bar. NPCs can't be
+  target's name. For monsters it also shows a health bar. NPCs can't be
   killed, and other players' health stays private even once PvP exists, so
   neither shows one. An ✕ in the frame's corner deselects the target and
   hides the frame. Escape does the same.
@@ -67,7 +67,7 @@ by a deterministic generator, then shaped and filled by hand.
   cursor shows the follow arrow while hovering over them). The character
   keeps close behind until you move, steer, stop, deselect, or they get out
   of reach.
-- **Attacking** (later): clicking a selected creature again attacks it, with
+- **Attacking** (later): clicking a selected monster again attacks it, with
   the sword cursor.
 - **Free movement.** Characters are *not* locked to tiles as in RuneScape.
   Positions are continuous, in metres. The terrain grid is only how the
