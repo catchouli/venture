@@ -6,6 +6,7 @@
 //! prediction and the server agree.
 
 mod day;
+pub mod fishing;
 mod following;
 mod movement;
 mod rules;
