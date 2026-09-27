@@ -145,7 +145,10 @@ Any chunk can be generated at any time, in any order. For each chunk:
    4. shaped by overlay stamps,
    5. carved by rivers: a rounded channel, and flat floodplains beside it.
 2. **Liquids:** a cell is covered by a river, lake, sea or lava lake when one
-   is there and the ground dips below its surface.
+   is there and the ground dips below its surface. Rivers also cover low
+   ground within 6 m of their edge (`RIVER_SPILL_REACH`): the channel only
+   lowers land, so land already below the river's surface beside it would
+   otherwise be dry, and its shore would follow the cells.
 3. **Shores:** a **chamfer distance transform** (`distance_field.rs`) finds each
    cell's distance to water. Lakes and the sea get wide beaches, rivers narrow banks.
 4. **Ground materials** (`surface.rs`): a short list of readable rules. In

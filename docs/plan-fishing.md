@@ -74,8 +74,10 @@ fish sell, and will cook into food.
 
 Each step ends playable or testable, and is committed.
 
-1. **Water that looks right.** The spiky water edges along rivers get fixed
-   first: fishing puts them in front of the player's eyes.
+1. **Done: water that looks right.** The spiky water edges along rivers
+   get fixed first: fishing puts them in front of the player's eyes. (Soft
+   shores from depth baked into the water mesh, and rivers covering the low
+   ground beside them; see "Water" in `textures.md`.)
 2. **Rules and data.** Species, bait, lures, rods and reels as content;
    attraction, bites, hooking and landing as tested rules; skills to 99;
    water kinds in the bake.

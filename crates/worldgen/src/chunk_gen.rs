@@ -23,6 +23,12 @@ const STILL_WATER_REACH: f32 = 32.0;
 /// ...as long as they are no deeper than this, in metres.
 const STILL_WATER_MAX_DEPTH: f32 = 2.5;
 
+/// Ground this close (in metres) to a river's edge that dips below its
+/// surface is under its water too (the channel only lowers land, so land
+/// already lower beside it would otherwise be dry below the river's level,
+/// and its shore a line along the cells.
+const RIVER_SPILL_REACH: f32 = 6.0;
+
 /// Spacing of the ground samples when checking that water can reach a cell, in metres.
 const WATER_CHECK_STEP: f32 = 2.0;
 
@@ -152,7 +158,8 @@ pub fn corner_height(generator: &WorldGenerator, features: &LocalFeatures, x: f3
 }
 
 /// The liquid over the cell centred at `(x, y)`, if any. A cell is covered
-/// when a river, lake or sea is there and at least one corner dips below its surface.
+/// when a river, lake or sea is there (or, for a river, just beside it) and
+/// at least one corner dips below its surface.
 fn fluid_over_cell(
     generator: &WorldGenerator,
     features: &LocalFeatures,
@@ -161,7 +168,7 @@ fn fluid_over_cell(
 ) -> Option<CellFluid> {
     let lowest = corner_heights.into_iter().fold(f32::INFINITY, f32::min);
     let river = nearest_river(&features.rivers, x, y)
-        .filter(|river| river.distance_to_edge() < 0.5)
+        .filter(|river| river.distance_to_edge() < RIVER_SPILL_REACH)
         .map(|river| CellFluid { fluid: Fluid { kind: FluidKind::Water, level: river.surface }, is_river: true });
     // The sea or lake at the surrounding map points, or failing that the
     // nearest one if it's close enough to flood a shallow dip here. Either

@@ -226,11 +226,20 @@ material extended with a shader, drawn with premultiplied alpha:
 - **One sheet:** the water mesh (`fluid_mesh`) puts each corner at the
   average level of the liquid cells around it, so streams slope smoothly
   instead of stepping once per cell (which showed as a grid of seams).
+- **Soft shores:** Bevy's depth prepass can't be read by a transparent
+  pass on WebGL2, so the depth comes from the heightfield instead: each
+  vertex carries the water's depth over the ground (second UVs). The sheet
+  is split into triangles the same way as the ground under it, so that
+  depth is exactly linear on each triangle and reaches zero exactly where
+  the ground rises through the surface. The shader fades the water (and
+  its reflections) out over the last 0.12 m of depth, so the waterline is
+  soft and follows the ground instead of showing the triangles it's cut
+  from, and makes shallows clearer (35% of the water's colour at the
+  edge, all of it by 1.2 m). The sheet spreads one cell past the covered
+  cells; the corners out there, which no covered cell touches, sink just
+  under the ground, so a cell the world says is dry never shows water.
 
-Not yet: shoreline foam and colour by depth, which need the depth behind
-the water. Bevy's depth prepass can't be read by a transparent pass on
-WebGL2, so they'd need another way (such as depth baked into the mesh from
-the heightfield).
+Not yet: shoreline foam, which could use the same depth.
 
 ## Growing to many ground materials
 
