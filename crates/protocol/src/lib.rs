@@ -14,9 +14,9 @@ mod messages;
 mod rules;
 
 pub use messages::{
-    AbilityOffer, AdminCommand, AttackResult, BodyType, CharacterSheet, ClassChoice, ClientMessage, CreatureLook,
-    CreatureShape, DialogueLine, Emote, EntityId, EntityKind, EntityState, EquipSlot, FEATURE_RANGE, Features,
-    HOTBAR_SLOTS, HotbarAction, HotbarEntry, ItemLook, ItemStack, LookStyle, PlayerLook, QuestEntry, Refers,
+    AbilityOffer, AdminCommand, AttackResult, BodyType, CharacterSheet, ClassChoice, ClientMessage, DialogueLine,
+    Emote, EntityId, EntityKind, EntityState, EquipSlot, FEATURE_RANGE, Features, HOTBAR_SLOTS, HotbarAction,
+    HotbarEntry, ItemLook, ItemStack, LookStyle, MonsterLook, MonsterShape, PlayerLook, QuestEntry, Refers,
     ServerMessage, ShopStock, SkillProgress,
 };
 pub use rules::{MAX_CHAT_CHARS, MAX_NAME_CHARS, MIN_NAME_CHARS, clean_chat_text, clean_name, is_valid_token};

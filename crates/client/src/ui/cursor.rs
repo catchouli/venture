@@ -1,7 +1,7 @@
 //! The mouse cursor: an ornate gold pointer normally; with a trailing arrow
 //! when a click would follow the (selected) player under it; with a speech
 //! bubble when a click would talk to the (selected) NPC under it; and a sword
-//! when a click would attack (for when creatures exist).
+//! when a click would attack (for when monsters exist).
 //!
 //! Both are original placeholder art drawn in code. On the web they become
 //! CSS cursors, so they move as smoothly as the system cursor.

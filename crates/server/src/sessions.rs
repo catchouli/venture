@@ -9,12 +9,12 @@ use crate::abilities::Cooldowns;
 use crate::character::{Admin, Character, class_or_default};
 use crate::combat::{Health, Mana, max_health, max_mana};
 use crate::content::LoadedContent;
-use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
 use crate::equipment::{Equipment, player_look};
 use crate::hotbar::Hotbar;
 use crate::inventory::{Change, Inventory};
 use crate::link::{ConnectionId, Link};
+use crate::monsters::{Dead, Monster};
 use crate::names::random_name;
 use crate::npcs::Npc;
 use crate::profiles::{Profile, ProfileKey, ProfileStore};
@@ -85,8 +85,8 @@ struct Sessions<'w, 's> {
     content: Res<'w, LoadedContent>,
     players: Query<'w, 's, (Entity, &'static NetworkId, SavedParts)>,
     npcs: Query<'w, 's, (&'static Npc, &'static NetworkId, &'static DisplayName, &'static Position)>,
-    creatures:
-        Query<'w, 's, (&'static Creature, &'static NetworkId, &'static DisplayName, &'static Position), Without<Dead>>,
+    monsters:
+        Query<'w, 's, (&'static Monster, &'static NetworkId, &'static DisplayName, &'static Position), Without<Dead>>,
 }
 
 fn handle_session_requests(mut requests: MessageReader<SessionRequest>, mut sessions: Sessions) {
@@ -218,8 +218,8 @@ impl Sessions<'_, '_> {
         for (npc, &NetworkId(npc_id), npc_name, &npc_position) in &self.npcs {
             self.link.send(connection, &appeared(npc_id, npc_name, npc.kind(), npc_position));
         }
-        for (creature, &NetworkId(creature_id), creature_name, &creature_position) in &self.creatures {
-            self.link.send(connection, &appeared(creature_id, creature_name, creature.kind(), creature_position));
+        for (monster, &NetworkId(monster_id), monster_name, &monster_position) in &self.monsters {
+            self.link.send(connection, &appeared(monster_id, monster_name, monster.kind(), monster_position));
         }
         // Tell everyone else about the newcomer.
         let others: Vec<ConnectionId> = self.players.iter().map(|(_, _, (player, ..))| player.connection).collect();

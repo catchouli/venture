@@ -1,11 +1,11 @@
-//! Creature bodies (placeholder models, until real ones): a rabbit that hops
+//! Monster bodies (placeholder models, until real ones): a rabbit that hops
 //! as it goes, and a goblin (a small, green-skinned person with big ears and
 //! a club, built from the ordinary character model).
 
 use std::f32::consts::PI;
 
 use bevy::prelude::*;
-use venture_protocol::{BodyType, CreatureLook, CreatureShape, ItemLook, LookStyle};
+use venture_protocol::{BodyType, ItemLook, LookStyle, MonsterLook, MonsterShape};
 
 use crate::characters::humans::HumanLook;
 use crate::characters::model::{CharacterAssets, Gait, Look, Worn, spawn_character};
@@ -17,10 +17,10 @@ const HOP_HEIGHT: f32 = 0.12;
 /// Hops per second while running.
 const HOPS_PER_SECOND: f32 = 2.2;
 
-/// Animates creatures.
-pub struct CreaturesPlugin;
+/// Animates monsters.
+pub struct MonstersPlugin;
 
-impl Plugin for CreaturesPlugin {
+impl Plugin for MonstersPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, hop);
     }
@@ -32,40 +32,40 @@ struct RabbitBody {
     owner: Entity,
 }
 
-/// How high above a creature's feet its name floats, in metres.
-pub fn name_height(look: &CreatureLook) -> f32 {
+/// How high above a monster's feet its name floats, in metres.
+pub fn name_height(look: &MonsterLook) -> f32 {
     match look.shape {
-        CreatureShape::Rabbit => 0.8,
-        CreatureShape::Goblin => 1.7,
+        MonsterShape::Rabbit => 0.8,
+        MonsterShape::Goblin => 1.7,
     }
 }
 
-/// Spawns a creature standing at `transform` and returns its entity.
-pub fn spawn_creature(
+/// Spawns a monster standing at `transform` and returns its entity.
+pub fn spawn_monster(
     commands: &mut Commands,
     assets: &CharacterAssets,
     materials: &mut Assets<StandardMaterial>,
     transform: Transform,
-    look: &CreatureLook,
+    look: &MonsterLook,
 ) -> Entity {
-    // A creature with a model is dressed in it (see `humans`), once the
+    // A monster with a model is dressed in it (see `humans`), once the
     // models have loaded; until then it has its shape.
     if let Some(model) = &look.model {
         let entity = spawn_shape(commands, assets, materials, transform, look, false);
-        commands.entity(entity).insert(HumanLook::of_creature(model));
+        commands.entity(entity).insert(HumanLook::of_monster(model));
         return entity;
     }
     spawn_shape(commands, assets, materials, transform, look, true)
 }
 
-/// A creature's placeholder shape. (`scaled` shrinks goblins to goblin size;
+/// A monster's placeholder shape. (`scaled` shrinks goblins to goblin size;
 /// a model has its own size.)
 fn spawn_shape(
     commands: &mut Commands,
     assets: &CharacterAssets,
     materials: &mut Assets<StandardMaterial>,
     transform: Transform,
-    look: &CreatureLook,
+    look: &MonsterLook,
     scaled: bool,
 ) -> Entity {
     let mut material = |(r, g, b): (f32, f32, f32), roughness: f32| {
@@ -76,7 +76,7 @@ fn spawn_shape(
         })
     };
     match look.shape {
-        CreatureShape::Goblin => {
+        MonsterShape::Goblin => {
             let clothes = material(look.trim, 0.9);
             let club = ItemLook { style: LookStyle::Club, main: (0.42, 0.30, 0.18), trim: (0.30, 0.20, 0.12) };
             let goblin = Look {
@@ -91,7 +91,7 @@ fn spawn_shape(
             let scale = if scaled { GOBLIN_SCALE } else { 1.0 };
             spawn_character(commands, assets, transform.with_scale(Vec3::splat(scale)), &goblin)
         }
-        CreatureShape::Rabbit => {
+        MonsterShape::Rabbit => {
             let fur = material(look.main, 0.9);
             let pale = material(look.trim, 0.9);
             let eyes = material((0.05, 0.04, 0.04), 0.3);

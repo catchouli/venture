@@ -1,15 +1,15 @@
 //! Fighting: resolving attacks, health, death, experience, respawning and
 //! regeneration. The only code that damages anything.
 //!
-//! Anything that attacks (a player auto-attacking, a creature fighting back)
+//! Anything that attacks (a player auto-attacking, a monster fighting back)
 //! sends a [`Strike`]; this module rolls it with the SRD rules in
 //! `venture_rpg` (d20 + attack bonus against armour class, then damage dice),
 //! applies the damage, and tells everyone nearby. [`Health`] changes only
 //! through its own methods: damage only here; healing here (regeneration,
-//! levelling up, respawning) and when a creature gives up a fight and goes
-//! home ([`crate::creatures`]).
+//! levelling up, respawning) and when a monster gives up a fight and goes
+//! home ([`crate::monsters`]).
 //!
-//! A creature that dies gives its killer experience, and is removed shortly
+//! A monster that dies gives its killer experience, and is removed shortly
 //! after. A player who dies wakes up at the nearest respawn point (see
 //! `respawn_points.ron` in the content), with full health.
 //!
@@ -32,10 +32,10 @@ use crate::ServerSystems;
 use crate::abilities::PendingAbility;
 use crate::character::{Character, class_or_default};
 use crate::content::LoadedContent;
-use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position};
 use crate::equipment::{Equipment, player_look};
 use crate::link::Link;
+use crate::monsters::{Dead, Monster};
 use crate::world::ServerWorld;
 
 /// Players within this distance (in metres) see a fight: attacks and deaths.
@@ -58,7 +58,7 @@ impl Plugin for CombatPlugin {
     }
 }
 
-/// How healthy something is (players and creatures).
+/// How healthy something is (players and monsters).
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct Health {
     current: u32,
@@ -67,7 +67,7 @@ pub struct Health {
     since_fighting: f32,
     /// Seconds towards its next regeneration.
     regeneration: f32,
-    /// Who last attacked it, if anyone (so a creature can fight back).
+    /// Who last attacked it, if anyone (so a monster can fight back).
     attacker: Option<Entity>,
 }
 
@@ -115,7 +115,7 @@ impl Health {
         healed
     }
 
-    /// Back to full health, forgetting who it was fighting (a creature going home).
+    /// Back to full health, forgetting who it was fighting (a monster going home).
     pub fn restore(&mut self) {
         self.current = self.max;
         self.attacker = None;
@@ -179,7 +179,7 @@ impl Mana {
 #[derive(Component)]
 pub struct Resting;
 
-/// A player attacking a creature: they run into reach (see
+/// A player attacking a monster: they run into reach (see
 /// [`crate::gameplay`]), then attack at their attack speed until it dies or
 /// they do something else.
 #[derive(Component)]
@@ -276,7 +276,7 @@ fn attack_of(
     attacker: Entity,
     ability: Option<&AbilityHit>,
     players: &Query<(&mut Character, &Equipment, &Player)>,
-    creatures: &Query<&Creature>,
+    monsters: &Query<&Monster>,
     pack: &ContentPack,
 ) -> Option<(i32, Dice)> {
     if let Ok((character, equipment, _)) = players.get(attacker) {
@@ -287,22 +287,22 @@ fn attack_of(
             None => (derived.attack_bonus, derived.damage),
         });
     }
-    let creature = creatures.get(attacker).ok()?;
-    Some((creature.def.attack.bonus, creature.def.attack.damage))
+    let monster = monsters.get(attacker).ok()?;
+    Some((monster.def.attack.bonus, monster.def.attack.damage))
 }
 
 /// How hard something is to hit.
 fn armour_class_of(
     target: Entity,
     players: &Query<(&mut Character, &Equipment, &Player)>,
-    creatures: &Query<&Creature>,
+    monsters: &Query<&Monster>,
     pack: &ContentPack,
 ) -> Option<i32> {
     if let Ok((character, equipment, _)) = players.get(target) {
         let class = class_or_default(pack, Some(&character.class));
         return Some(character.derived(&class, &equipment.gear(&pack.items)).armour_class);
     }
-    creatures.get(target).ok().map(|creature| creature.def.armour_class)
+    monsters.get(target).ok().map(|monster| monster.def.armour_class)
 }
 
 /// Everything resolving strikes needs to change.
@@ -314,7 +314,7 @@ struct Fights<'w, 's> {
     link: ResMut<'w, Link>,
     healths: Query<'w, 's, &'static mut Health>,
     manas: Query<'w, 's, &'static mut Mana>,
-    creatures: Query<'w, 's, &'static Creature>,
+    monsters: Query<'w, 's, &'static Monster>,
     dead: Query<'w, 's, (), With<Dead>>,
     identities: Query<'w, 's, (&'static NetworkId, &'static DisplayName, &'static Position)>,
     viewers: Query<'w, 's, (&'static Player, &'static Position)>,
@@ -337,8 +337,8 @@ fn resolve_strikes(mut strikes: MessageReader<Strike>, mut fights: Fights) {
         }
         let pack = &fights.content.pack;
         let (Some((bonus, damage)), Some(armour_class)) = (
-            attack_of(attacker, ability.as_ref(), &fights.characters, &fights.creatures, pack),
-            armour_class_of(target, &fights.characters, &fights.creatures, pack),
+            attack_of(attacker, ability.as_ref(), &fights.characters, &fights.monsters, pack),
+            armour_class_of(target, &fights.characters, &fights.monsters, pack),
         ) else {
             continue;
         };
@@ -349,7 +349,7 @@ fn resolve_strikes(mut strikes: MessageReader<Strike>, mut fights: Fights) {
             continue;
         };
         // "the Goblin", or a player's name as it is.
-        let attacker_name = if fights.creatures.contains(attacker) {
+        let attacker_name = if fights.monsters.contains(attacker) {
             format!("the {}", attacker_name.0)
         } else {
             attacker_name.0.clone()
@@ -375,8 +375,8 @@ fn resolve_strikes(mut strikes: MessageReader<Strike>, mut fights: Fights) {
         }
         if health.damage(outcome.damage(), attacker) {
             fights.tell_nearby(at, &ServerMessage::Died { id: target_id });
-            if fights.creatures.contains(target) {
-                fights.creature_died(target, attacker);
+            if fights.monsters.contains(target) {
+                fights.monster_died(target, attacker);
             } else {
                 fights.player_died(target, &attacker_name);
             }
@@ -396,11 +396,11 @@ impl Fights<'_, '_> {
         self.link.broadcast(nearby, message);
     }
 
-    /// A creature died: it's removed shortly (see [`crate::creatures`]), and
+    /// A monster died: it's removed shortly (see [`crate::monsters`]), and
     /// its killer, if a player, gets its experience.
-    fn creature_died(&mut self, creature: Entity, killer: Entity) {
-        self.commands.entity(creature).insert(Dead::new());
-        let Ok(def) = self.creatures.get(creature).map(|creature| creature.def.clone()) else { return };
+    fn monster_died(&mut self, monster: Entity, killer: Entity) {
+        self.commands.entity(monster).insert(Dead::new());
+        let Ok(def) = self.monsters.get(monster).map(|monster| monster.def.clone()) else { return };
         let Ok((mut character, equipment, player)) = self.characters.get_mut(killer) else { return };
         let connection = player.connection;
         let gained = character.add_experience(def.experience);

@@ -7,8 +7,8 @@
 //!
 //! NPCs are drawn in their content appearance. When the content changes,
 //! their bodies are rebuilt in the new colours. Players are drawn in their
-//! build and what they wear, rebuilt if that changes. Creatures are drawn as
-//! their creature, with their health (from snapshots) for the target frame.
+//! build and what they wear, rebuilt if that changes. Monsters are drawn as
+//! their monster, with their health (from snapshots) for the target frame.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -16,9 +16,9 @@ use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{EntityId, EntityKind, PlayerLook, ServerMessage};
 
-use crate::characters::creatures::{name_height, spawn_creature};
 use crate::characters::humans::HumanLook;
 use crate::characters::model::{CharacterAssets, Gait, Look, appearance_look, rebuild_body, spawn_character};
+use crate::characters::monsters::{name_height, spawn_monster};
 use crate::characters::nameplates::Nameplate;
 use crate::characters::nameplates::NameplateHeight;
 use crate::characters::player::LocalPlayer;
@@ -113,8 +113,8 @@ fn follow_server_events(
                         ));
                         (entity, TargetKind::Npc, Some(appearance.clone()))
                     }
-                    EntityKind::Creature { look, level } => {
-                        let entity = spawn_creature(&mut commands, &assets, &mut materials, transform, look);
+                    EntityKind::Monster { look, level } => {
+                        let entity = spawn_monster(&mut commands, &assets, &mut materials, transform, look);
                         commands.entity(entity).insert((
                             Level(*level),
                             Health { current: 1.0, max: 1.0 },

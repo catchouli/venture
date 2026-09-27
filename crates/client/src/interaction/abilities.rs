@@ -125,7 +125,7 @@ fn use_abilities(
         }
         let Some((entity, targetable)) = target.0.and_then(|entity| Some((entity, *targetables.get(entity).ok()?)))
         else {
-            say(format!("Select a creature to use {} on first.", def.name));
+            say(format!("Select a monster to use {} on first.", def.name));
             continue;
         };
         if targetable.kind == TargetKind::Enemy {

@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use venture_content::characters::CharacterModels;
 use venture_content::{
-    AbilityDef, AppearanceDef, ClassDef, ContentError, ContentPack, CreatureDef, ItemDef, NewCharacterDef, NpcDef,
+    AbilityDef, AppearanceDef, ClassDef, ContentError, ContentPack, ItemDef, MonsterDef, NewCharacterDef, NpcDef,
     QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef,
 };
 
@@ -47,7 +47,7 @@ entries_with_ids!(
     AbilityDef,
     ItemDef,
     SkillDef,
-    CreatureDef,
+    MonsterDef,
     SpawnerDef,
     NpcDef,
     AppearanceDef,
@@ -347,7 +347,7 @@ impl Document {
             Box::new(Collection::<AbilityDef>::load(root, "Abilities", Place::Folder("abilities"))?),
             Box::new(Collection::<ItemDef>::load(root, "Items", Place::Folder("items"))?),
             Box::new(Collection::<SkillDef>::load(root, "Skills", Place::Folder("skills"))?),
-            Box::new(Collection::<CreatureDef>::load(root, "Creatures", Place::Folder("creatures"))?),
+            Box::new(Collection::<MonsterDef>::load(root, "Monsters", Place::Folder("monsters"))?),
             Box::new(Collection::<SpawnerDef>::load(root, "Spawners", Place::Folder("spawners"))?),
             Box::new(Collection::<NpcDef>::load(root, "NPCs", Place::Folder("npcs"))?),
             Box::new(Collection::<AppearanceDef>::load(root, "Appearances", Place::Folder("appearances"))?),
@@ -565,7 +565,7 @@ mod tests {
         assert_eq!(before.abilities, after.abilities);
         assert_eq!(before.items, after.items);
         assert_eq!(before.skills, after.skills);
-        assert_eq!(before.creatures, after.creatures);
+        assert_eq!(before.monsters, after.monsters);
         assert_eq!(before.spawners, after.spawners);
         assert_eq!(before.npcs, after.npcs);
         assert_eq!(before.appearances, after.appearances);
@@ -587,16 +587,16 @@ mod tests {
 
     #[test]
     fn awkward_text_survives_saving() {
-        let mut creature: CreatureDef = ron::from_str(
+        let mut monster: MonsterDef = ron::from_str(
             r#"(id: "x", name: "X", level: 1, health: 1, armour_class: 1,
                 attack: (damage: "1d2", bonus: 0, speed: 1.0), experience: 1,
                 look: (shape: Rabbit, main: (0.5, 0.5, 0.5), trim: (0.5, 0.5, 0.5)))"#,
         )
         .unwrap();
-        creature.notes = "Say \"hi\" to C:\\path,\nthen leave. It's fine.".to_string();
-        let text = write(std::slice::from_ref(&creature), false);
-        let back: Vec<CreatureDef> = parse(&text, false).unwrap();
-        assert_eq!(back[0].notes, creature.notes, "{text}");
+        monster.notes = "Say \"hi\" to C:\\path,\nthen leave. It's fine.".to_string();
+        let text = write(std::slice::from_ref(&monster), false);
+        let back: Vec<MonsterDef> = parse(&text, false).unwrap();
+        assert_eq!(back[0].notes, monster.notes, "{text}");
     }
 
     #[test]

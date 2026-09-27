@@ -10,9 +10,9 @@ use venture_simulation::{
 
 use crate::abilities::PendingAbility;
 use crate::combat::{Attacking, Health, Resting};
-use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position};
 use crate::link::Link;
+use crate::monsters::{Dead, Monster};
 use crate::npcs::{Npc, NpcInteraction};
 use crate::requests::{PlayerAction, PlayerRequest};
 use crate::world::ServerWorld;
@@ -54,7 +54,7 @@ fn act_on_requests(
     mut movers: Query<(&Position, &mut Mover)>,
     entities: Query<(Entity, &NetworkId, &Position, &DisplayName)>,
     npcs: Query<(), With<Npc>>,
-    creatures: Query<(), With<Creature>>,
+    monsters: Query<(), With<Monster>>,
     dead: Query<(), With<Dead>>,
     players: Query<(&Player, &NetworkId, &DisplayName)>,
     time: Res<Time>,
@@ -108,7 +108,7 @@ fn act_on_requests(
                 let Some((target, _, &Position(target_position), name)) = find(*target_id) else { continue };
                 if target == player {
                     tell("Talking to yourself won't get you far.".to_string());
-                } else if creatures.contains(target) {
+                } else if monsters.contains(target) {
                     tell(format!("The {} doesn't have much to say.", name.0));
                 } else if !npcs.contains(target) {
                     tell(format!("{} is another player. To talk to them, use the chat box.", name.0));
@@ -132,7 +132,7 @@ fn act_on_requests(
                     continue;
                 } else if players.contains(target) {
                     tell(format!("You can't attack {}. Players can't fight each other.", name.0));
-                } else if !creatures.contains(target) {
+                } else if !monsters.contains(target) {
                     tell(format!("You can't attack {}.", name.0));
                 } else if distance(position, target_position) > rules.0.max_move_distance {
                     tell(format!("The {} is too far away to attack.", name.0));
@@ -305,7 +305,7 @@ fn send_snapshot(
     mut tick: ResMut<Tick>,
     mut link: ResMut<Link>,
     players: Query<&Player>,
-    entities: Query<(&NetworkId, &Position, &Mover, Option<&Health>, Has<Creature>, Has<Resting>)>,
+    entities: Query<(&NetworkId, &Position, &Mover, Option<&Health>, Has<Monster>, Has<Resting>)>,
 ) {
     tick.0 += 1;
     if players.is_empty() {
@@ -313,9 +313,9 @@ fn send_snapshot(
     }
     let states: Vec<EntityState> = entities
         .iter()
-        .map(|(&NetworkId(id), &Position((x, y)), mover, health, creature, resting)| {
-            // Only creatures' health is shown to everyone; players' is private.
-            let health = health.filter(|_| creature).map(Health::fraction);
+        .map(|(&NetworkId(id), &Position((x, y)), mover, health, monster, resting)| {
+            // Only monsters' health is shown to everyone; players' is private.
+            let health = health.filter(|_| monster).map(Health::fraction);
             EntityState { id, x, y, moving: mover.0.is_moving(), health, resting }
         })
         .collect();

@@ -116,7 +116,7 @@ impl Gait {
         self.waving.is_some()
     }
 
-    /// Whether the character is in the middle of a swing (for creatures'
+    /// Whether the character is in the middle of a swing (for monsters'
     /// own attack animations), and how far through it, from 0 to 1.
     pub fn swing_progress(&self) -> Option<f32> {
         self.swinging.map(|time| time / SWING_SECONDS)
@@ -363,7 +363,7 @@ impl CharacterAssets {
         }
     }
 
-    /// A sphere of radius 1, for building other bodies (such as creatures').
+    /// A sphere of radius 1, for building other bodies (such as monsters').
     pub fn unit_sphere(&self) -> Handle<Mesh> {
         self.meshes.unit_sphere.clone()
     }

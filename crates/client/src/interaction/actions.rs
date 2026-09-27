@@ -31,7 +31,7 @@ impl Plugin for ActionsPlugin {
 /// Something the player can do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
-    /// Attack the selected creature.
+    /// Attack the selected monster.
     Attack,
     /// Follow the selected player.
     Follow,
@@ -65,7 +65,7 @@ impl Action {
     /// What it does, in a few words.
     pub fn description(self) -> &'static str {
         match self {
-            Action::Attack => "attack the selected creature",
+            Action::Attack => "attack the selected monster",
             Action::Follow => "follow the selected player",
             Action::Talk => "talk to the selected NPC",
             Action::Town => "go back to the starting town",
@@ -147,7 +147,7 @@ fn perform_actions(
             (Action::Talk, Some((entity, Targetable { id, kind: TargetKind::Npc }))) => orders.talk_to(entity, id),
             (Action::Talk, Some((_, Targetable { id, .. }))) => orders.ask(ClientMessage::Interact { target: id }),
             (Action::Attack, None) => {
-                system.write(SystemMessage("Select a creature to attack first.".to_string()));
+                system.write(SystemMessage("Select a monster to attack first.".to_string()));
             }
             (Action::Attack, Some((entity, Targetable { id, kind: TargetKind::Enemy }))) => orders.attack(entity, id),
             (Action::Attack, Some((_, Targetable { id, .. }))) => orders.ask(ClientMessage::Attack { target: id }),

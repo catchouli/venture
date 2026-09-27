@@ -64,7 +64,7 @@ impl Orders<'_, '_> {
             Some(Following { target, follow: Follow::default(), stop_within: Some(INTERACT_DISTANCE) });
     }
 
-    /// Asks the server to attack a creature (running into reach first), and
+    /// Asks the server to attack a monster (running into reach first), and
     /// predicts the run.
     pub fn attack(&mut self, target: Entity, id: EntityId) {
         let Some(player) = self.player.as_mut() else { return };
@@ -72,7 +72,7 @@ impl Orders<'_, '_> {
         player.1.following = Some(Following { target, follow: Follow::default(), stop_within: None });
     }
 
-    /// Asks the server to use an ability on a creature, and predicts running up
+    /// Asks the server to use an ability on a monster, and predicts running up
     /// to it: all the way for a weapon ability (which goes on attacking), or
     /// until within `reach` for a spell.
     pub fn use_ability_on(&mut self, target: Entity, id: EntityId, ability: &str, reach: f32, melee: bool) {

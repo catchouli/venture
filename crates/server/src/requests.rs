@@ -149,7 +149,7 @@ pub enum PlayerAction {
     Chat(String),
     /// Go back to the starting town's square.
     ReturnToTown,
-    /// Attack this entity (if it's a creature), running into reach first.
+    /// Attack this entity (if it's a monster), running into reach first.
     Attack(EntityId),
     /// Do an emote.
     Emote(venture_protocol::Emote),

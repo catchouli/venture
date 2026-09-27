@@ -1,4 +1,4 @@
-//! Selecting a target: players now, and later NPCs and creatures.
+//! Selecting a target: players now, and later NPCs and monsters.
 //!
 //! - Clicking a character selects it (see [`crate::interaction::clicks`]).
 //! - The selected character's name gets an orb on each side, and the target
@@ -52,11 +52,11 @@ pub enum TargetKind {
     /// A non-player character: clicking again talks to them. Can't be
     /// attacked, so no health is shown.
     Npc,
-    /// A creature that can be fought: the target frame shows its health.
+    /// A monster that can be fought: the target frame shows its health.
     Enemy,
 }
 
-/// How healthy a creature is, shown in the target frame.
+/// How healthy a monster is, shown in the target frame.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Health {
     /// Current health.
@@ -65,7 +65,7 @@ pub struct Health {
     pub max: f32,
 }
 
-/// A character's level (players now; creatures later), shown under their
+/// A character's level (players now; monsters later), shown under their
 /// name when selected.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Level(pub u32);

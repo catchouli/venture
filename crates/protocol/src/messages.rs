@@ -24,19 +24,19 @@ pub enum EntityKind {
         /// Its appearance (an id from the content pack's appearances).
         appearance: String,
     },
-    /// A creature that can be fought.
-    Creature {
+    /// A monster that can be fought.
+    Monster {
         /// Its level.
         level: u32,
         /// How it looks.
-        look: CreatureLook,
+        look: MonsterLook,
     },
 }
 
-/// The kind of body a creature has (placeholder models, until real ones).
+/// The kind of body a monster has (placeholder models, until real ones).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
-pub enum CreatureShape {
+pub enum MonsterShape {
     /// A rabbit: small, with long ears.
     Rabbit,
     /// A goblin: a short, green-skinned person with big ears and a club.
@@ -50,8 +50,8 @@ pub enum CreatureShape {
 pub enum Refers {
     /// An appearance's id.
     Appearance,
-    /// A creature's id.
-    Creature,
+    /// A monster's id.
+    Monster,
     /// An item's id.
     Item,
     /// An ability's id.
@@ -70,20 +70,20 @@ pub enum Refers {
     Beard,
     /// A bone of the characters' skeleton (see `venture_content::characters::BONES`).
     Bone,
-    /// A creature model from `characters/characters.ron`.
-    CreatureModel,
+    /// A monster model from `characters/characters.ron`.
+    MonsterModel,
 }
 
-/// How a creature looks: its shape and colours (sRGB, each 0 to 1).
+/// How a monster looks: its shape and colours (sRGB, each 0 to 1).
 ///
 /// ```ron
 /// (shape: Rabbit, main: (0.6, 0.5, 0.4), trim: (0.9, 0.88, 0.85))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
-pub struct CreatureLook {
+pub struct MonsterLook {
     /// Its shape.
-    pub shape: CreatureShape,
+    pub shape: MonsterShape,
     /// Its main colour (fur, or skin).
     pub main: (f32, f32, f32),
     /// Its second colour (a rabbit's tail and belly, a goblin's clothes).
@@ -91,7 +91,7 @@ pub struct CreatureLook {
     /// Its model, from the content's `characters/characters.ron` (drawn
     /// instead of the shape, once the models have loaded).
     #[serde(default)]
-    #[cfg_attr(feature = "reflect", reflect(@Refers::CreatureModel))]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::MonsterModel))]
     pub model: Option<String>,
 }
 
@@ -122,7 +122,7 @@ pub enum HotbarEntry {
 /// An action that can go on the hotbar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HotbarAction {
-    /// Attack the selected creature.
+    /// Attack the selected monster.
     Attack,
     /// Follow the selected player.
     Follow,
@@ -213,7 +213,7 @@ pub enum ClientMessage {
     },
     /// Close the open shop.
     CloseShop,
-    /// Attack a creature, running into reach first and then attacking until
+    /// Attack a monster, running into reach first and then attacking until
     /// it dies or the player does something else.
     Attack {
         /// What to attack.
@@ -357,7 +357,7 @@ pub enum ServerMessage {
         /// What's in each slot, from key 1.
         slots: Vec<Option<HotbarEntry>>,
     },
-    /// Something died (sent to everyone nearby). A creature is removed a
+    /// Something died (sent to everyone nearby). A monster is removed a
     /// moment later; a player wakes up at a respawn point.
     Died {
         /// What died.
@@ -497,7 +497,7 @@ pub struct EntityState {
     pub y: f32,
     /// Whether it is moving.
     pub moving: bool,
-    /// How healthy it is, from 0 to 1 (creatures only; players' health is private).
+    /// How healthy it is, from 0 to 1 (monsters only; players' health is private).
     pub health: Option<f32>,
     /// Whether it's sitting down to rest.
     pub resting: bool,

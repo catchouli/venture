@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "reflect")]
 use venture_protocol::Refers;
-use venture_protocol::{BodyType, CreatureLook, EquipSlot, FEATURE_RANGE, Features, ItemLook};
+use venture_protocol::{BodyType, EquipSlot, FEATURE_RANGE, Features, ItemLook, MonsterLook};
 use venture_rpg::{ClassRules, Dice, Healing, Stat, Stats};
 
 /// The cut of an NPC's clothes.
@@ -716,7 +716,7 @@ pub(crate) const MAX_ITEM_DESCRIPTION_CHARS: usize = 200;
 /// The largest a class's hit die may be.
 pub(crate) const MAX_HIT_DIE: u32 = 20;
 
-/// A creature that can be fought.
+/// A monster that can be fought.
 ///
 /// ```ron
 /// (id: "rabbit", name: "Rabbit", level: 1, health: 4, armour_class: 8,
@@ -726,7 +726,7 @@ pub(crate) const MAX_HIT_DIE: u32 = 20;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
-pub struct CreatureDef {
+pub struct MonsterDef {
     /// Unique name, used by spawners.
     pub id: String,
     /// The name shown to players.
@@ -738,11 +738,11 @@ pub struct CreatureDef {
     /// How hard it is to hit (SRD 5.1: attacks hit if d20 + bonus reaches it).
     pub armour_class: i32,
     /// How it fights back.
-    pub attack: CreatureAttack,
+    pub attack: MonsterAttack,
     /// Whether it attacks players who come near, rather than only fighting back.
     #[serde(default, skip_serializing_if = "is_default")]
     pub aggressive: bool,
-    /// How near (in metres) a player must come for an aggressive creature to notice them.
+    /// How near (in metres) a player must come for an aggressive monster to notice them.
     #[serde(default = "default_aggro_radius", skip_serializing_if = "is_default_aggro_radius")]
     pub aggro_radius: f32,
     /// How far from home (in metres) it wanders when it isn't fighting.
@@ -751,7 +751,7 @@ pub struct CreatureDef {
     /// Experience for killing it.
     pub experience: u64,
     /// How it looks.
-    pub look: CreatureLook,
+    pub look: MonsterLook,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
@@ -761,11 +761,11 @@ fn default_aggro_radius() -> f32 {
     10.0
 }
 
-/// How a creature attacks.
+/// How a monster attacks.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[serde(deny_unknown_fields)]
-pub struct CreatureAttack {
+pub struct MonsterAttack {
     /// Its damage dice (such as `"1d4+1"`).
     pub damage: Dice,
     /// Added to its attack rolls.
@@ -774,11 +774,11 @@ pub struct CreatureAttack {
     pub speed: f32,
 }
 
-/// A spawner: keeps one creature alive somewhere, bringing a new one a while
+/// A spawner: keeps one monster alive somewhere, bringing a new one a while
 /// after it dies.
 ///
 /// ```ron
-/// (id: "rabbit_east", creature: "rabbit", at: (2363.0, 2173.0),
+/// (id: "rabbit_east", monster: "rabbit", at: (2363.0, 2173.0),
 ///  radius: 8.0, respawn_seconds: 20.0)
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -787,12 +787,12 @@ pub struct CreatureAttack {
 pub struct SpawnerDef {
     /// Unique name.
     pub id: String,
-    /// Which creature (a [`CreatureDef`] id).
-    #[cfg_attr(feature = "reflect", reflect(@Refers::Creature))]
-    pub creature: String,
-    /// Where: creatures appear within `radius` of here, in metres (east, south).
+    /// Which monster (a [`MonsterDef`] id).
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Monster))]
+    pub monster: String,
+    /// Where: monsters appear within `radius` of here, in metres (east, south).
     pub at: (f32, f32),
-    /// How far from `at` (in metres) a creature may appear.
+    /// How far from `at` (in metres) a monster may appear.
     #[serde(default, skip_serializing_if = "is_default")]
     pub radius: f32,
     /// How long after one dies the next appears, in seconds.

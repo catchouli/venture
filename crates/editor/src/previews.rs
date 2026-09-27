@@ -1,10 +1,10 @@
 //! Previews worked out with the game's own rules (`venture_rpg`): what a
-//! class is like at each level, and how hard a creature hits.
+//! class is like at each level, and how hard a monster hits.
 
 use std::collections::HashMap;
 
 use bevy_egui::egui;
-use venture_content::{ClassDef, CreatureDef, ItemDef};
+use venture_content::{ClassDef, ItemDef, MonsterDef};
 use venture_protocol::EquipSlot;
 use venture_rpg::progression::{total_ability_points, total_stat_points};
 use venture_rpg::{DerivedStats, Gear, combat::hit_chance};
@@ -58,9 +58,9 @@ pub fn class_preview(ui: &mut egui::Ui, class: &ClassDef, items: &HashMap<String
     });
 }
 
-/// How often a creature hits different armour, and what that does.
-pub fn creature_preview(ui: &mut egui::Ui, creature: &CreatureDef) {
-    let attack = &creature.attack;
+/// How often a monster hits different armour, and what that does.
+pub fn monster_preview(ui: &mut egui::Ui, monster: &MonsterDef) {
+    let attack = &monster.attack;
     egui::CollapsingHeader::new("Its attack").default_open(true).show(ui, |ui| {
         let (low, high) = attack.damage.range();
         ui.label(format!(
@@ -68,7 +68,7 @@ pub fn creature_preview(ui: &mut egui::Ui, creature: &CreatureDef) {
             attack.damage.average(),
             attack.speed
         ));
-        egui::Grid::new("creature hits").striped(true).show(ui, |ui| {
+        egui::Grid::new("monster hits").striped(true).show(ui, |ui| {
             for heading in ["Against armour class", "Hits", "Damage a second"] {
                 ui.strong(heading);
             }

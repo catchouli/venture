@@ -21,7 +21,7 @@
 //!    code that changes players in the game).
 //! 5. [`dialogue`]: runs each player's private conversations with NPCs.
 //! 6. [`shops`]: buying and selling.
-//! 7. [`creatures`], [`abilities`] and [`combat`]: creatures and fighting them
+//! 7. [`monsters`], [`abilities`] and [`combat`]: monsters and fighting them
 //!    (abilities is the only code that uses abilities; combat is the only code
 //!    that damages anything).
 //!
@@ -47,7 +47,6 @@ pub mod combat;
 pub mod config;
 pub mod consumables;
 pub mod content;
-pub mod creatures;
 pub mod dialogue;
 pub mod entities;
 pub mod equipment;
@@ -57,6 +56,7 @@ pub mod hotbar;
 pub mod http;
 pub mod inventory;
 pub mod link;
+pub mod monsters;
 mod names;
 pub mod npcs;
 pub mod profiles;
@@ -133,8 +133,8 @@ pub enum ServerSystems {
     Gameplay,
     /// NPCs: matching the content, running their scripts, applying script commands.
     Npcs,
-    /// Creatures: spawners, and what creatures do.
-    Creatures,
+    /// Monsters: spawners, and what monsters do.
+    Monsters,
     /// Using abilities.
     Abilities,
     /// Fights: attacks, damage, death and health.
@@ -170,7 +170,7 @@ impl GameServer {
                     ServerSystems::Sessions,
                     ServerSystems::Gameplay,
                     ServerSystems::Npcs,
-                    ServerSystems::Creatures,
+                    ServerSystems::Monsters,
                     ServerSystems::Abilities,
                     ServerSystems::Combat,
                     ServerSystems::Dialogue,
@@ -191,7 +191,7 @@ impl GameServer {
                 character::CharacterPlugin,
                 admin::AdminPlugin,
                 equipment::EquipmentPlugin,
-                creatures::CreaturesPlugin,
+                monsters::MonstersPlugin,
                 (abilities::AbilitiesPlugin, hotbar::HotbarPlugin, combat::CombatPlugin),
                 consumables::ConsumablesPlugin,
                 content::ContentPlugin,

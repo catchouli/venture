@@ -9,7 +9,7 @@ and `crates/client/src/characters/humans.rs`. The creator has height, build
 and head-size sliders (scaled bones), hairstyles, beards, and hair and skin
 colours (the skin texture tinted), and NPCs' sizes are picked from their
 appearance's id. Still to do: face and body shape sliders (step 6), eye
-colours, creatures (step 7), a sit-on-the-ground animation
+colours, monsters (step 7), a sit-on-the-ground animation
 (resting kneels for now), grips for staffs and clubs (placeholder shapes for
 now), and a check of the download size and frame rate on the web.
 
@@ -113,7 +113,7 @@ character creation screen.
    generator. The character creation screen gets the sliders.
 6. **Morph-target sliders:** body and face shapes made in Blender (with MPFB's
    help), added to the base meshes.
-7. **Creatures:** goblins can share the human skeleton (a smaller body with
+7. **Monsters:** goblins can share the human skeleton (a smaller body with
    their own head). Rabbits and other animals need their own models, and
    Quaternius's CC0 animal packs are a place to start.
 

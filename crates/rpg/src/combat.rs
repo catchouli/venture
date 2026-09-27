@@ -49,7 +49,7 @@ pub fn resolve_attack(
 }
 
 /// The chance an attack hits (including critical hits), from 0 to 1: for
-/// showing on the stats tab, and for tuning creatures.
+/// showing on the stats tab, and for tuning monsters.
 pub fn hit_chance(attack_bonus: i32, armour_class: i32) -> f32 {
     // Natural 2 to 19 hit if they reach the armour class; 20 always does.
     let hitting_rolls = (2..=19).filter(|natural| natural + attack_bonus >= armour_class).count() + 1;

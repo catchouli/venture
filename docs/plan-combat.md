@@ -1,7 +1,7 @@
 # Plan: characters and combat (milestone 4)
 
 Combat, and the character behind it: classes, levels, stats, abilities,
-equipment, creatures and fighting them. Non-combat abilities come after this.
+equipment, monsters and fighting them. Non-combat abilities come after this.
 
 Each step below is playable on its own and ends with a commit. Everything
 follows the existing rules: the server decides, content lives in the content
@@ -95,20 +95,20 @@ One window with tabs, each with its own key:
 - **Every character starts with Rest** (sit down and recover faster). The
   Fighter also starts with **Whack**, the Mage with **Air Blast**.
 
-## Step 3: creatures and spawners (done)
+## Step 3: monsters and spawners (done)
 
-- **Creatures** in the content pack (`creatures/*.ron`):
+- **Monsters** in the content pack (`monsters/*.ron`):
   - Name, level, appearance, stats, health, armour class and attack.
   - Aggressive or not, with an aggro radius.
   - Wander radius and experience reward.
-- **Spawners** in the content pack: a creature, a position (like NPCs), a radius, and a respawn time.
-  - Each spawner keeps one creature alive. When it dies, the spawner waits
+- **Spawners** in the content pack: a monster, a position (like NPCs), a radius, and a respawn time.
+  - Each spawner keeps one monster alive. When it dies, the spawner waits
     and spawns another somewhere in its radius.
   - Hot reload works as it does for NPCs.
-- **The first two creatures:**
+- **The first two monsters:**
   - **Rabbit**, level 1, not aggressive: several spawners around the town.
   - **Goblin**, level 2, aggressive: a little way out, easy to find.
-- Creatures are a third kind of entity (`Creature { appearance, level }`).
+- Monsters are a third kind of entity (`Monster { appearance, level }`).
   Selecting one shows its health bar in the target frame, which already exists
   for this.
 
@@ -120,15 +120,15 @@ character's attack speed. Health comes back out of combat (after 6 seconds,
 numbers show every hit and miss, and the dead fall over. Players can't fight
 each other.
 
-- **The Attack action** (click a selected creature again, `/attack`, or the
+- **The Attack action** (click a selected monster again, `/attack`, or the
   abilities tab). It works like following: the character runs into range, then
   auto-attacks at their attack speed until the target dies, they give another
   order, or the target gets away.
 - **The server resolves every hit** with `venture_rpg`: hit or miss, damage
   and crits. Health goes down, and everyone nearby sees it.
-- **Creatures fight back** when hit. Aggressive ones start fights themselves,
+- **Monsters fight back** when hit. Aggressive ones start fights themselves,
   and give up and go home if led too far away (a leash).
-- **Death:** creatures drop out and the spawner restarts its timer. The killer
+- **Death:** monsters drop out and the spawner restarts its timer. The killer
   gets experience, and may level up (full health, points to spend, a notice
   and a flash).
 - **Player death:** the player comes back at the **nearest respawn point**,
@@ -138,7 +138,7 @@ each other.
   player died.
 - **Health comes back** slowly out of combat, and faster while resting.
 - **What you see:** floating damage numbers, "miss", health bars over hurt
-  creatures, a swing animation, and a hit flash.
+  monsters, a swing animation, and a hit flash.
 - **Rough numbers:**
   - A Fighter with the Training Sword kills a rabbit in one hit. Unarmed takes
     two.
@@ -188,4 +188,4 @@ so the class tree is content too.
 ## Later (not in this milestone)
 
 Loot and drops, more classes and abilities, player-vs-player, parties, buffs and
-debuffs, ranged weapons, creature abilities, and death penalties.
+debuffs, ranged weapons, monster abilities, and death penalties.

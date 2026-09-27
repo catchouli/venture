@@ -21,7 +21,7 @@ use crate::grips::{appearance_panel, grip_panel};
 use crate::places::{
     EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, add_place, copy_place, delete_place, marker_heights,
 };
-use crate::previews::{class_preview, creature_preview};
+use crate::previews::{class_preview, monster_preview};
 
 /// How long after the last change the content is checked, in seconds.
 const CHECK_DELAY: f64 = 0.4;
@@ -461,7 +461,7 @@ fn is_simple(value: &dyn bevy::reflect::PartialReflect) -> bool {
 }
 
 /// Shows an entry's every field, to edit, with what uses it, renaming, and
-/// previews for classes and creatures. Returns whether it changed (the
+/// previews for classes and monsters. Returns whether it changed (the
 /// caller then tells the document); renames tell the document themselves.
 fn edit_entry(ui: &mut egui::Ui, world: &World, document: &mut Document, entry: EntryRef) -> bool {
     let (c, f, i) = entry;
@@ -529,7 +529,7 @@ fn identity(ui: &mut egui::Ui, document: &mut Document, entry: EntryRef, key: &s
     }
 }
 
-/// Previews for classes and creatures.
+/// Previews for classes and monsters.
 fn previews(ui: &mut egui::Ui, document: &Document, (c, f, i): EntryRef, title: &str) {
     match title {
         "Classes" => {
@@ -548,10 +548,10 @@ fn previews(ui: &mut egui::Ui, document: &Document, (c, f, i): EntryRef, title: 
                 .unwrap_or_default();
             class_preview(ui, class, &items);
         }
-        "Creatures" => {
-            let Some((_, creatures)) = document.find::<venture_content::CreatureDef>() else { return };
-            if let Some(creature) = creatures.files().get(f).and_then(|file| file.entries.get(i)) {
-                creature_preview(ui, creature);
+        "Monsters" => {
+            let Some((_, monsters)) = document.find::<venture_content::MonsterDef>() else { return };
+            if let Some(monster) = monsters.files().get(f).and_then(|file| file.entries.get(i)) {
+                monster_preview(ui, monster);
             }
         }
         _ => {}

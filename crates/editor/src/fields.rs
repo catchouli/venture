@@ -492,7 +492,7 @@ pub fn visit_references(
 pub fn referred_as(title: &str) -> Option<Refers> {
     match title {
         "Appearances" => Some(Refers::Appearance),
-        "Creatures" => Some(Refers::Creature),
+        "Monsters" => Some(Refers::Monster),
         "Items" => Some(Refers::Item),
         "Abilities" => Some(Refers::Ability),
         _ => None,
@@ -599,7 +599,7 @@ fn update_choices(
     let models = store.as_ref().and_then(|store| store.character_models.as_ref());
     let mut map = HashMap::new();
     map.insert(Refers::Appearance, keys("Appearances"));
-    map.insert(Refers::Creature, keys("Creatures"));
+    map.insert(Refers::Monster, keys("Monsters"));
     map.insert(Refers::Item, keys("Items"));
     map.insert(Refers::Ability, keys("Abilities"));
     map.insert(Refers::Icon, files("icons", ".png"));
@@ -613,8 +613,8 @@ fn update_choices(
     map.insert(Refers::Hairstyle, hairstyles.unwrap_or_default());
     map.insert(Refers::Beard, beards);
     map.insert(
-        Refers::CreatureModel,
-        models.map(|models| models.creatures.keys().cloned().collect()).unwrap_or_default(),
+        Refers::MonsterModel,
+        models.map(|models| models.monsters.keys().cloned().collect()).unwrap_or_default(),
     );
     map.insert(Refers::Bone, venture_content::characters::BONES.iter().map(|bone| bone.to_string()).collect());
     choices.0 = map;
