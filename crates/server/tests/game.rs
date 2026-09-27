@@ -1455,3 +1455,42 @@ fn party_invitations_run_out() {
     server.run(1);
     assert_eq!(notices(&bram.receive()), ["You don't have a party invitation."]);
 }
+
+#[test]
+fn party_members_nearby_share_experience_equally() {
+    use venture_protocol::PartyCommand;
+    let rabbit = r#"[(id: "beast", name: "Rabbit", level: 1, health: 4, armour_class: 0,
+        attack: (damage: "1", bonus: 0, speed: 0.5), experience: 31,
+        look: (shape: Rabbit, main: (0.5, 0.4, 0.3), trim: (0.9, 0.9, 0.9)))]"#;
+    let mut server = TestServer::with_content("party-experience", monster_pack(rabbit));
+    server.run(2);
+    let (ada, _) = create(&mut server, TOKEN_A, "Ada", "fighter");
+    let (bram, _) = create(&mut server, TOKEN_B, "Bram", "fighter");
+    let (cole, _) = create(&mut server, "test-token-cccccccccccccccccccccccccccccccc", "Cole", "fighter");
+    ada.send(&ClientMessage::Party(PartyCommand::Create { name: "Hunters".to_string() }));
+    server.run(1);
+    for (name, member) in [("Bram", &bram), ("Cole", &cole)] {
+        ada.send(&ClientMessage::Party(PartyCommand::InviteNamed { name: name.to_string() }));
+        server.run(1);
+        member.send(&ClientMessage::Party(PartyCommand::Accept));
+        server.run(1);
+    }
+    // Cole wanders off, beyond sharing distance (all three start at (100, 100)).
+    // (One click goes at most 30 m in these tests.)
+    for y in [128.0, 156.0, 184.0] {
+        cole.send(&ClientMessage::MoveTo { x: 100.0, y });
+        server.run(150);
+    }
+    for client in [&ada, &bram, &cole] {
+        client.receive();
+    }
+
+    let rabbit = monster_id(&mut server);
+    ada.send(&ClientMessage::Attack { target: rabbit });
+    server.run(200);
+    // 31 between the two nearby: the killer gets the odd point.
+    let told = notices(&ada.receive());
+    assert!(told.contains(&"You defeat the Rabbit. (+16 experience)".to_string()), "{told:?}");
+    assert!(notices(&bram.receive()).contains(&"Ada defeats the Rabbit. (+15 experience)".to_string()));
+    assert!(!notices(&cole.receive()).iter().any(|notice| notice.contains("Rabbit")), "too far away to share");
+}

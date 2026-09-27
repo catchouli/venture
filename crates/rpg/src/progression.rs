@@ -21,6 +21,16 @@ pub fn experience_to_next_level(level: u32) -> u64 {
     (100.0 * f64::from(level.max(1)).powf(1.5)).round() as u64
 }
 
+/// Experience shared equally among `sharers` (a party at a kill): each
+/// share, in order. What doesn't divide evenly goes one point each to the
+/// first sharers (the killer comes first), so the shares always add up to
+/// `total`. No sharers, no shares.
+pub fn split_experience(total: u64, sharers: usize) -> Vec<u64> {
+    let Some(count) = u64::try_from(sharers).ok().filter(|&count| count > 0) else { return Vec::new() };
+    let (each, left_over) = (total / count, total % count);
+    (0..count).map(|index| each + u64::from(index < left_over)).collect()
+}
+
 /// Stat points gained on reaching `level`.
 pub fn stat_points_at(level: u32) -> u32 {
     if level <= 1 { 0 } else { STAT_POINTS_PER_LEVEL }
@@ -114,6 +124,19 @@ impl Progress {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn experience_is_split_equally_and_none_is_lost() {
+        assert_eq!(split_experience(30, 1), [30]);
+        assert_eq!(split_experience(30, 3), [10, 10, 10]);
+        // The killer (first) gets the odd points.
+        assert_eq!(split_experience(10, 3), [4, 3, 3]);
+        assert_eq!(split_experience(2, 4), [1, 1, 0, 0]);
+        assert!(split_experience(10, 0).is_empty());
+        for (total, sharers) in [(0, 2), (7, 8), (1_000_003, 6)] {
+            assert_eq!(split_experience(total, sharers).iter().sum::<u64>(), total);
+        }
+    }
 
     #[test]
     fn total_experience_counts_every_level_so_far() {

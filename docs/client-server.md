@@ -526,6 +526,13 @@ only code that changes who's in one), in memory: nothing is saved.
   the invitation (`PartyInvite(None)`).
 - `/leave` leaves the party. Leaving the game leaves it too, and a party with
   nobody left in it is gone (with any invitations to it).
+- **Experience is shared.** When a member defeats a monster, its experience
+  is split equally between them and the members within
+  `party.share_distance` (60 m) of it who are still standing
+  (`venture_rpg::split_experience`: the killer gets any odd points, so none
+  is lost). Members further away get none, so nobody earns by idling in
+  town. Only `combat.rs` gives experience; it asks `parties.rs` who's in
+  the killer's party (`Parties::members_of`, read-only).
 
 Members are sent their party (`Party`: its name, and each member's name,
 class, level, health and mana) whenever any of that changes, which is how
