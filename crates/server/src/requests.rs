@@ -15,15 +15,15 @@
 //! (for [`crate::equipment`]), an [`ItemUseRequest`] (for
 //! [`crate::consumables`]), a [`AbilityRequest`] (for [`crate::abilities`]), a
 //! [`HotbarRequest`] (for [`crate::hotbar`]), a [`PartyRequest`] (for
-//! [`crate::parties`]) or an [`AdminRequest`] (for [`crate::admin`]). Too many strikes and the connection is closed.
+//! [`crate::parties`]), a [`FishingRequest`] (for [`crate::fishing`]) or an [`AdminRequest`] (for [`crate::admin`]). Too many strikes and the connection is closed.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{
-    AdminCommand, ClientMessage, EntityId, HOTBAR_SLOTS, HotbarEntry, PROTOCOL_VERSION, PartyCommand, ServerMessage,
-    clean_chat_text, clean_name, clean_party_name, is_valid_token,
+    AdminCommand, ClientMessage, EntityId, FishingCommand, HOTBAR_SLOTS, HotbarEntry, PROTOCOL_VERSION, PartyCommand,
+    ServerMessage, clean_chat_text, clean_name, clean_party_name, is_valid_token,
 };
 use venture_simulation::steering_direction;
 
@@ -64,6 +64,7 @@ impl Plugin for RequestsPlugin {
             .add_message::<AbilityRequest>()
             .add_message::<HotbarRequest>()
             .add_message::<PartyRequest>()
+            .add_message::<FishingRequest>()
             .add_systems(FixedUpdate, receive_messages.in_set(ServerSystems::Requests));
     }
 }
@@ -259,6 +260,34 @@ pub enum PartyAction {
     Leave,
 }
 
+/// A player's request about fishing, for [`crate::fishing`].
+#[derive(Message)]
+pub struct FishingRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// What they asked for.
+    pub action: FishingAction,
+}
+
+/// What a player asked about fishing. The cast's point is in the world and
+/// its tackle id no longer than [`MAX_ID_BYTES`]; the rest (their rod, the
+/// water, their bag) is for [`crate::fishing`] to check.
+pub enum FishingAction {
+    /// Cast at this point with this bait or lure.
+    Cast {
+        /// Where.
+        at: Point,
+        /// The bait or lure's item id.
+        tackle: String,
+    },
+    /// Strike.
+    Strike,
+    /// Reel (or stop reeling).
+    Reel(bool),
+    /// Stop fishing.
+    Stop,
+}
+
 /// An admin command, for [`crate::admin`] (which checks the player is an admin).
 #[derive(Message)]
 pub struct AdminRequest {
@@ -324,6 +353,7 @@ fn receive_messages(
     mut abilities: MessageWriter<AbilityRequest>,
     mut hotbars: MessageWriter<HotbarRequest>,
     mut parties: MessageWriter<PartyRequest>,
+    mut fishing: MessageWriter<FishingRequest>,
 ) {
     let now = time.elapsed_secs();
     while let Some(event) = link.next_event() {
@@ -377,6 +407,9 @@ fn receive_messages(
                     Verdict::Party(request) => {
                         parties.write(request);
                     }
+                    Verdict::Fishing(request) => {
+                        fishing.write(request);
+                    }
                     Verdict::Reply(message) => link.send(id, &message),
                     Verdict::Ignore => {}
                     Verdict::Strike => {
@@ -409,6 +442,7 @@ enum Verdict {
     Ability(AbilityRequest),
     Hotbar(HotbarRequest),
     Party(PartyRequest),
+    Fishing(FishingRequest),
     /// Answer the client directly, without changing anything.
     Reply(ServerMessage),
     Ignore,
@@ -527,7 +561,11 @@ fn judge_player_message(
             return Verdict::Shop(ShopRequest { player, action: ShopAction::Sell { slot, count } });
         }
         ClientMessage::CloseShop => return Verdict::Shop(ShopRequest { player, action: ShopAction::Close }),
-        ClientMessage::Admin(AdminCommand::SetClass { class }) if class.len() > MAX_ID_BYTES => {
+        ClientMessage::Admin(
+            AdminCommand::SetClass { class: id }
+            | AdminCommand::Give { item: id, .. }
+            | AdminCommand::SetSkill { skill: id, .. },
+        ) if id.len() > MAX_ID_BYTES => {
             return Verdict::Strike;
         }
         ClientMessage::Admin(command) => return Verdict::Admin(AdminRequest { player, command }),
@@ -557,6 +595,20 @@ fn judge_player_message(
             return Verdict::Hotbar(HotbarRequest { player, slots });
         }
         ClientMessage::Party(command) => return judge_party_command(player, connection, command, now),
+        ClientMessage::Fishing(command) => {
+            let action = match command {
+                FishingCommand::Cast { x, y, tackle } => {
+                    if !world.contains((x, y)) || tackle.len() > MAX_ID_BYTES {
+                        return Verdict::Strike;
+                    }
+                    FishingAction::Cast { at: (x, y), tackle }
+                }
+                FishingCommand::Strike => FishingAction::Strike,
+                FishingCommand::Reel(reeling) => FishingAction::Reel(reeling),
+                FishingCommand::Stop => FishingAction::Stop,
+            };
+            return Verdict::Fishing(FishingRequest { player, action });
+        }
         ClientMessage::Hello { .. } | ClientMessage::CreateCharacter { .. } => return Verdict::Strike,
     };
     Verdict::Player(PlayerRequest { player, action })

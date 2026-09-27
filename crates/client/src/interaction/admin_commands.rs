@@ -1,5 +1,6 @@
 //! Admin commands typed in chat: `/setlevel 10`, `/reset`, `/setclass mage`,
-//! `/setgender feminine`, `/time 19:30`, `/timescale 10`.
+//! `/setgender feminine`, `/time 19:30`, `/timescale 10`, `/give worm 20`,
+//! `/setskill fishing 20`.
 //!
 //! They become [`AdminCommand`]s for the server, which carries them out only
 //! if the player really is an admin. `/help` lists them for admins, marked
@@ -8,13 +9,15 @@
 use venture_protocol::{AdminCommand, BodyType};
 
 /// Every admin command: its name, what follows it, and what it does.
-pub const ADMIN_COMMANDS: [(&str, &str, &str); 6] = [
+pub const ADMIN_COMMANDS: [(&str, &str, &str); 8] = [
     ("setlevel", "LEVEL", "set your level"),
     ("reset", "", "start your character over at level 1"),
     ("setclass", "CLASS", "change class, getting your points back"),
     ("setgender", "BODY", "masculine, feminine or androgynous"),
     ("time", "HOUR", "set the time of day for everyone (19.5, or 19:30)"),
     ("timescale", "SPEED", "how fast the days go for everyone (1 usual, 10 ten times, 0 stopped)"),
+    ("give", "ITEM [COUNT]", "put items in your bag (an item's id or name)"),
+    ("setskill", "SKILL LEVEL", "set your level in a skill"),
 ];
 
 /// Reads an admin command from its name and the words after it. Returns
@@ -39,6 +42,13 @@ pub fn parse(name: &str, arguments: &[&str]) -> Option<Result<AdminCommand, Stri
             .filter(|scale| scale.is_finite() && *scale >= 0.0)
             .map(|scale| AdminCommand::SetTimescale { scale })
             .ok_or_else(usage),
+        ("give", [item]) => Ok(AdminCommand::Give { item: item.to_string(), count: 1 }),
+        ("give", [item, count]) => {
+            count.parse().map(|count| AdminCommand::Give { item: item.to_string(), count }).map_err(|_| usage())
+        }
+        ("setskill", [skill, level]) => {
+            level.parse().map(|level| AdminCommand::SetSkill { skill: skill.to_string(), level }).map_err(|_| usage())
+        }
         _ => Err(usage()),
     })
 }
@@ -71,6 +81,15 @@ mod tests {
         assert_eq!(parse("timescale", &["1.5"]), Some(Ok(AdminCommand::SetTimescale { scale: 1.5 })));
         assert_eq!(parse("timescale", &["0"]), Some(Ok(AdminCommand::SetTimescale { scale: 0.0 })));
         assert!(parse("timescale", &["-2"]).unwrap().is_err());
+        assert_eq!(
+            parse("give", &["worm", "20"]),
+            Some(Ok(AdminCommand::Give { item: "worm".to_string(), count: 20 }))
+        );
+        assert_eq!(parse("give", &["worm"]), Some(Ok(AdminCommand::Give { item: "worm".to_string(), count: 1 })));
+        assert_eq!(
+            parse("setskill", &["fishing", "20"]),
+            Some(Ok(AdminCommand::SetSkill { skill: "fishing".to_string(), level: 20 }))
+        );
         assert_eq!(parse("fly", &[]), None);
     }
 }

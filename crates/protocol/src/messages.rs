@@ -267,6 +267,57 @@ pub enum ClientMessage {
     },
     /// Something to do with parties.
     Party(PartyCommand),
+    /// Something to do with fishing.
+    Fishing(FishingCommand),
+}
+
+/// Something to do with fishing, in a [`ClientMessage::Fishing`] (see
+/// `docs/plan-fishing.md`). The server answers with [`ServerMessage::Fishing`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum FishingCommand {
+    /// Cast the rod in hand at a point in the water, with bait or a lure
+    /// from the bag.
+    Cast {
+        /// Where, in metres.
+        x: f32,
+        /// Where, in metres.
+        y: f32,
+        /// The bait or lure (an item id).
+        tackle: String,
+    },
+    /// Strike: when a fish bites (with a ledger or float) it must be struck
+    /// in time to hook it.
+    Strike,
+    /// Start (`true`) or stop reeling in a fight.
+    Reel(bool),
+    /// Reel in and stop fishing.
+    Stop,
+}
+
+/// How a player's fishing is going, in a [`ServerMessage::Fishing`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum FishingState {
+    /// The line is in the water, waiting for a bite.
+    Waiting {
+        /// Where the bait or lure is, in metres.
+        at: (f32, f32),
+        /// How they're fishing.
+        method: venture_rpg::fishing::Method,
+    },
+    /// Something nibbles (don't strike yet).
+    Nibble,
+    /// A fish bites: strike now.
+    Bite,
+    /// A fish is hooked and fighting (sent every tick while it lasts).
+    Fight(venture_simulation::fishing::Fight),
+    /// A fish is landed (an item id).
+    Caught {
+        /// What was caught.
+        item: String,
+    },
+    /// Fishing has ended (reeled in, or the fish got away: a
+    /// [`ServerMessage::Notice`] says why).
+    Ended,
 }
 
 /// Something to do with parties (groups of players), in a
@@ -374,6 +425,20 @@ pub enum AdminCommand {
     SetTimescale {
         /// How many times the usual pace.
         scale: f32,
+    },
+    /// Put items in your bag (`/give worm 20`), for trying things out.
+    Give {
+        /// The item (an id, or its name).
+        item: String,
+        /// How many.
+        count: u32,
+    },
+    /// Set your level in a skill (`/setskill fishing 20`).
+    SetSkill {
+        /// The skill (an id, or its name).
+        skill: String,
+        /// The level.
+        level: u32,
     },
 }
 
@@ -587,6 +652,8 @@ pub enum ServerMessage {
     /// The player has been invited to a party (`Some`), or the invitation
     /// has been answered or has run out (`None`).
     PartyInvite(Option<PartyInvite>),
+    /// How the player's fishing is going.
+    Fishing(FishingState),
 }
 
 /// One entity's state in a [`ServerMessage::Snapshot`].

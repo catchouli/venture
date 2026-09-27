@@ -10,19 +10,25 @@
 //! - `/time HOUR`: set the time of day, for everyone.
 //! - `/timescale N`: set how fast the days go, for everyone (1 the usual
 //!   pace, 10 ten times faster, 0 stopped).
+//! - `/give ITEM [COUNT]`: put items in your bag.
+//! - `/setskill SKILL LEVEL`: set your level in a skill (such as fishing).
 
 use bevy::prelude::*;
 use venture_protocol::{AdminCommand, ServerMessage};
-use venture_rpg::MAX_LEVEL;
+use venture_rpg::{MAX_LEVEL, MAX_SKILL_LEVEL};
 
 use crate::character::{Admin, Character, class_or_default, find_class};
 use crate::clock::WorldClock;
 use crate::content::LoadedContent;
 use crate::entities::{NetworkId, Player};
 use crate::equipment::{Equipment, player_look};
+use crate::inventory::{Change, Inventory, describe_items};
 use crate::link::Link;
 use crate::requests::AdminRequest;
 use crate::{GameRules, ServerSystems};
+
+/// The most of an item `/give` gives at once.
+const MOST_GIVEN: u32 = 1000;
 
 /// The fastest an admin can make the days go (a whole day in under ten
 /// seconds, at the usual two hours a day).
@@ -41,14 +47,16 @@ fn carry_out_admin_commands(
     mut requests: MessageReader<AdminRequest>,
     content: Res<LoadedContent>,
     mut link: ResMut<Link>,
-    mut players: Query<(&Player, &NetworkId, &mut Character, &Equipment, Has<Admin>)>,
+    mut players: Query<(&Player, &NetworkId, &mut Character, &Equipment, &mut Inventory, Has<Admin>)>,
     everyone: Query<&Player>,
     mut clock: ResMut<WorldClock>,
     rules: Res<GameRules>,
 ) {
     let pack = &content.pack;
     for request in requests.read() {
-        let Ok((player, &NetworkId(id), mut character, equipment, admin)) = players.get_mut(request.player) else {
+        let Ok((player, &NetworkId(id), mut character, equipment, mut inventory, admin)) =
+            players.get_mut(request.player)
+        else {
             continue;
         };
         let common = &pack.new_characters.abilities;
@@ -100,6 +108,37 @@ fn carry_out_admin_commands(
                 tell(format!("The time is now {hours:02}:{minutes:02}."));
                 let message = clock.message(&rules);
                 link.broadcast(everyone.iter().map(|player| player.connection), &message);
+                continue;
+            }
+            AdminCommand::Give { item, count } => {
+                let found = pack
+                    .items
+                    .get(item)
+                    .or_else(|| pack.items.values().find(|def| def.name.eq_ignore_ascii_case(item)));
+                let Some(def) = found else {
+                    tell(format!("There's no item called \"{item}\"."));
+                    continue;
+                };
+                let count = (*count).clamp(1, MOST_GIVEN);
+                match inventory.apply(&Change::give(&def.id, count), &pack.items) {
+                    Ok(()) => tell(format!("You now have {} more.", describe_items(&def.id, count, &pack.items))),
+                    Err(_) => tell("There isn't room in your bag.".to_string()),
+                }
+                continue;
+            }
+            AdminCommand::SetSkill { skill, level } => {
+                let found = pack.skills.iter().find(|def| def.id == *skill || def.name.eq_ignore_ascii_case(skill));
+                let Some(def) = found else {
+                    let names: Vec<&str> = pack.skills.iter().map(|skill| skill.name.as_str()).collect();
+                    tell(format!("There's no skill called \"{skill}\". The skills are: {}.", names.join(", ")));
+                    continue;
+                };
+                if !(1..=MAX_SKILL_LEVEL).contains(level) {
+                    tell(format!("Skill levels go from 1 to {MAX_SKILL_LEVEL}."));
+                    continue;
+                }
+                character.set_skill_level(&def.id, *level);
+                tell(format!("Your {} level is now {level}.", def.name.to_lowercase()));
                 continue;
             }
             AdminCommand::SetTimescale { scale } => {

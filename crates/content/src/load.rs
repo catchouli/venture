@@ -623,11 +623,17 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
             Some(weapon) if !(weapon.speed > 0.0 && weapon.speed.is_finite()) => {
                 problem("its weapon speed must be more than 0".to_string());
             }
-            None if wielded => problem("items in the DominantHand slot need weapon stats".to_string()),
+            None if wielded && !matches!(item.fishing, Some(FishingPart::Rod { .. })) => {
+                problem("items in the DominantHand slot need weapon stats (or to be fishing rods)".to_string());
+            }
             _ => {}
         }
     }
 }
+
+/// How strongly (0 to 1) some bait or lure must draw a fish rods catch, so
+/// it bites often enough to be caught on purpose.
+const MIN_DRAW: f32 = 0.1;
 
 /// Checks the fishing items make sense together: every fish rods catch is
 /// drawn and hooked by some bait or lure, and some reel can land it; every
@@ -646,13 +652,13 @@ fn check_fishing(items: &BTreeMap<String, ItemDef>) -> Vec<String> {
             let drawn = parts.iter().any(|part| match part {
                 FishingPart::Bait(bait) => rods.iter().any(|&method| {
                     method != Method::Lure
-                        && fishing::bait_attraction(traits, bait, method) > 0.0
-                        && fishing::hook_fit(bait.hook, traits.size) > 0.0
+                        && fishing::bait_attraction(traits, bait, method) * fishing::hook_fit(bait.hook, traits.size)
+                            >= MIN_DRAW
                 }),
                 FishingPart::Lure(lure) => {
                     rods.contains(&Method::Lure)
-                        && fishing::lure_attraction(traits, lure) > 0.0
-                        && fishing::hook_fit(lure.hook, traits.size) > 0.0
+                        && fishing::lure_attraction(traits, lure) * fishing::hook_fit(lure.hook, traits.size)
+                            >= MIN_DRAW
                 }
                 _ => false,
             });

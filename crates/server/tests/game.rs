@@ -7,15 +7,15 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use venture_content::ContentPack;
 use venture_protocol::{
-    AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, Features, HotbarAction, HotbarEntry,
-    PROTOCOL_VERSION, ServerMessage,
+    AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, Features, FishingCommand, FishingState,
+    HotbarAction, HotbarEntry, PROTOCOL_VERSION, ServerMessage,
 };
 use venture_server::content::LoadedContent;
 use venture_server::entities::NetworkId;
 use venture_server::npcs::Npc;
 use venture_server::{ConnectionId, ContentSetup, GameServer, Link, LinkEvent, LinkSender, ProfileStore, ServerWorld};
 use venture_simulation::{FOLLOW_DISTANCE, RUN_SPEED, Rules, TICK_RATE};
-use venture_world::{CHUNK_FORMAT_VERSION, CHUNK_SIZE, Chunk, ChunkPos, WorldManifest};
+use venture_world::{CHUNK_FORMAT_VERSION, CHUNK_SIZE, Chunk, ChunkPos, Fluid, FluidBody, FluidKind, WorldManifest};
 
 /// A small flat world, 4 × 4 chunks.
 fn flat_world() -> ServerWorld {
@@ -30,6 +30,36 @@ fn flat_world() -> ServerWorld {
         map: None,
     };
     let chunks: Vec<Chunk> = (0..16).map(|i| Chunk::new(ChunkPos::new(i % 4, i / 4))).collect();
+    ServerWorld::from_chunks(manifest, &chunks)
+}
+
+/// The flat world with a river across it: cells 104 to 113 metres east,
+/// all the way north to south, a metre deep.
+fn river_world() -> ServerWorld {
+    let manifest = WorldManifest {
+        world_size: 4 * CHUNK_SIZE,
+        chunk_size: CHUNK_SIZE,
+        chunk_format: CHUNK_FORMAT_VERSION,
+        generator_version: 0,
+        seed: 0,
+        spawn_point: (100.0, 100.0),
+        settlements: Vec::new(),
+        map: None,
+    };
+    let chunks: Vec<Chunk> = (0..16)
+        .map(|i| {
+            let mut chunk = Chunk::new(ChunkPos::new(i % 4, i / 4));
+            if i % 4 == 1 {
+                for y in 0..CHUNK_SIZE as usize {
+                    for x in 40..50 {
+                        chunk.cell_mut(x, y).fluid =
+                            Some(Fluid { kind: FluidKind::Water, body: FluidBody::River, level: 1.0 });
+                    }
+                }
+            }
+            chunk
+        })
+        .collect();
     ServerWorld::from_chunks(manifest, &chunks)
 }
 
@@ -58,6 +88,16 @@ impl TestServer {
         Self::start(profile_folder, ContentPack::default())
     }
 
+    /// A server with the game's own content, in the river world.
+    fn fishing(name: &str) -> Self {
+        let profile_folder = std::env::temp_dir().join(format!("venture-test-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&profile_folder);
+        let pack = ContentPack::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content")).unwrap();
+        let mut server = Self::start(profile_folder, pack);
+        server.app.insert_resource(river_world());
+        server
+    }
+
     fn start(profile_folder: std::path::PathBuf, pack: ContentPack) -> Self {
         let (link_sender, link) = Link::new();
         let mut app = App::new();
@@ -74,6 +114,7 @@ impl TestServer {
             rules,
             item_cooldown: 1.0,
             party: Default::default(),
+            fishing: Default::default(),
             content,
             spawn_override: None,
             admins,
@@ -1495,3 +1536,78 @@ fn party_members_nearby_share_experience_equally() {
     assert!(notices(&bram.receive()).contains(&"Ada defeats the Rabbit. (+15 experience)".to_string()));
     assert!(!notices(&cole.receive()).iter().any(|notice| notice.contains("Rabbit")), "too far away to share");
 }
+
+#[test]
+fn a_player_catches_a_fish_with_rod_reel_and_worm() {
+    let mut server = TestServer::fishing("fishing");
+    let (client, _) = server.join(TOKEN_A, "Boss");
+    for (item, count) in [("ledger_rod", 1), ("wooden_reel", 1), ("worm", 3)] {
+        client.send(&ClientMessage::Admin(AdminCommand::Give { item: item.to_string(), count }));
+    }
+    server.run(2);
+    let slot = client
+        .receive()
+        .into_iter()
+        .rev()
+        .find_map(|m| match m {
+            ServerMessage::Inventory { slots, .. } => {
+                slots.iter().position(|slot| slot.as_ref().is_some_and(|stack| stack.item == "ledger_rod"))
+            }
+            _ => None,
+        })
+        .expect("the rod is in the bag");
+
+    // Casting needs the rod in hand.
+    let cast = ClientMessage::Fishing(FishingCommand::Cast { x: 106.0, y: 100.0, tackle: "worm".to_string() });
+    client.send(&cast);
+    server.run(1);
+    assert!(notices(&client.receive()).iter().any(|text| text.contains("rod in your hand")));
+    client.send(&ClientMessage::Equip { slot: slot as u32 });
+    server.run(1);
+    // And water.
+    client.send(&ClientMessage::Fishing(FishingCommand::Cast { x: 101.0, y: 100.0, tackle: "worm".to_string() }));
+    server.run(1);
+    assert!(notices(&client.receive()).iter().any(|text| text.contains("into water")));
+
+    client.send(&cast);
+    server.run(1);
+    assert!(client.receive().contains(&ServerMessage::Fishing(FishingState::Waiting {
+        at: (106.0, 100.0),
+        method: venture_rpg::fishing::Method::Ledger
+    })));
+
+    // Wait for the bite (a dace, the only fish a beginner can catch there),
+    // strike, then reel only while the fish rests.
+    let mut caught = None;
+    for _ in 0..(TICK_RATE as usize * 120) {
+        server.run(1);
+        for message in client.receive() {
+            match message {
+                ServerMessage::Fishing(FishingState::Bite) => {
+                    client.send(&ClientMessage::Fishing(FishingCommand::Strike));
+                }
+                ServerMessage::Fishing(FishingState::Fight(fight)) => {
+                    client.send(&ClientMessage::Fishing(FishingCommand::Reel(!fight.running)));
+                }
+                ServerMessage::Fishing(FishingState::Caught { item }) => caught = Some(item),
+                ServerMessage::Fishing(FishingState::Ended) => {}
+                ServerMessage::Notice { text } if caught.is_some() => {
+                    assert!(text.starts_with("You catch a dace! (+110 fishing experience)"), "{text}");
+                }
+                ServerMessage::Notice { text } => panic!("fishing ended: {text}"),
+                ServerMessage::Character(sheet) if caught.is_some() => {
+                    let fishing = sheet.skills.iter().find(|skill| skill.skill == "fishing").unwrap();
+                    assert_eq!(
+                        (fishing.level, fishing.experience),
+                        (2, 10),
+                        "110 experience: level 2, and 10 towards 3"
+                    );
+                    return;
+                }
+                _ => {}
+            }
+        }
+    }
+    panic!("no fish landed in two minutes (caught: {caught:?})");
+}
+
