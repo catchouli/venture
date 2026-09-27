@@ -47,8 +47,8 @@ that do something, more quests and places).
 - **Grass and flowers:** instanced grass tufts and flower clumps near the
   camera, fading out with distance (a big part of Lineage 2's feel).
 - **Better trees and rocks:** more varied, more detailed models; wind sway.
-- **Water:** waves and sky reflections are done; shoreline foam and
-  depth-based colour next.
+- **Water:** waves, sky reflections, soft shores and clearer shallows are
+  done; shoreline foam next.
 - **Sky:** an HDR sky with image-based lighting is done; the day/night
   cycle has its clock, moving sun and moon and night lighting, and blended
   skies for dawn, dusk and night are next ([plan-day-night.md](plan-day-night.md)).

@@ -9,6 +9,10 @@
 //   water's own colour is see-through. Seen at a low angle, water reflects
 //   more and shows less of what's under it (Fresnel).
 //
+// - At the shore it fades out: its depth over the ground (from the mesh, in
+//   the second UVs) makes shallows clearer, and the edge itself soft, so the
+//   waterline doesn't show the triangles it's cut from.
+//
 // Drawn with premultiplied alpha: colour out is (body × opacity +
 // reflection), and what's behind is kept by (1 − opacity).
 
@@ -42,6 +46,10 @@ const WAVES: array<Wave, 6> = array<Wave, 6>(
 const MIN_FACING: f32 = 0.05;
 // Fresnel reflectance of water seen straight on.
 const WATER_F0: f32 = 0.02;
+// The depth (metres) over which the waterline fades in, and over which
+// shallows grow from clear to the water's full colour.
+const SHORE_DEPTH: f32 = 0.12;
+const CLEAR_DEPTH: f32 = 1.2;
 
 @fragment
 fn fragment(
@@ -84,7 +92,13 @@ fn fragment(
     // under it can't be seen.
     let facing = saturate(dot(pbr_input.N, v));
     let fresnel = WATER_F0 + (1.0 - WATER_F0) * pow(1.0 - facing, 5.0);
-    let opacity = mix(pbr_input.material.base_color.a, 1.0, fresnel);
+    var depth = CLEAR_DEPTH;
+#ifdef VERTEX_UVS_B
+    depth = in.uv_b.x;
+#endif
+    let shore = smoothstep(0.0, SHORE_DEPTH, depth);
+    let clear = 0.35 + 0.65 * smoothstep(0.0, CLEAR_DEPTH, depth);
+    let opacity = max(mix(pbr_input.material.base_color.a * clear, 1.0, fresnel) * shore, 1e-4);
 
     // The reflection alone (lit with no colour of its own), then the whole.
     let body = pbr_input.material.base_color.rgb;
@@ -92,7 +106,7 @@ fn fragment(
     let reflection = apply_pbr_lighting(pbr_input).rgb;
     pbr_input.material.base_color = vec4<f32>(body, 1.0);
     let whole = apply_pbr_lighting(pbr_input).rgb;
-    let colour = max(whole - reflection, vec3<f32>(0.0)) * opacity + reflection;
+    let colour = max(whole - reflection, vec3<f32>(0.0)) * opacity + reflection * shore;
 
     // Fog works on the colour as seen (not premultiplied), then premultiply.
     var out: FragmentOutput;

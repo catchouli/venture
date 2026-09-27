@@ -21,6 +21,10 @@ use crate::common::palette;
 /// Metres of liquid surface covered by one unit of texture coordinates.
 const METRES_PER_UV: f32 = 4.0;
 
+/// How far under the ground a liquid's surface sinks past its covered
+/// cells (metres), so the ground hides it there.
+const SHORE_SINK: f32 = 0.05;
+
 /// A chunk plus its eight neighbours, for looking just past the chunk's edges.
 pub struct Neighbourhood {
     /// Indexed `(dy + 1) * 3 + (dx + 1)`; the centre is index 4. Neighbours
@@ -154,58 +158,134 @@ pub fn ground_texture(ground: Ground) -> Option<GroundTexture> {
 /// The surfaces of `kind` of liquid in the centre chunk, or `None` if there
 /// is none. In chunk-local coordinates.
 ///
-/// Each surface also spreads one cell past the covered cells. The terrain
-/// hides the part that ends up under ground, so shorelines follow the true
-/// line where ground meets the surface, instead of the edges of cells.
+/// Each surface also spreads one cell past the covered cells, and the
+/// terrain hides the part that ends up under ground. Each vertex carries how
+/// deep the liquid is there (in its second UVs), and the water shader fades
+/// out as that nears nothing, so shorelines follow the true line where
+/// ground meets the surface, softly, instead of the edges of cells.
 ///
-/// The surface is one continuous sheet: each corner is at the average level
-/// of the liquid cells around it, so still water is flat and streams slope
-/// smoothly downhill (rather than in steps, one per cell, which showed as a
-/// grid of seams). Corners on a chunk's edge see the same cells from either
-/// side, so neighbouring chunks' surfaces meet.
+/// The surface is one continuous sheet: each corner of a covered cell is at
+/// the average level of the covered cells around it, so still water is flat
+/// and streams slope smoothly downhill (rather than in steps, one per cell,
+/// which showed as a grid of seams). The corners past them, which no
+/// covered cell touches, sink to the ground (or stay at the liquid's level
+/// where the ground rises above it): a cell the world says is dry never
+/// shows liquid, even where a bank is lower than the river beside it.
+/// Corners on a chunk's edge see the same cells from either side, so
+/// neighbouring chunks' surfaces meet.
 pub fn fluid_mesh(area: &Neighbourhood, kind: FluidKind) -> Option<Mesh> {
-    // Each cell's level (the highest of its own and its neighbours'
-    // liquid), for the chunk's cells and a ring of one cell around them.
-    let side = (CHUNK_SIZE + 2) as usize;
-    let at = |x: i32, y: i32| (y + 1) as usize * side + (x + 1) as usize;
+    // Each covered cell's level, for the chunk's cells and a ring of two
+    // cells around them.
+    let side = (CHUNK_SIZE + 4) as usize;
+    let at = |x: i32, y: i32| (y + 2) as usize * side + (x + 2) as usize;
     let mut levels = vec![None; side * side];
-    for y in -1..=CHUNK_SIZE {
-        for x in -1..=CHUNK_SIZE {
-            levels[at(x, y)] = (-1..=1)
-                .flat_map(|dy| (-1..=1).map(move |dx| (x + dx, y + dy)))
-                .filter_map(|(nx, ny)| area.cell(nx, ny).fluid)
-                .filter(|fluid| fluid.kind == kind)
-                .map(|fluid| fluid.level)
-                .reduce(f32::max);
+    for y in -2..=CHUNK_SIZE + 1 {
+        for x in -2..=CHUNK_SIZE + 1 {
+            levels[at(x, y)] = area.cell(x, y).fluid.filter(|fluid| fluid.kind == kind).map(|fluid| fluid.level);
         }
     }
+    // The highest level in a block of cells.
+    let highest = |xs: std::ops::RangeInclusive<i32>, ys: std::ops::RangeInclusive<i32>| {
+        ys.flat_map(|y| xs.clone().map(move |x| (x, y))).filter_map(|(x, y)| levels[at(x, y)]).reduce(f32::max)
+    };
 
     let mut mesh = MeshData::default();
     let white = [1.0; 4];
+    // How deep the liquid is over the ground at each vertex.
+    let mut depths: Vec<[f32; 2]> = Vec::new();
     // Each corner's vertex, made the first time a cell needs it.
     let corners = (CHUNK_SIZE + 1) as usize;
     let mut vertices: Vec<Option<u32>> = vec![None; corners * corners];
     let mut corner = |mesh: &mut MeshData, x: i32, y: i32| {
         *vertices[y as usize * corners + x as usize].get_or_insert_with(|| {
+            let ground = area.corner_height(x, y);
             let around = [(x - 1, y - 1), (x, y - 1), (x - 1, y), (x, y)];
             let (sum, count) = around
                 .iter()
                 .filter_map(|&(cx, cy)| levels[at(cx, cy)])
                 .fold((0.0, 0.0), |(sum, count), level| (sum + level, count + 1.0));
+            let level = if count > 0.0 {
+                sum / count
+            } else {
+                // Past the edge: just under the ground, but no higher than
+                // the liquid it spreads from.
+                let near = highest(x - 2..=x + 1, y - 2..=y + 1).unwrap_or(ground);
+                (ground - SHORE_SINK).min(near)
+            };
+            depths.push([level - ground, 0.0]);
             let (fx, fy) = (x as f32, y as f32);
-            mesh.vertex(to_bevy(fx, fy, sum / count), Vec3::Y, white, Vec2::new(fx, fy) / METRES_PER_UV)
+            mesh.vertex(to_bevy(fx, fy, level), Vec3::Y, white, Vec2::new(fx, fy) / METRES_PER_UV)
         })
     };
     for y in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            if levels[at(x, y)].is_none() {
+            if highest(x - 1..=x + 1, y - 1..=y + 1).is_none() {
                 continue;
             }
             let (i00, i10) = (corner(&mut mesh, x, y), corner(&mut mesh, x + 1, y));
             let (i01, i11) = (corner(&mut mesh, x, y + 1), corner(&mut mesh, x + 1, y + 1));
-            mesh.triangle(i00, i01, i10);
-            mesh.triangle(i10, i01, i11);
+            // Split the way the ground under it is (see `terrain_mesh`), so
+            // the depth is linear on each triangle, and the shader's fade
+            // meets the ground exactly where the surface does.
+            let [h00, h10, h01, h11] = area.centre().cell_corner_heights(x as usize, y as usize);
+            if (h00 - h11).abs() < (h10 - h01).abs() {
+                mesh.triangle(i00, i01, i11);
+                mesh.triangle(i00, i11, i10);
+            } else {
+                mesh.triangle(i00, i01, i10);
+                mesh.triangle(i10, i01, i11);
+            }
         }
     }
-    (!mesh.is_empty()).then(|| mesh.into_mesh())
+    (!mesh.is_empty()).then(|| mesh.into_mesh().with_inserted_attribute(Mesh::ATTRIBUTE_UV_1, depths))
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::mesh::VertexAttributeValues;
+    use venture_world::Fluid;
+
+    use super::*;
+
+    /// A river three cells wide (x 10 to 12) at level 1 in a channel at -1,
+    /// through land at 0: lower than the river, but dry.
+    fn river() -> Neighbourhood {
+        let mut chunk = Chunk::new(ChunkPos::new(0, 0));
+        for y in 0..CHUNK_SIZE as usize {
+            for x in 10..=12 {
+                chunk.cell_mut(x, y).fluid = Some(Fluid { kind: FluidKind::Water, level: 1.0 });
+            }
+        }
+        for y in 0..=CHUNK_SIZE as usize {
+            for x in 10..=13 {
+                chunk.set_corner_height(x, y, -1.0);
+            }
+        }
+        let chunk = Arc::new(chunk);
+        Neighbourhood::collect(ChunkPos::new(0, 0), |pos| (pos == chunk.pos).then(|| chunk.clone()))
+    }
+
+    #[test]
+    fn water_shows_only_over_covered_cells() {
+        let mesh = fluid_mesh(&river(), FluidKind::Water).expect("there is water");
+        let Some(VertexAttributeValues::Float32x3(positions)) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) else {
+            panic!("positions")
+        };
+        let Some(VertexAttributeValues::Float32x2(depths)) = mesh.attribute(Mesh::ATTRIBUTE_UV_1) else {
+            panic!("depths")
+        };
+        for (position, [depth, _]) in positions.iter().zip(depths) {
+            let x = position[0];
+            // The sheet spreads one cell past the river, each side.
+            assert!((9.0..=14.0).contains(&x), "a vertex at x {x}");
+            if (10.0..=13.0).contains(&x) {
+                // The river's own corners: at its level, two metres deep.
+                assert_eq!((position[1], *depth), (1.0, 2.0));
+            } else {
+                // Past it, under the ground (though the ground is lower
+                // than the river), so the dry land shows no water.
+                assert!(*depth < 0.0 && position[1] < 0.0, "depth {depth} at x {x}");
+            }
+        }
+    }
 }
