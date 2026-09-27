@@ -429,10 +429,12 @@ stands them up. Snapshots carry `resting` so everyone sees them sit.
 
 **Mana** comes with health in `Vitals { health, max_health, mana, max_mana }`.
 
-**The hotbar** is only a layout: ten slots of abilities or actions. It's saved
+**The hotbar** is only a layout: ten slots of abilities, actions or kinds of
+item (`Item(id)`: using one sends `UseItem` for the last slot in the bag
+holding that item, or says in chat that there are none left). It's saved
 with the profile and sent as `Hotbar { slots }` on joining. The client sends
 the whole bar after each change (`SetHotbar`), and `hotbar.rs` keeps only
-abilities the player knows (sending back the corrected bar if it had to change
+abilities the player knows (items stay, even with none left; sending back the corrected bar if it had to change
 anything). New abilities go in the first empty slot, and forgotten ones come off.
 
 ## Jumping

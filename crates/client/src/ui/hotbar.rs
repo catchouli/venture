@@ -1,10 +1,12 @@
-//! The hotbar, down the bottom right of the screen: ten slots for abilities and actions,
-//! used with keys 1 to 9 and 0 or by clicking. Abilities show their cooldown
-//! (a shade that shrinks, and the seconds left) and fade when there isn't
-//! enough mana for them.
+//! The hotbar, down the bottom right of the screen: ten slots for abilities, actions
+//! and kinds of item, used with keys 1 to 9 and 0 or by clicking. Abilities
+//! show their cooldown (a shade that shrinks, and the seconds left) and fade
+//! when there isn't enough mana for them. Items show how many are left, and
+//! fade when there are none; using one uses the last in the bag.
 //!
 //! Anything marked [`Draggable`] (abilities and actions in the character
-//! window, and the hotbar's own slots) can be dragged onto a slot. Dragging a
+//! window, items that can be used in the bag, and the hotbar's own slots)
+//! can be dragged onto a slot. Dragging a
 //! slot onto another swaps them; dragging it off the bar clears it. The
 //! server keeps the layout ([`ServerMessage::Hotbar`] when joining) and is
 //! sent every change ([`ClientMessage::SetHotbar`]).
@@ -23,6 +25,7 @@ use crate::content::ContentStore;
 use crate::interaction::abilities::{AbilityCooldowns, UseAbility};
 use crate::interaction::actions::{Action, PerformAction};
 use crate::network::{ClientState, FromServer, ToServer};
+use crate::ui::character_window::inventory::{PlayerInventory, UseItemKind};
 use crate::ui::layout::{LayoutBuilt, LayoutSystems, Ui, UiRoot};
 use crate::ui::text_input::KeyboardFocus;
 use crate::ui::tooltip::Tooltip;
@@ -49,6 +52,10 @@ const KEYS: [KeyCode; HOTBAR_SLOTS] = [
 ];
 /// Tint of an ability there isn't enough mana for.
 const NO_MANA_TINT: Color = Color::srgb(0.45, 0.5, 0.75);
+/// Tint of an item the player has none of.
+const NONE_LEFT_TINT: Color = Color::srgba(0.5, 0.5, 0.5, 0.35);
+/// Colour of the count of an item the player has none of.
+const NONE_LEFT_COUNT: Color = Color::srgb(0.95, 0.35, 0.3);
 
 /// Shows the hotbar.
 pub struct HotbarPlugin;
@@ -93,6 +100,11 @@ impl Default for HotbarLayout {
 #[derive(Component, Clone)]
 pub struct Draggable(pub HotbarEntry);
 
+/// A [`Draggable`] that clicking doesn't use from here (it does something
+/// of its own when clicked, like an item in the bag).
+#[derive(Component)]
+pub struct DragOnly;
+
 /// A slot, by position (0 for key 1).
 #[derive(Component)]
 struct Slot(usize);
@@ -113,6 +125,10 @@ struct CooldownShade(usize);
 #[derive(Component)]
 struct CooldownText(usize);
 
+/// How many of a slot's item are left.
+#[derive(Component)]
+struct CountText(usize);
+
 /// The icon following the mouse while dragging.
 #[derive(Component)]
 struct DragGhost;
@@ -129,6 +145,8 @@ struct Held {
     start: Vec2,
     /// Whether it has moved far enough to be a drag (rather than a click).
     dragging: bool,
+    /// Whether letting go without moving uses it.
+    clicks: bool,
 }
 
 /// Makes the icon that follows the mouse while dragging (hidden until then).
@@ -162,6 +180,9 @@ fn fill_in_layout(mut built: MessageReader<LayoutBuilt>, mut ui: Ui) {
             }
             if let Some(text) = part("cooldown_text") {
                 commands.entity(text).insert(CooldownText(index));
+            }
+            if let Some(count) = part("count") {
+                commands.entity(count).insert(CountText(index));
             }
             if let Some(key) = part("key") {
                 commands.entity(key).insert(Text::new(key_name(KEYS[index])));
@@ -207,7 +228,11 @@ fn show_bar(state: Res<State<ClientState>>, mut roots: Query<(&UiRoot, &mut Visi
 }
 
 /// An entry's icon, if it has one, and its name and description.
-fn describe(entry: &HotbarEntry, content: &ContentStore) -> (Option<Handle<Image>>, String, String) {
+fn describe(
+    entry: &HotbarEntry,
+    content: &ContentStore,
+    inventory: &PlayerInventory,
+) -> (Option<Handle<Image>>, String, String) {
     match entry {
         HotbarEntry::Ability(ability) => match content.abilities.get(ability) {
             Some(def) => {
@@ -224,6 +249,14 @@ fn describe(entry: &HotbarEntry, content: &ContentStore) -> (Option<Handle<Image
             let icon = action.icon().and_then(|icon| content.icons.get(icon)).cloned();
             (icon, action.title(), format!("/{}", action.name()))
         }
+        HotbarEntry::Item(item) => {
+            let name = content.items.get(item).map_or(item.clone(), |def| def.name.clone());
+            let body = match inventory.count(item) {
+                0 => "You have none left.".to_string(),
+                count => format!("You have {count}."),
+            };
+            (content.icon_for(item), name, body)
+        }
     }
 }
 
@@ -231,16 +264,29 @@ fn describe(entry: &HotbarEntry, content: &ContentStore) -> (Option<Handle<Image
 fn show_slots(
     layout: Res<HotbarLayout>,
     content: Res<ContentStore>,
+    inventory: Res<PlayerInventory>,
     mut slots: Query<(&Slot, &mut Tooltip)>,
     mut icons: Query<(&SlotIcon, &mut ImageNode, &mut Visibility)>,
-    mut labels: Query<(&SlotLabel, &mut Text)>,
+    mut labels: Query<(&SlotLabel, &mut Text), Without<CountText>>,
+    mut counts: Query<(&CountText, &mut Text, &mut TextColor), Without<SlotLabel>>,
+    mut count_colours: Local<Option<Color>>,
     rebuilt: Query<(), Added<SlotIcon>>,
 ) {
-    if !layout.is_changed() && !content.is_changed() && rebuilt.is_empty() {
+    if !layout.is_changed() && !content.is_changed() && !inventory.is_changed() && rebuilt.is_empty() {
         return;
     }
     let described: Vec<_> =
-        layout.0.iter().map(|entry| entry.as_ref().map(|entry| describe(entry, &content))).collect();
+        layout.0.iter().map(|entry| entry.as_ref().map(|entry| describe(entry, &content, &inventory))).collect();
+    for (CountText(index), mut text, mut colour) in &mut counts {
+        // (The layout's own colour, for counts that aren't zero.)
+        let usual = *count_colours.get_or_insert(colour.0);
+        let count = match &layout.0[*index] {
+            Some(HotbarEntry::Item(item)) => Some(inventory.count(item)),
+            _ => None,
+        };
+        text.0 = count.map(|count| count.to_string()).unwrap_or_default();
+        colour.0 = if count == Some(0) { NONE_LEFT_COUNT } else { usual };
+    }
     for (Slot(index), mut tooltip) in &mut slots {
         *tooltip = match &described[*index] {
             Some((_, title, body)) => Tooltip { title: title.clone(), body: body.clone() },
@@ -266,6 +312,7 @@ fn show_cooldowns(
     time: Res<Time>,
     layout: Res<HotbarLayout>,
     content: Res<ContentStore>,
+    inventory: Res<PlayerInventory>,
     cooldowns: Res<AbilityCooldowns>,
     vitals: Res<Vitals>,
     mut shades: Query<(&CooldownShade, &mut Node)>,
@@ -291,7 +338,12 @@ fn show_cooldowns(
     for (SlotIcon(index), mut image) in &mut icons {
         let cost = ability_in(*index).and_then(|ability| content.abilities.get(ability)).map_or(0, |def| def.mana);
         let short = mana.is_some_and(|mana| mana < cost);
-        image.color = if short { NO_MANA_TINT } else { Color::WHITE };
+        let none_left = matches!(&layout.0[*index], Some(HotbarEntry::Item(item)) if inventory.count(item) == 0);
+        image.color = match (none_left, short) {
+            (true, _) => NONE_LEFT_TINT,
+            (false, true) => NO_MANA_TINT,
+            (false, false) => Color::WHITE,
+        };
     }
 }
 
@@ -303,6 +355,7 @@ fn use_keys(
     layout: Res<HotbarLayout>,
     mut abilities: MessageWriter<UseAbility>,
     mut actions: MessageWriter<PerformAction>,
+    mut items: MessageWriter<UseItemKind>,
 ) {
     if focus.is_typing() || *state.get() != ClientState::Playing {
         return;
@@ -311,16 +364,17 @@ fn use_keys(
         if keys.just_pressed(*key)
             && let Some(entry) = &layout.0[index]
         {
-            activate(entry, &mut abilities, &mut actions);
+            activate(entry, &mut abilities, &mut actions, &mut items);
         }
     }
 }
 
-/// Uses an ability or does an action.
+/// Uses an ability or an item, or does an action.
 fn activate(
     entry: &HotbarEntry,
     abilities: &mut MessageWriter<UseAbility>,
     actions: &mut MessageWriter<PerformAction>,
+    items: &mut MessageWriter<UseItemKind>,
 ) {
     match entry {
         HotbarEntry::Ability(ability) => {
@@ -328,6 +382,9 @@ fn activate(
         }
         HotbarEntry::Action(action) => {
             actions.write(PerformAction(Action::from_hotbar(*action)));
+        }
+        HotbarEntry::Item(item) => {
+            items.write(UseItemKind(item.clone()));
         }
     }
 }
@@ -338,20 +395,21 @@ fn start_dragging(
     window: Single<&Window>,
     layout: Res<HotbarLayout>,
     mut drag: ResMut<Drag>,
-    draggables: Query<(&Interaction, &Draggable), Changed<Interaction>>,
+    draggables: Query<(&Interaction, &Draggable, Has<DragOnly>), Changed<Interaction>>,
     slots: Query<(&Interaction, &Slot), Changed<Interaction>>,
 ) {
     let Some(start) = window.cursor_position() else { return };
-    for (interaction, Draggable(entry)) in &draggables {
+    for (interaction, Draggable(entry), drag_only) in &draggables {
         if *interaction == Interaction::Pressed {
-            drag.0 = Some(Held { entry: entry.clone(), from_slot: None, start, dragging: false });
+            let clicks = !drag_only;
+            drag.0 = Some(Held { entry: entry.clone(), from_slot: None, start, dragging: false, clicks });
         }
     }
     for (interaction, Slot(index)) in &slots {
         if *interaction == Interaction::Pressed
             && let Some(entry) = &layout.0[*index]
         {
-            drag.0 = Some(Held { entry: entry.clone(), from_slot: Some(*index), start, dragging: false });
+            drag.0 = Some(Held { entry: entry.clone(), from_slot: Some(*index), start, dragging: false, clicks: true });
         }
     }
 }
@@ -361,6 +419,7 @@ fn drag_and_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     window: Single<&Window>,
     content: Res<ContentStore>,
+    inventory: Res<PlayerInventory>,
     mut drag: ResMut<Drag>,
     mut layout: ResMut<HotbarLayout>,
     slots: Query<(&Slot, &RelativeCursorPosition)>,
@@ -368,6 +427,7 @@ fn drag_and_drop(
     mut to_server: MessageWriter<ToServer>,
     mut abilities: MessageWriter<UseAbility>,
     mut actions: MessageWriter<PerformAction>,
+    mut items: MessageWriter<UseItemKind>,
 ) {
     let (mut ghost_node, mut ghost_image, mut ghost_visibility) = ghost.into_inner();
     let Some(held) = drag.0.as_mut() else {
@@ -378,7 +438,7 @@ fn drag_and_drop(
     if let Some(cursor) = cursor {
         if !held.dragging && cursor.distance(held.start) > DRAG_THRESHOLD {
             held.dragging = true;
-            ghost_image.image = describe(&held.entry, &content).0.unwrap_or_default();
+            ghost_image.image = describe(&held.entry, &content, &inventory).0.unwrap_or_default();
         }
         if held.dragging {
             ghost_node.left = px(cursor.x - ICON_SIZE / 2.0);
@@ -392,7 +452,9 @@ fn drag_and_drop(
     let Some(held) = drag.0.take() else { return };
     *ghost_visibility = Visibility::Hidden;
     if !held.dragging {
-        activate(&held.entry, &mut abilities, &mut actions);
+        if held.clicks {
+            activate(&held.entry, &mut abilities, &mut actions, &mut items);
+        }
         return;
     }
     let over = slots.iter().find(|(_, position)| position.cursor_over()).map(|(Slot(index), _)| *index);

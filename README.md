@@ -48,8 +48,9 @@ Controls: **left-click** the ground to run there, or run with **WASD**
 the camera, and the **mouse wheel** zooms. Click a player, NPC or monster to **select**
 it; click again to **follow** a player, **talk** to an NPC or **attack** a monster. **Escape** deselects. **Enter** chats. The character window's tabs each have a key (and a button on the toolbar, top right): **C** stats,
 **K** skills, **L** abilities, **I** inventory, **G** gear, **J** quests, **O** emotes.
-The **hotbar** down the bottom right uses abilities and actions with keys **1** to **0**
-(or a click). Drag abilities and actions onto it from the character window.
+The **hotbar** down the bottom right uses abilities, actions and items with keys **1** to **0**
+(or a click). Drag abilities and actions onto it from the character window, and food from
+your bag (click food in the bag to eat it).
 New players choose a name, a class (Fighter or Mage) and a body type, with a
 preview. Talking to an NPC opens a **dialogue window**. Type **/help** in chat for commands such as **/follow**, **/talk**, **/attack**, **/wave** and **/town**. Rabbits live around the town and goblins (which attack on sight) a little further out; your health is at the top left, and if you're knocked out you wake up in town.
 Admins (listed by name in `server.ron`) also have **/setlevel**, **/reset**, **/setclass** and **/setgender**. **F3** shows
