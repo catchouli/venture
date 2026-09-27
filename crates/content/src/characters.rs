@@ -59,6 +59,10 @@ pub struct CharacterModels {
     /// The hair colours players can choose (sRGB, 0 to 1), in order.
     #[serde(default)]
     pub hair_colours: Vec<(f32, f32, f32)>,
+    /// Creature models, by name: whole models on the characters' skeleton
+    /// (so they share the animations), which creatures' looks can name.
+    #[serde(default)]
+    pub creatures: BTreeMap<String, CreatureModel>,
     /// The skin tones players can choose (sRGB, 0 to 1), in order. The skin
     /// textures are tinted to match (see [`BodyModel::skin_colour`]).
     #[serde(default)]
@@ -95,6 +99,18 @@ pub const CLIPS: [(&str, &str); 13] = [
     ("hit", "being hit"),
     ("death", "dying"),
 ];
+
+/// A creature's model.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[serde(deny_unknown_fields)]
+pub struct CreatureModel {
+    /// Its model (on the characters' skeleton).
+    pub model: String,
+    /// Its size (1 as modelled).
+    #[serde(default = "one")]
+    pub scale: f32,
+}
 
 /// The body model for each body type.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -304,6 +320,9 @@ pub fn check_character_models(models: &CharacterModels, files: &[String]) -> Vec
     }
     for (name, hair) in &models.hair {
         file(format!("hair \"{name}\""), hair);
+    }
+    for (name, creature) in &models.creatures {
+        file(format!("creature \"{name}\""), &creature.model);
     }
     let mut part_problems = Vec::new();
     for (name, part) in &models.parts {

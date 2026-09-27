@@ -43,12 +43,41 @@ pub enum CreatureShape {
     Goblin,
 }
 
+/// What a field names (for the editor, which offers the names that exist,
+/// and follows renames). Marked on fields with `#[reflect(@Refers::Item)]`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+pub enum Refers {
+    /// An appearance's id.
+    Appearance,
+    /// A creature's id.
+    Creature,
+    /// An item's id.
+    Item,
+    /// An ability's id.
+    Ability,
+    /// A picture in `icons/`.
+    Icon,
+    /// A sound in `sounds/`.
+    Sound,
+    /// A script in `scripts/`.
+    Script,
+    /// An outfit part from `characters/characters.ron`.
+    Part,
+    /// A hairstyle or beard from `characters/characters.ron`.
+    Hair,
+    /// A bone of the characters' skeleton (see `venture_content::characters::BONES`).
+    Bone,
+    /// A creature model from `characters/characters.ron`.
+    CreatureModel,
+}
+
 /// How a creature looks: its shape and colours (sRGB, each 0 to 1).
 ///
 /// ```ron
 /// (shape: Rabbit, main: (0.6, 0.5, 0.4), trim: (0.9, 0.88, 0.85))
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct CreatureLook {
     /// Its shape.
@@ -57,6 +86,11 @@ pub struct CreatureLook {
     pub main: (f32, f32, f32),
     /// Its second colour (a rabbit's tail and belly, a goblin's clothes).
     pub trim: (f32, f32, f32),
+    /// Its model, from the content's `characters/characters.ron` (drawn
+    /// instead of the shape, once the models have loaded).
+    #[serde(default)]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::CreatureModel))]
+    pub model: Option<String>,
 }
 
 /// How an attack went, in a [`ServerMessage::Attacked`].

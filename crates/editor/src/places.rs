@@ -265,7 +265,7 @@ fn list_places(document: Res<Document>, world: Option<Res<WorldInfo>>, mut place
     add_places::<SpawnerDef>(&document, &settlements, &mut list, |spawner| {
         let creature = creatures.get(&spawner.creature);
         let aggro = creature.filter(|creature| creature.aggressive).map(|creature| creature.aggro_radius);
-        (Some((spawner.radius, aggro)), PlaceLook::Creature(creature.map(|creature| creature.look)))
+        (Some((spawner.radius, aggro)), PlaceLook::Creature(creature.map(|creature| creature.look.clone())))
     });
     add_places::<RespawnPoint>(&document, &settlements, &mut list, |_| (None, PlaceLook::Point));
     places.list = list;

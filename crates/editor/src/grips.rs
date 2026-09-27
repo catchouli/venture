@@ -118,6 +118,7 @@ fn dress_holder(
         hair_colour: Paint::Palette(0),
         sizes: [0; 3],
         shapes: Vec::new(),
+        creature: None,
     };
     // An appearance, if one's showing, is worn instead.
     let appearance = stage.appearance.as_ref().and_then(|id| {

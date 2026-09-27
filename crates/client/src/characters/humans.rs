@@ -94,6 +94,9 @@ pub struct HumanLook {
     /// Simple shapes for held things that may have no model (a staff):
     /// drawn in the hand, unless an outfit part is held there instead.
     pub shapes: Vec<ItemLook>,
+    /// A creature model (from the character models' `creatures`), worn
+    /// whole instead of a body, hair and clothes.
+    pub creature: Option<String>,
 }
 
 /// A colour: one of the content's palette (players choose these), or given.
@@ -137,6 +140,22 @@ impl HumanLook {
             hair_colour: Paint::Palette(features.hair_colour),
             sizes: [features.height, features.build, features.head],
             shapes,
+            creature: None,
+        }
+    }
+
+    /// A creature's look: its model, whole.
+    pub fn of_creature(model: &str) -> Self {
+        Self {
+            body: BodyType::Masculine,
+            hair: None,
+            beard: None,
+            parts: Vec::new(),
+            skin: Paint::Palette(0),
+            hair_colour: Paint::Palette(0),
+            sizes: [0; 3],
+            shapes: Vec::new(),
+            creature: Some(model.to_string()),
         }
     }
 
@@ -153,6 +172,7 @@ impl HumanLook {
                 hair_colour: Paint::Palette(0),
                 sizes: [0; 3],
                 shapes: Vec::new(),
+                creature: None,
             };
         };
         let parts = if appearance.parts.is_empty() {
@@ -172,6 +192,7 @@ impl HumanLook {
             hair_colour: colour(appearance.hair),
             sizes: [features.height, features.build, features.head],
             shapes: Vec::new(),
+            creature: None,
         }
     }
 }
@@ -243,10 +264,6 @@ struct Animations {
     clips: HashMap<String, (AnimationNodeIndex, f32)>,
     /// The upper-body versions of [`UPPER_BODY_CLIPS`].
     upper: HashMap<String, AnimationNodeIndex>,
-    /// Whether the lower body's bones are in their mask group yet (done
-    /// when the first person is put together, as the bones' paths are only
-    /// known then; everyone shares the skeleton).
-    lower_body_known: bool,
 }
 
 impl HumanModels {
@@ -286,7 +303,8 @@ fn load_models(
             let bodies =
                 [BodyType::Masculine, BodyType::Feminine, BodyType::Androgynous].map(|body| defs.bodies.of(body));
             let parts = defs.parts.values().flat_map(|part| [&part.masculine, &part.feminine]).flatten();
-            let names = bodies.iter().map(|body| &body.model).chain(defs.hair.values()).chain(parts);
+            let creatures = defs.creatures.values().map(|creature| &creature.model);
+            let names = bodies.iter().map(|body| &body.model).chain(defs.hair.values()).chain(parts).chain(creatures);
             for file in names.chain([&defs.animations]) {
                 files.insert(file.clone(), asset_server.load(content_path(file)));
             }
@@ -321,7 +339,7 @@ fn load_models(
             upper.insert(name.clone(), node);
         }
     }
-    models.animations = Some(Animations { graph: graphs.add(graph), clips: by_name, upper, lower_body_known: false });
+    models.animations = Some(Animations { graph: graphs.add(graph), clips: by_name, upper });
 }
 
 /// Whether everything a look needs has loaded.
@@ -334,6 +352,9 @@ fn look_ready(look: &HumanLook, models: &HumanModels, defs: &CharacterModels, as
 
 /// The model files a look is made of: body, hair, then parts.
 fn files_for(look: &HumanLook, defs: &CharacterModels) -> Vec<String> {
+    if let Some(creature) = &look.creature {
+        return defs.creatures.get(creature).map(|creature| creature.model.clone()).into_iter().collect();
+    }
     let body = defs.bodies.of(look.body);
     let mut files = vec![body.model.clone()];
     let hair = look.hair.as_ref().filter(|hair| defs.hair.contains_key(*hair)).unwrap_or(&body.hair);
@@ -389,6 +410,14 @@ fn dress_humans(
                 commands.spawn((WorldAssetRoot(handle), HumanScene(kind), ChildOf(person)));
             }
         };
+        // A creature is its model, whole.
+        if let Some(creature) = &look.creature {
+            if let Some(model) = defs.creatures.get(creature) {
+                spawn(&model.model, SceneKind::Body);
+            }
+            commands.entity(person).insert((Dressed, Assembling)).remove::<HumanRig>();
+            continue;
+        }
         spawn(&body.model, SceneKind::Body);
         let hair = look.hair.as_ref().filter(|hair| defs.hair.contains_key(*hair)).unwrap_or(&body.hair);
         let hides_hair = worn_parts(look, defs).iter().any(|(_, part)| part.hides_hair);
@@ -500,7 +529,8 @@ impl Assembly<'_, '_> {
         for &root in scene_roots {
             let Ok(HumanScene(kind)) = self.scenes.get(root).cloned() else { continue };
             match kind {
-                SceneKind::Body => self.prepare_body(root, look, defs, &covered),
+                SceneKind::Body if look.creature.is_none() => self.prepare_body(root, look, defs, &covered),
+                SceneKind::Body => {}
                 SceneKind::Hair | SceneKind::Worn => {
                     self.bind_to(root, &bones);
                     if matches!(kind, SceneKind::Hair)
@@ -525,6 +555,12 @@ impl Assembly<'_, '_> {
         }
 
         size_bones(&mut self.transforms, body_root, &bones, look.sizes);
+        // (Creatures are the size their model says.)
+        if let Some(scale) = look.creature.as_ref().and_then(|creature| defs.creatures.get(creature)).map(|c| c.scale)
+            && let Ok(mut transform) = self.transforms.get_mut(body_root)
+        {
+            transform.scale *= scale;
+        }
 
         // Simple shapes for held things without a model, where nothing else is held.
         let shapes: Vec<ItemLook> = look
@@ -552,13 +588,19 @@ impl Assembly<'_, '_> {
             self.commands.entity(entity).insert((target, AnimatedBy(armature)));
         }
         if let Some(animations) = &mut self.models.animations {
-            if !animations.lower_body_known
+            // Each person's lower-body bones go in the mask group (their
+            // paths are only known once they're put together; a creature's
+            // skeleton can lack some of the humans' bones). Only changes the
+            // graph when there's something new.
+            let new = self.graphs.get(&animations.graph).map(|graph| {
+                lower_body.iter().copied().filter(|target| !graph.mask_groups.contains_key(target)).collect::<Vec<_>>()
+            });
+            if let Some(new) = new.filter(|new| !new.is_empty())
                 && let Some(mut graph) = self.graphs.get_mut(&animations.graph)
             {
-                for target in lower_body {
+                for target in new {
                     graph.add_target_to_mask_group(target, LOWER_BODY);
                 }
-                animations.lower_body_known = true;
             }
             self.commands.entity(armature).insert((
                 AnimationPlayer::default(),

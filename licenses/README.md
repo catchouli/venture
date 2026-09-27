@@ -12,8 +12,9 @@ Each licence file sits beside this one. When adding anything from outside
 
 ## 3D models, textures and animations
 
-All by [Quaternius](https://quaternius.com), released as CC0 1.0 Universal
-(public domain: no attribution needed, but it's good to give it). They're
+All by [Quaternius](https://quaternius.com). Most are CC0 1.0 Universal
+(public domain: no attribution needed, but it's good to give it); one is
+under Quaternius's own licence (below). They're
 copied into `content/characters/` by `tools/import_characters.py`, which
 shrinks their textures and trims their animations.
 
@@ -23,6 +24,20 @@ shrinks their textures and trims their animations.
 | Modular Character Outfits – Fantasy (Standard) | Peasant and ranger outfit parts | CC0 ([quaternius/modular-character-outfits-fantasy.txt](quaternius/modular-character-outfits-fantasy.txt)) |
 | Universal Animation Library (Standard) | Character animations (`animations.glb`) | CC0 ([quaternius/universal-animation-library.txt](quaternius/universal-animation-library.txt)) |
 | Fantasy Props MegaKit (Standard) | The bronze sword and wooden shield | CC0 ([quaternius/fantasy-props-megakit.txt](quaternius/fantasy-props-megakit.txt)) |
+
+
+### Under the Quaternius Asset License (QAL) v1.0
+
+| Pack | What we use | Licence |
+| --- | --- | --- |
+| Bestiary – Dungeon Monsters Kit (Standard) | The Imp and the Puglin (goblins), on the same skeleton as the characters (`content/characters/imp.*`, `puglin.*`, `t_imp_*`, `t_puglin_*`) | QAL v1.0 ([quaternius/bestiary-dungeon-monsters-kit.txt](quaternius/bestiary-dungeon-monsters-kit.txt)) |
+
+The QAL allows using the models in the game, commercially and without
+credit, but **not redistributing the models themselves as assets** (on
+their own, or as a pack, even modified). Shipping them inside the game is
+fine. Publishing the raw files (say, if this repository were ever made
+public) could count as redistributing them, so check the licence before
+doing that, or keep these files out of anything published.
 
 ## Everything else
 
