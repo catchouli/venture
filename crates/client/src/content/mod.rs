@@ -252,16 +252,23 @@ fn start_download_when_needed(
     download.0 = Some(task);
 }
 
-/// Downloads the manifest, then every file whose hash is new, all at once
-/// (so a distant server's round trips overlap). Each is asked for with its
-/// hash, so the browser can keep it for next time.
+/// How many content files download at once. (Browsers queue what's beyond
+/// their own limit, and can share a connection over HTTP/2; on desktop,
+/// each is its own connection.)
+const PARALLEL_DOWNLOADS: usize = if cfg!(target_arch = "wasm32") { 16 } else { 6 };
+/// How many times a content file is tried before giving up.
+const DOWNLOAD_ATTEMPTS: u32 = 3;
+
+/// Downloads the manifest, then every file whose hash is new, several at a
+/// time (so a distant server's round trips overlap). Each is asked for with
+/// its hash, so the browser can keep it for next time.
 async fn download_over_http(
     base_url: String,
     known: HashMap<String, ContentFile>,
     progress: ContentProgress,
 ) -> Result<Downloaded, String> {
-    use crate::network::http::{fetch, start_fetch};
-    let manifest_bytes = fetch(format!("{base_url}/{CLIENT_MANIFEST_FILE}")).await?;
+    use crate::network::http::{fetch_retrying, start_fetch};
+    let manifest_bytes = fetch_retrying(format!("{base_url}/{CLIENT_MANIFEST_FILE}"), DOWNLOAD_ATTEMPTS).await?;
     let manifest = ContentManifest::from_ron(&String::from_utf8_lossy(&manifest_bytes))?;
     let wanted: Vec<&ManifestFile> = changed_files(&manifest, &known)
         .iter()
@@ -269,11 +276,24 @@ async fn download_over_http(
         .collect();
     progress.0.done.store(0, Ordering::Relaxed);
     progress.0.total.store(wanted.iter().map(|file| file.size).sum(), Ordering::Relaxed);
-    let started: Vec<_> =
-        wanted.iter().map(|file| (file, start_fetch(format!("{base_url}/{}?h={}", file.path, file.hash)))).collect();
+    let url = |file: &ManifestFile| format!("{base_url}/{}?h={}", file.path, file.hash);
+    // A few at a time, starting the next as each arrives. (All at once
+    // overflowed the server's queue of new connections on desktop, which
+    // then turned some away.)
+    let mut waiting = wanted.into_iter();
+    let mut under_way = std::collections::VecDeque::new();
     let mut new_files = HashMap::new();
-    for (file, download) in started {
-        let bytes = download.await?;
+    loop {
+        while under_way.len() < PARALLEL_DOWNLOADS
+            && let Some(file) = waiting.next()
+        {
+            under_way.push_back((file, start_fetch(url(file))));
+        }
+        let Some((file, download)) = under_way.pop_front() else { break };
+        let bytes = match download.await {
+            Ok(bytes) => bytes,
+            Err(_) => fetch_retrying(url(file), DOWNLOAD_ATTEMPTS - 1).await?,
+        };
         progress.0.done.fetch_add(file.size, Ordering::Relaxed);
         new_files.insert(file.path.clone(), bytes);
     }
