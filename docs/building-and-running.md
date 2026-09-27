@@ -19,7 +19,13 @@ cargo run --release -p venture_worldgen --bin bake [folder] [seed]
 ```
 
 Bake again whenever world generation changes. The manifest records the
-generator version.
+generator version. The bake also draws the world map (`world/map/`: tiles
+and place names, see [plan-map.md](plan-map.md)); to draw just the map
+again for a world already baked (such as one baked before there were maps):
+
+```sh
+cargo run --release -p venture_worldgen --bin bake_map [folder]
+```
 
 ## The content pack
 
@@ -183,9 +189,10 @@ runs start with it hidden.
 | `VENTURE_MOVE_TO=x,y` | Once loaded, run to `(x, y)` as if it were clicked. |
 | `VENTURE_SAY=text` | Say this in chat once in the game (separate several messages with `\|`). Chat commands work too, such as `/talk`. |
 | `VENTURE_SAY_DELAY=seconds` | Wait this long once in the game before `VENTURE_SAY` (to answer something another client does first, such as `/accept` a party invitation). |
+| `VENTURE_MAP_ZOOM=3.0` | How zoomed in the map opens (with `VENTURE_OPEN=map`), in metres a pixel. |
 | `VENTURE_USE=air_blast` | Use these abilities (ids, separated with `\|`) once in the game, on the selected target (after `VENTURE_SELECT_NEAREST` has picked one). Automated runs are silent. |
 | `VENTURE_SELECT_NEAREST=1` | Select the character (player or NPC) nearest yours once one is in sight (to check the target frame, or with `VENTURE_SAY=/talk`). |
-| `VENTURE_OPEN=stats` | Open the character window on a tab once in the game (`party`, `stats`, `skills`, `abilities`, `inventory`, `gear`, `quests` or `emotes`). |
+| `VENTURE_OPEN=stats` | Open the character window on a tab once in the game (`party`, `stats`, `skills`, `abilities`, `inventory`, `gear`, `quests` or `emotes`), or the map (`map`). |
 | `VENTURE_NAME=name`, `VENTURE_CLASS=mage`, `VENTURE_BODY=feminine` | The name, class and body type automated runs make new characters with. `VENTURE_NAME=cat` makes an admin (with the default `server.ron`), to try admin commands with `VENTURE_SAY=/setlevel 5`. |
 | `VENTURE_LOOK=height=5,build=-3,head=2,hair=long,beard=beard,hair_colour=3,skin=5` | The looks automated runs make new characters with, and the character creation screen starts with (any left out are the usual). |
 | `VENTURE_SHOW_CREATION=1` | Show character creation even in an automated run, and take the screenshot there (with `VENTURE_CLASS` and `VENTURE_BODY` choosing what the preview shows). |

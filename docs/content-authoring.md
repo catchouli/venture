@@ -228,7 +228,7 @@ The pieces (the placeholders are made by `python3 tools/placeholder_ui.py`):
 | --- | --- | --- | --- |
 | `window` | the frame of a window (character window, shop, dialogue) | 64×64 | 12 |
 | `header` | the strip across the top of a window, behind its title | 64×24 | 4 |
-| `panel` | a smaller frame (player and target frames, chat, hotbar, toolbar) | 32×32 | 6 |
+| `panel` | a smaller frame (player and target frames, chat, hotbar, toolbar, minimap) | 32×32 | 6 |
 | `chat` | the chat log's backing (usually see-through) | 32×32 | 5 |
 | `tooltip` | a tooltip's frame | 32×32 | 5 |
 | `button` | a button with words on it | 48×24 | 6 |

@@ -18,7 +18,7 @@ venture_worldgen ──► venture_world     (the bake tool; nothing at runtime 
 | Crate | Purpose |
 | --- | --- |
 | `venture_world` | Core world data: units, coordinates, chunks, terrain cells, biomes, liquids, props, and the baked world file format. Plain data that every other part of the game shares. |
-| `venture_worldgen` | The world generation engine, and the `bake` tool that writes the world to disk. |
+| `venture_worldgen` | The world generation engine, and the `bake` tool that writes the world (and its map) to disk. |
 | `venture_navigation` | Where characters can walk (blocked cells per chunk) and pathfinding (A* plus line-of-sight smoothing). |
 | `venture_simulation` | Game rules both sides run: movement, speed and input validation. The client uses them to predict, and the server to decide. |
 | `venture_rpg` | The RPG rules: stats and modifiers, dice, experience and levels, points per level, health, mana, armour class, attack speed, and attack resolution. Based on the SRD 5.1 (CC BY 4.0), adapted for real time. |
@@ -79,6 +79,10 @@ src/
     launch.rs          which server to use
     token.rs           the login token
     local_server.rs    --local mode: the game server inside the client
+  map/               the minimap (top right) and the full map (M): map views drawing
+                     baked tiles, place names and markers (docs/plan-map.md)
+    mod.rs (MapMarker), tiles.rs (fetching tiles and names), view.rs (MapView),
+    minimap.rs, window.rs
   world/             the world as the client shows it
     source.rs          loading the manifest and chunk files
     streaming.rs       chunks around the camera: data, meshes, unloading
@@ -114,7 +118,7 @@ src/
     layout.rs          builds windows from the content's layout files (docs/ui-layouts.md)
     theme.rs           the interface's look: each frame, button, slot and bar drawn
                        with the content's theme pictures (nine-slices), or plain
-    toolbar.rs (an icon button for each of the window's tabs), chat.rs, dialogue_window.rs,
+    toolbar.rs (an icon button for each of the window's tabs, along the bottom), chat.rs, dialogue_window.rs,
     shop.rs, character_creation.rs,
     vitals.rs (your name, level, health and mana, top left),
     party.rs (your party and invitation, and the frames for the other members under yours),

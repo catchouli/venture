@@ -3,7 +3,8 @@
 //!
 //! A baked world is a folder containing:
 //! - `manifest.ron`: a [`WorldManifest`] describing the world,
-//! - `chunks/{x}_{y}.bin`: one file per chunk (see [`encode_chunk`]).
+//! - `chunks/{x}_{y}.bin`: one file per chunk (see [`encode_chunk`]),
+//! - `map/`: the world map, if it has one (see [`crate::MapInfo`]).
 //!
 //! Heights and liquid levels are stored as whole centimetres (`i16`, so from
 //! -327 m to 327 m), which keeps chunk files small. Everything else is stored
@@ -38,6 +39,10 @@ pub struct WorldManifest {
     /// them (see `docs/content-authoring.md`).
     #[serde(default)]
     pub settlements: Vec<SettlementInfo>,
+    /// The world map's layout, if the world has one (worlds baked before
+    /// maps don't: `bake_map` makes one).
+    #[serde(default)]
+    pub map: Option<crate::MapInfo>,
 }
 
 /// A settlement site in a baked world.
@@ -215,6 +220,7 @@ mod tests {
             seed: 7,
             spawn_point: (10.0, 20.0),
             settlements: vec![SettlementInfo { position: (10.0, 20.0), biome: Biome::Meadow }],
+            map: Some(crate::MapInfo::for_world(4096)),
         };
         assert_eq!(WorldManifest::from_ron(&manifest.to_ron()).unwrap(), manifest);
     }

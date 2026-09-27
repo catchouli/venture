@@ -9,9 +9,8 @@ rust-version.workspace = true
 [dependencies]
 venture_world.workspace = true
 noise.workspace = true
-
-[dev-dependencies]
-image.workspace = true
+# (For baking the world map's tiles: see `map_render`.)
+image = { workspace = true, features = ["png", "jpeg"] }
 
 [lints]
 workspace = true

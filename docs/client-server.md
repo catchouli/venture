@@ -106,7 +106,8 @@ World generation is a **build step**, not something done while playing:
 1. **Bake:** a command-line tool runs the generator, applies authored overlay
    stamps, and writes the finished world to disk: a manifest (world
    settings, generator version, bake date) plus one file per chunk with its
-   heights, cells and props. Because this happens offline, the generator can
+   heights, cells and props, and the world map drawn from them (tiles and
+   place names: see [plan-map.md](plan-map.md)). Because this happens offline, the generator can
    afford to be slow and thorough (for example, erosion simulation later).
 2. **Server:** loads the baked world. Collision and navigation data
    (`ChunkObstacles` now, the multi-layer nav grid later) are built from it at

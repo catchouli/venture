@@ -19,6 +19,8 @@ mod distance_field;
 mod geometry;
 mod grid;
 mod hydrology;
+pub mod map_labels;
+pub mod map_render;
 mod noise_fields;
 mod overlay;
 mod props;
