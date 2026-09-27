@@ -44,5 +44,5 @@ pub use combat::{AttackOutcome, hit_chance, resolve_attack};
 pub use derived::{DerivedStats, Gear, UNARMED_DAMAGE};
 pub use dice::Dice;
 pub use items::Healing;
-pub use progression::{LevelUp, MAX_LEVEL, Progress, split_experience};
+pub use progression::{LevelUp, MAX_LEVEL, MAX_SKILL_LEVEL, Progress, split_experience};
 pub use stats::{Stat, Stats, modifier};
