@@ -36,7 +36,6 @@ use crate::creatures::{Creature, Dead};
 use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position};
 use crate::equipment::{Equipment, player_look};
 use crate::link::Link;
-use crate::npcs::resolve_placement;
 use crate::world::ServerWorld;
 
 /// Players within this distance (in metres) see a fight: attacks and deaths.
@@ -458,7 +457,7 @@ impl Fights<'_, '_> {
 pub fn nearest_respawn_point(pack: &ContentPack, world: &ServerWorld, at: Point) -> (String, Point) {
     pack.respawn_points
         .iter()
-        .filter_map(|point| Some((point.name.clone(), resolve_placement(&point.at, &world.manifest)?)))
+        .map(|point| (point.name.clone(), point.at))
         .min_by(|a, b| distance(a.1, at).total_cmp(&distance(b.1, at)))
         .unwrap_or_else(|| ("the town square".to_string(), world.manifest.spawn_point))
 }

@@ -101,8 +101,7 @@ One window with tabs, each with its own key:
   - Name, level, appearance, stats, health, armour class and attack.
   - Aggressive or not, with an aggro radius.
   - Wander radius and experience reward.
-- **Spawners** in the content pack: a creature, a placement (relative to a
-  settlement, like NPCs), a radius, and a respawn time.
+- **Spawners** in the content pack: a creature, a position (like NPCs), a radius, and a respawn time.
   - Each spawner keeps one creature alive. When it dies, the spawner waits
     and spawns another somewhere in its radius.
   - Hot reload works as it does for NPCs.
@@ -134,8 +133,8 @@ each other.
   and a flash).
 - **Player death:** the player comes back at the **nearest respawn point**,
   with full health and no loss. Respawn points are a master list in the
-  content pack (`respawn_points.ron`), one or more per town, each placed
-  relative to its settlement. The server picks the one closest to where the
+  content pack (`respawn_points.ron`), one or more per town, each at a world
+  position. The server picks the one closest to where the
   player died.
 - **Health comes back** slowly out of combat, and faster while resting.
 - **What you see:** floating damage numbers, "miss", health bars over hurt

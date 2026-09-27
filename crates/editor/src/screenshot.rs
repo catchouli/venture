@@ -81,9 +81,8 @@ fn choose_place(
     if *done {
         return;
     }
-    if let Some(place) = places.list.iter().find(|place| place.key == key)
-        && let Some((x, y)) = place.position
-    {
+    if let Some(place) = places.list.iter().find(|place| place.key == key) {
+        let (x, y) = place.position;
         selection.0 = Some((place.kind, place.key.clone()));
         camera.go_to(Vec3::new(x, 0.0, y));
         *done = true;

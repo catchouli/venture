@@ -4,8 +4,8 @@
 //! The [`Document`] stays the one truth. Each placed thing gets a marker
 //! entity ([`PlaceMarker`]), kept in step with the document whenever it
 //! changes. Clicking a marker chooses it; dragging it moves only the marker,
-//! and letting go writes the new placement into its entry (as one undo
-//! step), relative to its settlement as before.
+//! and letting go writes the new position into its entry (as one undo
+//! step).
 
 use std::collections::HashMap;
 
@@ -18,9 +18,8 @@ use venture_client::characters::model::{CharacterAssets, appearance_look, spawn_
 use venture_client::common::coords::{from_bevy, to_bevy};
 use venture_client::content::ContentStore;
 use venture_client::world::query::{ground_height, raycast_ground};
-use venture_client::world::source::WorldInfo;
 use venture_client::world::streaming::ChunkStore;
-use venture_content::{AppearanceDef, CreatureDef, NpcDef, Placement, RespawnPoint, Settlements, SpawnerDef};
+use venture_content::{AppearanceDef, CreatureDef, NpcDef, RespawnPoint, SpawnerDef};
 use venture_protocol::CreatureLook;
 
 use crate::camera::EditorCamera;
@@ -74,20 +73,20 @@ impl PlaceKind {
 pub trait Placeable: Entry {
     /// Its kind.
     const KIND: PlaceKind;
-    /// Where it is.
-    fn at(&self) -> &Placement;
+    /// Where it is (metres).
+    fn at(&self) -> (f32, f32);
     /// Where it is, to change.
-    fn at_mut(&mut self) -> &mut Placement;
+    fn at_mut(&mut self) -> &mut (f32, f32);
     /// What to call it in the world view.
     fn label(&self) -> String;
 }
 
 impl Placeable for NpcDef {
     const KIND: PlaceKind = PlaceKind::Npc;
-    fn at(&self) -> &Placement {
-        &self.at
+    fn at(&self) -> (f32, f32) {
+        self.at
     }
-    fn at_mut(&mut self) -> &mut Placement {
+    fn at_mut(&mut self) -> &mut (f32, f32) {
         &mut self.at
     }
     fn label(&self) -> String {
@@ -97,10 +96,10 @@ impl Placeable for NpcDef {
 
 impl Placeable for SpawnerDef {
     const KIND: PlaceKind = PlaceKind::Spawner;
-    fn at(&self) -> &Placement {
-        &self.at
+    fn at(&self) -> (f32, f32) {
+        self.at
     }
-    fn at_mut(&mut self) -> &mut Placement {
+    fn at_mut(&mut self) -> &mut (f32, f32) {
         &mut self.at
     }
     fn label(&self) -> String {
@@ -110,14 +109,14 @@ impl Placeable for SpawnerDef {
 
 impl Placeable for RespawnPoint {
     const KIND: PlaceKind = PlaceKind::RespawnPoint;
-    fn at(&self) -> &Placement {
-        &self.at
+    fn at(&self) -> (f32, f32) {
+        self.at
     }
-    fn at_mut(&mut self) -> &mut Placement {
+    fn at_mut(&mut self) -> &mut (f32, f32) {
         &mut self.at
     }
     fn label(&self) -> String {
-        format!("Wake up: {}", self.name)
+        format!("Respawn: {}", self.name)
     }
 }
 
@@ -135,8 +134,8 @@ pub struct Place {
     pub key: String,
     /// What to call it.
     pub label: String,
-    /// Where it is in the world (metres), if its settlement exists.
-    pub position: Option<(f32, f32)>,
+    /// Where it is in the world (metres).
+    pub position: (f32, f32),
     /// For spawners: how far from it creatures appear, and how far away
     /// aggressive ones notice players (if they do).
     pub radii: Option<(f32, Option<f32>)>,
@@ -161,9 +160,8 @@ pub enum PlaceLook {
 pub struct Places {
     /// The things, by kind, in document order.
     pub list: Vec<Place>,
-    /// The document revision they're from, and whether the world's
-    /// settlements were known then.
-    made_from: Option<(u64, bool)>,
+    /// The document revision they're from.
+    made_from: Option<u64>,
 }
 
 /// The chosen placed thing, by kind and key (which survive other entries
@@ -214,15 +212,6 @@ struct MarkerAssets {
     shapes: HashMap<PlaceKind, (Handle<Mesh>, Handle<StandardMaterial>)>,
 }
 
-/// Where the world's settlements are, once the world has loaded.
-pub fn settlements(world: &WorldInfo) -> Settlements {
-    let manifest = &world.0;
-    Settlements {
-        starting: manifest.starting_settlement().map(|settlement| settlement.position),
-        all: manifest.settlements.iter().map(|settlement| settlement.position).collect(),
-    }
-}
-
 fn make_marker_assets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -239,13 +228,11 @@ fn make_marker_assets(
     commands.insert_resource(MarkerAssets { shapes });
 }
 
-/// Works out every placed thing whenever the document (or the world) changes.
-fn list_places(document: Res<Document>, world: Option<Res<WorldInfo>>, mut places: ResMut<Places>) {
-    let key = (document.revision, world.is_some());
-    if places.made_from == Some(key) {
+/// Works out every placed thing whenever the document changes.
+fn list_places(document: Res<Document>, mut places: ResMut<Places>) {
+    if places.made_from == Some(document.revision) {
         return;
     }
-    let settlements = world.map(|world| settlements(&world)).unwrap_or_default();
     let appearances: HashMap<String, AppearanceDef> = document
         .find::<AppearanceDef>()
         .map(|(_, all)| {
@@ -259,22 +246,21 @@ fn list_places(document: Res<Document>, world: Option<Res<WorldInfo>>, mut place
         })
         .unwrap_or_default();
     let mut list = Vec::new();
-    add_places::<NpcDef>(&document, &settlements, &mut list, |npc| {
+    add_places::<NpcDef>(&document, &mut list, |npc| {
         (None, PlaceLook::Person(appearances.get(&npc.appearance).cloned()))
     });
-    add_places::<SpawnerDef>(&document, &settlements, &mut list, |spawner| {
+    add_places::<SpawnerDef>(&document, &mut list, |spawner| {
         let creature = creatures.get(&spawner.creature);
         let aggro = creature.filter(|creature| creature.aggressive).map(|creature| creature.aggro_radius);
         (Some((spawner.radius, aggro)), PlaceLook::Creature(creature.map(|creature| creature.look.clone())))
     });
-    add_places::<RespawnPoint>(&document, &settlements, &mut list, |_| (None, PlaceLook::Point));
+    add_places::<RespawnPoint>(&document, &mut list, |_| (None, PlaceLook::Point));
     places.list = list;
-    places.made_from = Some(key);
+    places.made_from = Some(document.revision);
 }
 
 fn add_places<T: Placeable>(
     document: &Document,
-    settlements: &Settlements,
     list: &mut Vec<Place>,
     extras: impl Fn(&T) -> (Option<(f32, Option<f32>)>, PlaceLook),
 ) {
@@ -287,7 +273,7 @@ fn add_places<T: Placeable>(
                 entry: (collection, f, i),
                 key: entry.key(),
                 label: entry.label(),
-                position: entry.at().position(settlements),
+                position: entry.at(),
                 radii,
                 look,
             });
@@ -316,7 +302,7 @@ fn sync_markers(
     let mut existing: HashMap<(PlaceKind, String), Entity> =
         markers.iter().map(|(entity, marker, _)| ((marker.kind, marker.key.clone()), entity)).collect();
     for place in &places.list {
-        let Some((x, y)) = place.position else { continue };
+        let (x, y) = place.position;
         let height = ground_height(&store, x, y).unwrap_or(0.0);
         let at = Transform::from_translation(to_bevy(x, y, height));
         if let Some(entity) = existing.remove(&(place.kind, place.key.clone())) {
@@ -395,7 +381,6 @@ fn pick_and_drag(
     window: Single<&Window, With<PrimaryWindow>>,
     camera: Single<(&Camera, &GlobalTransform), With<EditorCamera>>,
     store: Res<ChunkStore>,
-    world: Option<Res<WorldInfo>>,
     mut drag: ResMut<Drag>,
     mut selection: ResMut<Selection>,
     mut document: ResMut<Document>,
@@ -439,36 +424,35 @@ fn pick_and_drag(
     // Let go: a drag writes the marker's new place into its entry.
     let moving = drag.moving;
     *drag = Drag::default();
-    let (Some(world), true, Ok((_, marker, transform))) = (world, moving, markers.get(entity)) else { return };
+    let (true, Ok((_, marker, transform))) = (moving, markers.get(entity)) else { return };
     let point = from_bevy(transform.translation);
-    let settlements = settlements(&world);
     let key = marker.key.clone();
     let moved = match marker.kind {
-        PlaceKind::Npc => move_entry::<NpcDef>(&mut document, &key, point, &settlements),
-        PlaceKind::Spawner => move_entry::<SpawnerDef>(&mut document, &key, point, &settlements),
-        PlaceKind::RespawnPoint => move_entry::<RespawnPoint>(&mut document, &key, point, &settlements),
+        PlaceKind::Npc => move_entry::<NpcDef>(&mut document, &key, point),
+        PlaceKind::Spawner => move_entry::<SpawnerDef>(&mut document, &key, point),
+        PlaceKind::RespawnPoint => move_entry::<RespawnPoint>(&mut document, &key, point),
     };
     if let Some((collection, file)) = moved {
         document.changed(collection, file, time.elapsed_secs_f64());
     }
 }
 
-/// Moves an entry (by key) to a point. Returns its (collection, file).
-fn move_entry<T: Placeable>(
-    document: &mut Document,
-    key: &str,
-    point: (f32, f32),
-    settlements: &Settlements,
-) -> Option<(usize, usize)> {
+/// Moves an entry (by key) to a point, rounded to the centimetre (so it
+/// saves as tidy numbers). Returns its (collection, file).
+fn move_entry<T: Placeable>(document: &mut Document, key: &str, (x, y): (f32, f32)) -> Option<(usize, usize)> {
     let (collection, kind) = document.find_mut::<T>()?;
     for (f, file) in kind.files_mut().iter_mut().enumerate() {
         if let Some(entry) = file.entries.iter_mut().find(|entry| entry.key() == key) {
-            let moved = entry.at().moved_to(point, settlements);
-            *entry.at_mut() = moved;
+            *entry.at_mut() = (round_to_centimetres(x), round_to_centimetres(y));
             return Some((collection, f));
         }
     }
     None
+}
+
+/// Rounds to the nearest centimetre.
+fn round_to_centimetres(metres: f32) -> f32 {
+    (metres * 100.0).round() / 100.0
 }
 
 /// Draws spawners' radii on the ground, and a ring around the chosen thing.
@@ -513,12 +497,10 @@ fn ground_circle(gizmos: &mut Gizmos, store: &ChunkStore, centre: Vec3, radius: 
 }
 
 /// Adds a new placed thing of type `T` at a point, made from RON with
-/// `{id}`, `{x}` and `{y}` filled in, in the kind's first file. It's placed
-/// relative to the starting settlement when there is one. Returns its key.
+/// `{id}` filled in, in the kind's first file. Returns its key.
 fn add_new<T: Placeable>(
     document: &mut Document,
-    point: (f32, f32),
-    settlements: &Settlements,
+    (x, y): (f32, f32),
     prefix: &str,
     template: &str,
     now: f64,
@@ -528,9 +510,7 @@ fn add_new<T: Placeable>(
     let key = (1..).map(|n| format!("{prefix}_{n}")).find(|key| !taken.contains(key)).unwrap_or_default();
     let text = template.replace("{id}", &key);
     let mut entry: T = ron::from_str(&text).map_err(|error| error.to_string())?;
-    let relative = Placement::StartingSettlement { offset: (0.0, 0.0) };
-    let base = if settlements.starting.is_some() { relative } else { Placement::Position((0.0, 0.0)) };
-    *entry.at_mut() = base.moved_to(point, settlements);
+    *entry.at_mut() = (round_to_centimetres(x), round_to_centimetres(y));
     let file = kind.files_mut().first_mut().ok_or("there's no file to add it to yet")?;
     file.entries.push(entry);
     document.changed(collection, 0, now);
@@ -538,33 +518,26 @@ fn add_new<T: Placeable>(
 }
 
 /// Adds a new NPC, spawner or respawn point at a point. Returns its key.
-pub fn add_place(
-    document: &mut Document,
-    kind: PlaceKind,
-    point: (f32, f32),
-    settlements: &Settlements,
-    now: f64,
-) -> Result<String, String> {
+pub fn add_place(document: &mut Document, kind: PlaceKind, point: (f32, f32), now: f64) -> Result<String, String> {
     let first_key = |collection: Option<Vec<String>>| collection.and_then(|keys| keys.into_iter().next());
     match kind {
         PlaceKind::Npc => {
             let appearance = first_key(document.find::<AppearanceDef>().map(|(_, all)| keys_of(all.files())))
                 .ok_or("make an appearance first")?;
-            let template =
-                format!(r#"(id: "{{id}}", name: "New person", appearance: "{appearance}", at: Position((0.0, 0.0)))"#);
-            add_new::<NpcDef>(document, point, settlements, "npc", &template, now)
+            let template = format!(r#"(id: "{{id}}", name: "New person", appearance: "{appearance}", at: (0.0, 0.0))"#);
+            add_new::<NpcDef>(document, point, "npc", &template, now)
         }
         PlaceKind::Spawner => {
             let creature = first_key(document.find::<CreatureDef>().map(|(_, all)| keys_of(all.files())))
                 .ok_or("make a creature first")?;
             let template = format!(
-                r#"(id: "{{id}}", creature: "{creature}", at: Position((0.0, 0.0)), radius: 8.0, respawn_seconds: 30.0)"#
+                r#"(id: "{{id}}", creature: "{creature}", at: (0.0, 0.0), radius: 8.0, respawn_seconds: 30.0)"#
             );
-            add_new::<SpawnerDef>(document, point, settlements, "spawner", &template, now)
+            add_new::<SpawnerDef>(document, point, "spawner", &template, now)
         }
         PlaceKind::RespawnPoint => {
-            let template = r#"(name: "{id}", at: Position((0.0, 0.0)))"#;
-            add_new::<RespawnPoint>(document, point, settlements, "respawn point", template, now)
+            let template = r#"(name: "{id}", at: (0.0, 0.0))"#;
+            add_new::<RespawnPoint>(document, point, "respawn point", template, now)
         }
     }
 }
@@ -574,20 +547,19 @@ fn keys_of<T: Entry>(files: &[crate::document::EntryFile<T>]) -> Vec<String> {
 }
 
 /// Copies a placed thing, a couple of metres east of it. Returns the copy's key.
-pub fn copy_place(document: &mut Document, place: &Place, settlements: &Settlements, now: f64) -> Option<String> {
+pub fn copy_place(document: &mut Document, place: &Place, now: f64) -> Option<String> {
     let (collection, file, index) = place.entry;
     let copy = document.collections[collection].duplicate(file, index)?;
     let key = document.collections[collection].keys(file).get(copy)?.clone();
     document.changed(collection, file, now);
-    if let Some((x, y)) = place.position {
-        let moved = match place.kind {
-            PlaceKind::Npc => move_entry::<NpcDef>(document, &key, (x + 2.0, y), settlements),
-            PlaceKind::Spawner => move_entry::<SpawnerDef>(document, &key, (x + 2.0, y), settlements),
-            PlaceKind::RespawnPoint => move_entry::<RespawnPoint>(document, &key, (x + 2.0, y), settlements),
-        };
-        if let Some((collection, file)) = moved {
-            document.changed(collection, file, now);
-        }
+    let (x, y) = place.position;
+    let moved = match place.kind {
+        PlaceKind::Npc => move_entry::<NpcDef>(document, &key, (x + 2.0, y)),
+        PlaceKind::Spawner => move_entry::<SpawnerDef>(document, &key, (x + 2.0, y)),
+        PlaceKind::RespawnPoint => move_entry::<RespawnPoint>(document, &key, (x + 2.0, y)),
+    };
+    if let Some((collection, file)) = moved {
+        document.changed(collection, file, now);
     }
     Some(key)
 }
@@ -597,21 +569,6 @@ pub fn delete_place(document: &mut Document, place: &Place, now: f64) {
     let (collection, file, index) = place.entry;
     document.collections[collection].remove(file, index);
     document.changed(collection, file, now);
-}
-
-/// Places something at a position in the world, rather than relative to a
-/// settlement (where it is doesn't change).
-pub fn make_absolute(document: &mut Document, place: &Place, now: f64) {
-    let Some(position) = place.position else { return };
-    let absolute = Settlements::default();
-    let moved = match place.kind {
-        PlaceKind::Npc => move_entry::<NpcDef>(document, &place.key, position, &absolute),
-        PlaceKind::Spawner => move_entry::<SpawnerDef>(document, &place.key, position, &absolute),
-        PlaceKind::RespawnPoint => move_entry::<RespawnPoint>(document, &place.key, position, &absolute),
-    };
-    if let Some((collection, file)) = moved {
-        document.changed(collection, file, now);
-    }
 }
 
 #[cfg(test)]
@@ -632,7 +589,7 @@ mod tests {
         document.find::<NpcDef>().unwrap().1.files().iter().flat_map(|file| file.entries.clone()).collect()
     }
 
-    fn place_of(document: &Document, key: &str, settlements: &Settlements) -> Place {
+    fn place_of(document: &Document, key: &str) -> Place {
         let (collection, npcs) = document.find::<NpcDef>().unwrap();
         let index = npcs.files()[0].entries.iter().position(|npc| npc.id == key).unwrap();
         let npc = &npcs.files()[0].entries[index];
@@ -641,34 +598,28 @@ mod tests {
             entry: (collection, 0, index),
             key: key.to_string(),
             label: npc.name.clone(),
-            position: npc.at.position(settlements),
+            position: npc.at,
             radii: None,
             look: PlaceLook::Point,
         }
     }
 
     #[test]
-    fn places_are_added_copied_made_absolute_and_deleted() {
+    fn places_are_added_copied_and_deleted() {
         let folder = scratch("edit");
         let mut document = Document::load(&folder).unwrap();
-        let settlements = Settlements { starting: Some((1000.0, 1000.0)), all: vec![(1000.0, 1000.0)] };
         let before = npcs(&document).len();
 
-        let key = add_place(&mut document, PlaceKind::Npc, (1010.0, 995.0), &settlements, 0.0).unwrap();
+        let key = add_place(&mut document, PlaceKind::Npc, (1010.004, 995.0), 0.0).unwrap();
         let added = npcs(&document).into_iter().find(|npc| npc.id == key).unwrap();
-        assert_eq!(added.at, Placement::StartingSettlement { offset: (10.0, -5.0) });
+        assert_eq!(added.at, (1010.0, 995.0));
 
-        let place = place_of(&document, &key, &settlements);
-        let copy = copy_place(&mut document, &place, &settlements, 10.0).unwrap();
+        let place = place_of(&document, &key);
+        let copy = copy_place(&mut document, &place, 10.0).unwrap();
         let copied = npcs(&document).into_iter().find(|npc| npc.id == copy).unwrap();
-        assert_eq!(copied.at, Placement::StartingSettlement { offset: (12.0, -5.0) });
+        assert_eq!(copied.at, (1012.0, 995.0));
 
-        let place = place_of(&document, &copy, &settlements);
-        make_absolute(&mut document, &place, 20.0);
-        let absolute = npcs(&document).into_iter().find(|npc| npc.id == copy).unwrap();
-        assert_eq!(absolute.at, Placement::Position((1012.0, 995.0)));
-
-        let place = place_of(&document, &key, &settlements);
+        let place = place_of(&document, &key);
         delete_place(&mut document, &place, 30.0);
         assert_eq!(npcs(&document).len(), before + 1);
         let mirror = scratch("edit-mirror");

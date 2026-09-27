@@ -10,8 +10,8 @@ use crate::client::{
 use crate::definitions::CreatureDef;
 use crate::definitions::{
     AbilityDef, AbilityEffect, AppearanceDef, ClassDef, GameSounds, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS,
-    MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, Placement, QuestDef,
-    RespawnPoint, ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
+    MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, QuestDef, RespawnPoint,
+    ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
 };
 use crate::layout::{UiNode, UiStyles, check_layout, check_styles, parse_layout, parse_styles};
 use venture_protocol::EquipSlot;
@@ -351,7 +351,7 @@ impl ContentPack {
             match ron::from_str::<Vec<RespawnPoint>>(&text) {
                 Ok(points) => {
                     for point in &points {
-                        if !placement_is_finite(&point.at) {
+                        if !point.at.0.is_finite() || !point.at.1.is_finite() {
                             errors.push(error(file, format!("\"{}\": its position must be a real number", point.name)));
                         }
                     }
@@ -701,18 +701,9 @@ fn check_spawner(spawner: &SpawnerDef, pack: &ContentPack, file: &Path, errors: 
     if !(spawner.respawn_seconds > 0.0 && spawner.respawn_seconds.is_finite()) {
         problem("respawn_seconds must be more than 0".to_string());
     }
-    if !placement_is_finite(&spawner.at) {
+    if !spawner.at.0.is_finite() || !spawner.at.1.is_finite() {
         problem("its position must be a real number".to_string());
     }
-}
-
-/// Whether a placement's numbers are real numbers (not infinite or NaN).
-fn placement_is_finite(placement: &Placement) -> bool {
-    let (x, y) = match placement {
-        Placement::StartingSettlement { offset } | Placement::Settlement { offset, .. } => *offset,
-        Placement::Position(position) => *position,
-    };
-    x.is_finite() && y.is_finite()
 }
 
 fn check_quest(quest: &QuestDef, file: &Path, errors: &mut Vec<ContentError>) {
@@ -775,10 +766,7 @@ fn check_npc(npc: &NpcDef, pack: &ContentPack, file: &Path, errors: &mut Vec<Con
     if !(0.0..=MAX_WANDER_RADIUS).contains(&npc.wander_radius) {
         problem(format!("wander_radius must be between 0 and {MAX_WANDER_RADIUS} metres"));
     }
-    let (x, y) = match npc.at {
-        Placement::StartingSettlement { offset } | Placement::Settlement { offset, .. } => offset,
-        Placement::Position(position) => position,
-    };
+    let (x, y) = npc.at;
     if !x.is_finite() || !y.is_finite() {
         problem("its position must be a real number".to_string());
     }
@@ -876,7 +864,7 @@ mod tests {
 
     #[test]
     fn a_good_pack_loads() {
-        let npcs = r#"[(id: "tom", name: "Old Tom", appearance: "villager", at: StartingSettlement(offset: (3.0, 4.0)), wander_radius: 5.0)]"#;
+        let npcs = r#"[(id: "tom", name: "Old Tom", appearance: "villager", at: (3.0, 4.0), wander_radius: 5.0)]"#;
         let folder = TestPack::new("good", &[("appearances/people.ron", APPEARANCE), ("npcs/town.ron", npcs)]);
         let pack = ContentPack::load(&folder.0).unwrap();
         assert_eq!(pack.npcs.len(), 1);
@@ -913,8 +901,8 @@ mod tests {
     #[test]
     fn every_problem_is_reported_with_its_file() {
         let npcs = r#"[
-            (id: "tom", name: "", appearance: "nobody", at: Position((1.0, 1.0)), script: Some("missing.rhai")),
-            (id: "tom", name: "Tom again", appearance: "villager", at: Position((1.0, 1.0))),
+            (id: "tom", name: "", appearance: "nobody", at: (1.0, 1.0), script: Some("missing.rhai")),
+            (id: "tom", name: "Tom again", appearance: "villager", at: (1.0, 1.0)),
         ]"#;
         let folder = TestPack::new("bad", &[("appearances/people.ron", APPEARANCE), ("npcs/town.ron", npcs)]);
         let errors = ContentPack::load(&folder.0).unwrap_err();
@@ -926,8 +914,7 @@ mod tests {
     #[cfg(feature = "scripts")]
     #[test]
     fn npcs_must_name_dialogue_that_exists() {
-        let npcs =
-            r#"[(id: "tom", name: "Tom", appearance: "villager", at: Position((1.0, 1.0)), dialogue: Some("Tom"))]"#;
+        let npcs = r#"[(id: "tom", name: "Tom", appearance: "villager", at: (1.0, 1.0), dialogue: Some("Tom"))]"#;
         let dialogue = "title: Tim\n---\nHello.\n===\n";
         let files = [("appearances/people.ron", APPEARANCE), ("npcs/town.ron", npcs), ("dialogue/town.yarn", dialogue)];
         let folder = TestPack::new("dialogue", &files);
