@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 image = { workspace = true, features = ["png", "jpeg", "exr"] }
 ron.workspace = true
+serde.workspace = true
 venture_content.workspace = true
 
 [lints]

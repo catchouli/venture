@@ -11,19 +11,28 @@
 //!   radiance for each roughness by GGX importance sampling, reading blurrier
 //!   versions of the panorama for less likely directions ("filtered
 //!   importance sampling"), which keeps rough mipmaps smooth with few samples.
-//! - The sun is the brightest point of a blurred copy of the panorama.
+//! - The sun is the brightest point of a blurred copy of the panorama. If
+//!   it's really there (far brighter than the sky, not just a bright
+//!   cloud or star), it's painted out, from the picture and the light: the
+//!   game draws its own sun where the time of day puts it (see
+//!   `docs/plan-day-night.md`). The patch is filled from the sky just
+//!   outside it, along each ray from the sun.
+//! - Anything else to paint out (a meteor trail frozen in a night sky) is
+//!   listed in `tools/skies/<panorama folder>.ron` ([`SkyImport`]), and
+//!   filled from the sky around it.
 
 use std::f32::consts::PI;
 use std::path::{Path, PathBuf};
 
 use image::codecs::jpeg::JpegEncoder;
 use image::{Rgb32FImage, RgbImage};
+use serde::Deserialize;
 use venture_content::sky::{SkyDef, SkyLight, rgb9e5};
 
 /// Width of each sky picture face, in pixels.
 const SKY_FACE: u32 = 1024;
-/// JPEG quality of the sky picture.
-const SKY_QUALITY: u8 = 88;
+/// JPEG quality of the sky picture (high enough to keep faint stars).
+const SKY_QUALITY: u8 = 92;
 /// Width of the irradiance cube's faces.
 const IRRADIANCE_FACE: u32 = 32;
 /// Width of the radiance cube's largest faces.
@@ -35,6 +44,36 @@ const RADIANCE_SAMPLES: u32 = 128;
 const LIGHT_CLIP: f32 = 4.0;
 /// The share of the panorama at or below the brightness that becomes 1.
 const WHITE_PERCENTILE: f32 = 0.98;
+/// How bright (on the sky's scale) the sun must be to be painted out: a
+/// real sun is hundreds of times the bright sky.
+const SUN_PEAK: f32 = 20.0;
+/// The widest the sun's patch may be, in degrees (radius).
+const MOST_SUN_RADIUS: f32 = 16.0;
+
+/// What to do when importing one panorama, besides the usual: from
+/// `tools/skies/<panorama folder>.ron`.
+///
+/// ```ron
+/// (paint_out: [(points: [(3752, 412), (3610, 560)], width: 12)])
+/// ```
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SkyImport {
+    /// Things to paint out (such as meteor trails): lines through pixels of
+    /// the panorama (as it is, before anything's done to it), as wide as
+    /// `width` pixels.
+    pub paint_out: Vec<Stroke>,
+}
+
+/// A line to paint out of a panorama.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Stroke {
+    /// Pixels it runs through, in order.
+    pub points: Vec<(f32, f32)>,
+    /// How wide it is, in pixels.
+    pub width: f32,
+}
 
 type Vec3 = [f32; 3];
 
@@ -154,6 +193,8 @@ fn cube_direction(face: usize, x: u32, y: u32, size: u32) -> Vec3 {
 
 /// Everything baked from a panorama.
 pub struct BakedSky {
+    /// How wide (radius, in degrees) the sun painted out was, if there was one.
+    pub sun_removed: Option<f32>,
     /// The sky picture: six faces stacked top to bottom.
     pub picture: RgbImage,
     /// The light it casts.
@@ -163,9 +204,10 @@ pub struct BakedSky {
 }
 
 /// Bakes a sky from a panorama's pixels (linear RGB).
-pub fn bake(panorama: &Rgb32FImage) -> BakedSky {
+pub fn bake(panorama: &Rgb32FImage, options: &SkyImport) -> BakedSky {
     let (width, height) = panorama.dimensions();
-    let pixels: Vec<Vec3> = panorama.pixels().map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect();
+    let mut pixels: Vec<Vec3> = panorama.pixels().map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect();
+    paint_out(&mut pixels, width, height, &options.paint_out);
 
     // The brightness scale: the bright sky (not the sun) is 1.
     let mut brightness: Vec<f32> = pixels.iter().map(|&c| luminance(c)).collect();
@@ -175,6 +217,10 @@ pub fn bake(panorama: &Rgb32FImage) -> BakedSky {
 
     let full = Panorama::new(width, height, pixels.clone());
     let sun = find_sun(&full);
+    let (full, sun_removed) = match remove_sun(&full, sun) {
+        Some((pixels, radius)) => (Panorama::new(width, height, pixels), Some(radius)),
+        None => (full, None),
+    };
     let horizon = horizon_colour(&full);
     let picture = sky_picture(&full);
 
@@ -185,6 +231,7 @@ pub fn bake(panorama: &Rgb32FImage) -> BakedSky {
     let irradiance = bake_irradiance(&lit);
     let (radiance, radiance_mips) = bake_radiance(&lit);
     BakedSky {
+        sun_removed,
         picture,
         light: SkyLight {
             irradiance_size: IRRADIANCE_FACE,
@@ -216,6 +263,272 @@ fn find_sun(panorama: &Panorama) -> Vec3 {
         .expect("pixels");
     let (x, y) = (index as u32 % w, index as u32 / w);
     from_panorama((x as f32 + 0.5) / *w as f32, (y as f32 + 0.5) / *h as f32)
+}
+
+/// Paints things out of a panorama's pixels, within each stroke's corridor:
+///
+/// 1. **Thin bright lines** (trails): pixels much brighter than those around
+///    them, joined into long runs (stars are only a few pixels across), are
+///    found and filled like a clone stamp, from clean sky nearby.
+/// 2. **Glows** (round a meteor's head, say): the corridor's blurry part is
+///    swapped for the sky round about's, keeping its fine detail (the
+///    stars), so there's no starless patch.
+fn paint_out(pixels: &mut [Vec3], width: u32, height: u32, strokes: &[Stroke]) {
+    if strokes.is_empty() {
+        return;
+    }
+    let (w, h) = (width as usize, height as usize);
+    // How much each pixel is in a corridor (1 inside, fading at its edges).
+    let mut inside = vec![0.0f32; pixels.len()];
+    for stroke in strokes {
+        let half = stroke.width / 2.0;
+        let feather = (half * 0.3).clamp(2.0, 10.0);
+        for pair in stroke.points.windows(2) {
+            let ((ax, ay), (bx, by)) = (pair[0], pair[1]);
+            let (x0, x1) = ((ax.min(bx) - half).floor() as i64, (ax.max(bx) + half).ceil() as i64);
+            let (y0, y1) = ((ay.min(by) - half).floor() as i64, (ay.max(by) + half).ceil() as i64);
+            for y in y0.max(0)..=y1.min(h as i64 - 1) {
+                for x in x0..=x1 {
+                    let distance = distance_to_segment((x as f32 + 0.5, y as f32 + 0.5), pair[0], pair[1]);
+                    let weight = smoothstep(half, half - feather, distance);
+                    let index = y as usize * w + x.rem_euclid(w as i64) as usize;
+                    inside[index] = inside[index].max(weight);
+                }
+            }
+        }
+    }
+
+    // 1. Lines: pixels well above their neighbourhood's middle, in runs.
+    let brightness: Vec<f32> = pixels.iter().map(|&c| luminance(c)).collect();
+    let typical = {
+        let mut sample: Vec<f32> = brightness.iter().step_by(97).copied().collect();
+        sample.sort_by(f32::total_cmp);
+        sample[sample.len() / 2]
+    };
+    let at = |x: i64, y: i64| y.clamp(0, h as i64 - 1) as usize * w + x.rem_euclid(w as i64) as usize;
+    let local_middle = |x: i64, y: i64, radius: i64| {
+        let mut around: Vec<f32> = (-radius..=radius)
+            .flat_map(|dy| (-radius..=radius).map(move |dx| (dx, dy)))
+            .map(|(dx, dy)| brightness[at(x + dx, y + dy)])
+            .collect();
+        let middle = around.len() / 2;
+        *around.select_nth_unstable_by(middle, f32::total_cmp).1
+    };
+    let mut bright = vec![false; pixels.len()];
+    for index in (0..pixels.len()).filter(|&index| inside[index] > 0.0) {
+        let (x, y) = ((index % w) as i64, (index / w) as i64);
+        bright[index] = brightness[index] > local_middle(x, y, 9) * 1.3 + typical * 0.05;
+    }
+    // (Joined across one-pixel gaps, so a faint trail's bright pixels make
+    // one long run rather than many short ones.)
+    let joined: Vec<bool> = (0..pixels.len())
+        .map(|index| {
+            let (x, y) = ((index % w) as i64, (index / w) as i64);
+            inside[index] > 0.0
+                && (-1..=1).any(|dy| (-1..=1).any(|dx| (0..h as i64).contains(&(y + dy)) && bright[at(x + dx, y + dy)]))
+        })
+        .collect();
+    let mut line = vec![false; pixels.len()];
+    let mut seen = vec![false; pixels.len()];
+    for start in 0..pixels.len() {
+        if !joined[start] || seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let mut run = vec![start];
+        let mut next = 0;
+        while next < run.len() {
+            let (x, y) = ((run[next] % w) as i64, (run[next] / w) as i64);
+            next += 1;
+            for (dx, dy) in [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)] {
+                if !(0..h as i64).contains(&(y + dy)) {
+                    continue;
+                }
+                let neighbour = at(x + dx, y + dy);
+                if joined[neighbour] && !seen[neighbour] {
+                    seen[neighbour] = true;
+                    run.push(neighbour);
+                }
+            }
+        }
+        let xs = run.iter().map(|&i| i % w);
+        let ys = run.iter().map(|&i| i / w);
+        let across = xs.clone().max().unwrap_or(0) - xs.min().unwrap_or(0);
+        let down = ys.clone().max().unwrap_or(0) - ys.min().unwrap_or(0);
+        if across.max(down) >= 24 {
+            // (With a pixel's margin, for its soft edges.)
+            for &index in &run {
+                let (x, y) = ((index % w) as i64, (index / w) as i64);
+                for dy in -3..=3 {
+                    for dx in -3..=3 {
+                        if (0..h as i64).contains(&(y + dy)) {
+                            line[at(x + dx, y + dy)] = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Filled like a clone stamp: each pixel from a clean spot a little way
+    // off, stars and all (the glow step below then matches the brightness
+    // of the sky round about).
+    let original = pixels.to_vec();
+    let offsets = [(0, 40), (40, 0), (0, -40), (-40, 0), (0, 70), (70, 0), (0, -70), (-70, 0)];
+    for index in (0..pixels.len()).filter(|&index| line[index]) {
+        let (x, y) = ((index % w) as i64, (index / w) as i64);
+        let clean = offsets
+            .iter()
+            .map(|&(dx, dy)| (x + dx, y + dy))
+            .find(|&(cx, cy)| (0..h as i64).contains(&cy) && !line[at(cx, cy)] && inside[at(cx, cy)] == 0.0);
+        if let Some((cx, cy)) = clean {
+            pixels[index] = original[at(cx, cy)];
+            continue;
+        }
+        // (Nowhere clean nearby: the middle of the pixels round about.)
+        let mut around: Vec<Vec3> = (-10..=10)
+            .flat_map(|dy| (-10..=10).map(move |dx| (dx, dy)))
+            .filter(|&(_, dy)| (0..h as i64).contains(&(y + dy)))
+            .map(|(dx, dy)| at(x + dx, y + dy))
+            .filter(|&neighbour| !line[neighbour])
+            .map(|neighbour| original[neighbour])
+            .collect();
+        if !around.is_empty() {
+            let middle = around.len() / 2;
+            around.select_nth_unstable_by(middle, |a, b| luminance(*a).total_cmp(&luminance(*b)));
+            pixels[index] = around[middle];
+        }
+    }
+
+    // 2. Glows: swap the corridors' blur for the surroundings'.
+    let blurred = box_blur(pixels, w, h, 6);
+    let outside: Vec<f32> = inside.iter().map(|&weight| if weight > 0.0 { 0.0 } else { 1.0 }).collect();
+    let masked: Vec<Vec3> = blurred.iter().zip(&outside).map(|(&c, &keep)| scale(c, keep)).collect();
+    let spread = box_blur(&masked, w, h, 48);
+    let coverage = box_blur(&outside.iter().map(|&keep| [keep; 3]).collect::<Vec<_>>(), w, h, 48);
+    for index in (0..pixels.len()).filter(|&index| inside[index] > 0.0) {
+        let share = coverage[index][0];
+        if share < 0.05 {
+            continue;
+        }
+        let surroundings = scale(spread[index], 1.0 / share);
+        let change = scale(add(surroundings, scale(blurred[index], -1.0)), inside[index]);
+        // (Never darker than most of the sky round about: a glow's peak is
+        // sharper than the blur, and taking it all away would leave a hole.)
+        let floor = scale(surroundings, 0.7);
+        pixels[index] = add(pixels[index], change)
+            .iter()
+            .zip(floor)
+            .map(|(&channel, least)| {
+                channel.max(least.min(pixels[index][0].max(pixels[index][1]).max(pixels[index][2])))
+            })
+            .collect::<Vec<f32>>()
+            .try_into()
+            .expect("three channels");
+    }
+}
+
+/// A box blur of a picture (wrapping round east to west), `radius` pixels.
+fn box_blur(pixels: &[Vec3], w: usize, h: usize, radius: usize) -> Vec<Vec3> {
+    let across = |source: &[Vec3], length: usize, count: usize, index: &dyn Fn(usize, usize) -> usize, wrap: bool| {
+        let mut out = vec![[0.0; 3]; source.len()];
+        let span = (2 * radius + 1) as f32;
+        for line in 0..count {
+            let get = |i: i64| {
+                let i = if wrap { i.rem_euclid(length as i64) } else { i.clamp(0, length as i64 - 1) } as usize;
+                source[index(line, i)]
+            };
+            let mut sum = [0.0; 3];
+            for i in -(radius as i64)..=radius as i64 {
+                sum = add(sum, get(i));
+            }
+            for i in 0..length {
+                out[index(line, i)] = scale(sum, 1.0 / span);
+                sum = add(sum, add(get(i as i64 + radius as i64 + 1), scale(get(i as i64 - radius as i64), -1.0)));
+            }
+        }
+        out
+    };
+    let rows = across(pixels, w, h, &|row, x| row * w + x, true);
+    across(&rows, h, w, &|column, y| y * w + column, false)
+}
+
+/// How far a point is from a line segment.
+fn distance_to_segment(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
+    let (abx, aby) = (b.0 - a.0, b.1 - a.1);
+    let length = abx * abx + aby * aby;
+    let t = if length > 0.0 { (((p.0 - a.0) * abx + (p.1 - a.1) * aby) / length).clamp(0.0, 1.0) } else { 0.0 };
+    ((p.0 - a.0 - t * abx).powi(2) + (p.1 - a.1 - t * aby).powi(2)).sqrt()
+}
+
+/// The panorama's pixels with the sun painted out, and how wide (radius,
+/// in degrees) the patch was, if there's really a sun there: the patch
+/// reaches as far as the sun brightens the sky, and is filled smoothly from
+/// the colours round its edge, each weighted by how near it is (softly, at
+/// the patch's edge).
+fn remove_sun(panorama: &Panorama, sun: Vec3) -> Option<(Vec<Vec3>, f32)> {
+    let peak = luminance(panorama.sample(sun, 0.0));
+    if peak < SUN_PEAK {
+        return None;
+    }
+    // A direction `angle` from the sun, round it by `turn`.
+    let side = normalize(cross(sun, if sun[1].abs() < 0.9 { [0.0, 1.0, 0.0] } else { [1.0, 0.0, 0.0] }));
+    let up = cross(side, sun);
+    let at = |angle: f32, turn: f32| {
+        let across = add(scale(side, turn.cos()), scale(up, turn.sin()));
+        add(scale(sun, angle.cos()), scale(across, angle.sin()))
+    };
+    let ring = |angle: f32| {
+        (0..64).map(|i| luminance(panorama.sample(at(angle, i as f32 * PI / 32.0), 1.0))).sum::<f32>() / 64.0
+    };
+    let far = ring((MOST_SUN_RADIUS + 8.0).to_radians());
+    let reach = (2..=MOST_SUN_RADIUS as u32 * 2)
+        .map(|half_degrees| half_degrees as f32 / 2.0)
+        .find(|&degrees| ring(degrees.to_radians()) < far * 1.25)
+        .unwrap_or(MOST_SUN_RADIUS);
+    let radius = (reach + 1.5).clamp(3.0, MOST_SUN_RADIUS).to_radians();
+    // The colours round the patch's edge (from a blurred copy, so small
+    // details there don't streak), to fill it from.
+    let (w, h, pixels) = &panorama.levels[0];
+    let texel = 2.0 * PI / *w as f32;
+    let blur = (radius / texel / 8.0).max(1.0).log2();
+    let edge: Vec<(Vec3, Vec3)> = (0..128)
+        .map(|i| {
+            let direction = at(radius, i as f32 * PI / 64.0);
+            let colour = panorama.sample(direction, blur);
+            let brightness = luminance(colour);
+            // (No brighter than the sky round about: the least of the sun
+            // left in it would still glare.)
+            (direction, if brightness > far * 3.0 { scale(colour, far * 3.0 / brightness) } else { colour })
+        })
+        .collect();
+    let mut painted = pixels.clone();
+    for y in 0..*h {
+        for x in 0..*w {
+            let direction = from_panorama((x as f32 + 0.5) / *w as f32, (y as f32 + 0.5) / *h as f32);
+            let angle = dot(direction, sun).clamp(-1.0, 1.0).acos();
+            if angle >= radius {
+                continue;
+            }
+            // Each edge colour, weighted by how near it is.
+            let (mut sum, mut weights) = ([0.0; 3], 0.0);
+            for &(point, colour) in &edge {
+                let apart = dot(direction, point).clamp(-1.0, 1.0).acos();
+                let weight = 1.0 / (apart * apart + 1e-6);
+                sum = add(sum, scale(colour, weight));
+                weights += weight;
+            }
+            let fill = scale(sum, 1.0 / weights);
+            let keep = smoothstep(radius - 1.5f32.to_radians(), radius, angle);
+            let index = (y * w + x) as usize;
+            painted[index] = add(scale(fill, 1.0 - keep), scale(pixels[index], keep));
+        }
+    }
+    Some((painted, radius.to_degrees()))
+}
+
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// The average colour of the band just above the horizon (the sky distant
@@ -363,8 +676,9 @@ fn radical_inverse(mut bits: u32) -> f32 {
 }
 
 /// Imports a sky from an HDR panorama (the `*_HDR.exr` in an ambientCG sky
-/// folder, or the file itself) into `out`. Returns the files written.
-pub fn import(source: &Path, out: &Path) -> Result<Vec<PathBuf>, String> {
+/// folder, or the file itself) into `out`, with `options`. Returns what was
+/// baked, and the files written.
+pub fn import(source: &Path, out: &Path, options: &SkyImport) -> Result<(BakedSky, Vec<PathBuf>), String> {
     let file = if source.is_dir() {
         std::fs::read_dir(source)
             .map_err(|error| format!("can't read {}: {error}", source.display()))?
@@ -375,7 +689,7 @@ pub fn import(source: &Path, out: &Path) -> Result<Vec<PathBuf>, String> {
         source.to_path_buf()
     };
     let panorama = image::open(&file).map_err(|error| format!("can't open {}: {error}", file.display()))?.to_rgb32f();
-    let baked = bake(&panorama);
+    let baked = bake(&panorama, options);
     std::fs::create_dir_all(out).map_err(|error| format!("can't make {}: {error}", out.display()))?;
     let write_error = |path: &Path, error: &dyn std::fmt::Display| format!("can't write {}: {error}", path.display());
     let picture_path = out.join("sky.jpg");
@@ -389,7 +703,19 @@ pub fn import(source: &Path, out: &Path) -> Result<Vec<PathBuf>, String> {
     let text = ron::ser::to_string_pretty(&baked.def, ron::ser::PrettyConfig::default())
         .map_err(|error| write_error(&def_path, &error))?;
     std::fs::write(&def_path, text + "\n").map_err(|error| write_error(&def_path, &error))?;
-    Ok(vec![picture_path, light_path, def_path])
+    Ok((baked, vec![picture_path, light_path, def_path]))
+}
+
+/// The options for importing a panorama: `tools/skies/<name>.ron` (under
+/// `folder`), where the name is the panorama's folder (or file) name, if
+/// there's such a file.
+pub fn import_options(folder: &Path, source: &Path) -> Result<SkyImport, String> {
+    let name = source.file_stem().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let path = folder.join(format!("{name}.ron"));
+    match std::fs::read_to_string(&path) {
+        Ok(text) => ron::from_str(&text).map_err(|error| format!("{}: {error}", path.display())),
+        Err(_) => Ok(SkyImport::default()),
+    }
 }
 
 #[cfg(test)]
@@ -397,6 +723,25 @@ mod tests {
     use venture_content::sky::from_rgb9e5;
 
     use super::*;
+
+    #[test]
+    fn strokes_are_painted_out_from_around_them() {
+        // A dark sky with a bright line across it.
+        let (width, height) = (64u32, 32u32);
+        let mut pixels: Vec<Vec3> = (0..width * height)
+            .map(|i| if i / width == 10 && (10..50).contains(&(i % width)) { [5.0; 3] } else { [0.1; 3] })
+            .collect();
+        let stroke = Stroke { points: vec![(10.0, 10.5), (50.0, 10.5)], width: 12.0 };
+        paint_out(&mut pixels, width, height, &[stroke]);
+        assert!(pixels.iter().all(|pixel| pixel[0] < 0.2), "the line's gone");
+    }
+
+    #[test]
+    fn a_dim_sky_keeps_its_brightest_point() {
+        // No sun: the brightest point (a star, a bright cloud) stays.
+        let panorama = Rgb32FImage::from_fn(128, 64, |x, _| image::Rgb(if x == 30 { [3.0; 3] } else { [0.5; 3] }));
+        assert!(bake(&panorama, &SkyImport::default()).sun_removed.is_none());
+    }
 
     #[test]
     fn panorama_directions_go_there_and_back() {
@@ -434,7 +779,8 @@ mod tests {
                 image::Rgb([0.2, 0.2, 0.2])
             }
         });
-        let baked = bake(&panorama);
+        let baked = bake(&panorama, &SkyImport::default());
+        assert!(baked.sun_removed.is_some(), "a sun that bright is painted out");
         let (sx, sy, sz) = baked.def.sun;
         assert!(dot([sx, sy, sz], normalize([1.0, 1.0, 0.0])) > 0.99, "sun at {:?}", baked.def.sun);
         // Upward-facing surfaces see mostly sky: bluish, and not blown out by the sun.
@@ -443,6 +789,9 @@ mod tests {
         );
         assert!(up[2] > up[0] && up[2] < 2.0, "irradiance facing up: {up:?}");
         assert_eq!(baked.picture.dimensions(), (SKY_FACE, SKY_FACE * 6));
+        // No sun left in the picture: nothing white (the sky clips blue, not red).
+        let white = baked.picture.pixels().filter(|pixel| pixel.0.iter().all(|&channel| channel > 240)).count();
+        assert_eq!(white, 0, "the sun's still there");
         assert_eq!(baked.light.radiance_mips, RADIANCE_FACE.ilog2() + 1);
     }
 }

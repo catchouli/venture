@@ -56,11 +56,14 @@ them to 1024 × 1024 and converts them to JPEGs (see `docs/textures.md`).
 | Ground110 | `content/textures/rock/`: rock, basalt and steep slopes | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 
 Skies are ambientCG HDRIs too, downloaded to `~/assets/skies/` and baked into
-`content/skies/` by `import_sky`:
+`content/skies/` by `import_sky` (with their suns, and any trails listed in
+`tools/skies/`, painted out):
 
 | Sky | What we use it for | Licence |
 | --- | --- | --- |
 | DaySkyHDRI070B | `content/skies/day/`: the daytime sky and its light | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| EveningSkyHDRI047B | `content/skies/evening/`: dusk (and dawn, turned east) | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| NightSkyHDRI008 | `content/skies/night/`: the night sky (its meteor and satellite trails painted out) | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 
 ## Everything else
 

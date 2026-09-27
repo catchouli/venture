@@ -48,8 +48,10 @@ content/
   icons/*.png          item, ability and action pictures (sent to clients)
   textures/<name>/     ground textures: colour, normal and surface JPEGs (sent to clients;
                        see textures.md)
-  skies/<name>/        skies: skybox picture, baked light and sun (sent to clients; see
-                       textures.md). The world uses skies/day.
+  skies/<name>/        skies: sky picture, baked light and sun (sent to clients; see
+                       textures.md)
+  skies/cycle.ron      which sky shows at which time of day, and how bright (see
+                       plan-day-night.md)
   skills/*.ron         gathering and making skills (sent to clients)
   sounds/*.wav         sounds (sent to clients)
   sounds.ron           the game's own sounds: hits, misses, levelling up

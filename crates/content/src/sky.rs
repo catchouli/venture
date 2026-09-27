@@ -10,6 +10,10 @@
 //!
 //! Everything is on one brightness scale, where 1 is as bright as the sky
 //! picture shows (the brightest parts of the sky, not the sun).
+//!
+//! `skies/cycle.ron` ([`SkyCycle`]) says which sky shows at which time of
+//! day, and how bright, for the game to blend between (see
+//! `docs/plan-day-night.md`).
 
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +38,90 @@ pub struct SkyDef {
     /// The sky's average colour just above the horizon (linear, on the
     /// sky's brightness scale), for distant haze to fade into.
     pub horizon: (f32, f32, f32),
+}
+
+/// The day's skies (`skies/cycle.ron`): which sky shows at which time of
+/// day, and how bright. Between two keyframes the game blends smoothly from
+/// one to the next (and from the last round to the first).
+///
+/// ```ron
+/// (keyframes: [
+///     (hour: 4.5, sky: "day", brightness: 1.0),
+///     (hour: 22.0, sky: "night", brightness: 0.04, turn: Stars),
+/// ])
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SkyCycle {
+    /// The keyframes, in order through the day.
+    pub keyframes: Vec<SkyKeyframe>,
+}
+
+/// One sky at one time of day.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SkyKeyframe {
+    /// When it shows fully, in hours (0 to 24).
+    pub hour: f32,
+    /// Which sky (a folder in `skies/`).
+    pub sky: String,
+    /// How bright it is, as a share of its brightness scale's usual (1 by
+    /// day; much less at night).
+    pub brightness: f32,
+    /// Which way it's turned.
+    #[serde(default)]
+    pub turn: SkyTurn,
+}
+
+/// Which way a sky is turned.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum SkyTurn {
+    /// So the glow where its sun was is where the game's sun is.
+    #[default]
+    FollowSun,
+    /// Slowly round the pole star, a turn a day, as the stars go.
+    Stars,
+    /// Fixed, turned this many degrees (clockwise, seen from above).
+    Fixed(f32),
+}
+
+/// The file the day's skies are in.
+pub const SKY_CYCLE_FILE: &str = "skies/cycle.ron";
+
+/// Parses a `skies/cycle.ron` (checking its own numbers; whether its skies
+/// exist is for the content check).
+pub fn parse_sky_cycle(text: &str) -> Result<SkyCycle, String> {
+    let cycle: SkyCycle = ron::from_str(text).map_err(|error| error.to_string())?;
+    if cycle.keyframes.is_empty() {
+        return Err("there must be at least one keyframe".to_string());
+    }
+    for keyframe in &cycle.keyframes {
+        if !(0.0..24.0).contains(&keyframe.hour) {
+            return Err(format!("keyframe hours are from 0 to 24, not {}", keyframe.hour));
+        }
+        if !keyframe.brightness.is_finite() || keyframe.brightness < 0.0 {
+            return Err(format!("brightness is 0 or more, not {}", keyframe.brightness));
+        }
+    }
+    if cycle.keyframes.windows(2).any(|pair| pair[1].hour <= pair[0].hour) {
+        return Err("keyframes go in order through the day, each at a different hour".to_string());
+    }
+    Ok(cycle)
+}
+
+impl SkyCycle {
+    /// The two keyframes either side of a time of day, and how far it is
+    /// from the first to the second (0 to 1, eased so it starts and ends
+    /// gently).
+    pub fn at(&self, hour: f32) -> (&SkyKeyframe, &SkyKeyframe, f32) {
+        let keyframes = &self.keyframes;
+        let after = keyframes.iter().position(|keyframe| keyframe.hour > hour).unwrap_or(0);
+        let before = (after + keyframes.len() - 1) % keyframes.len();
+        let (from, to) = (&keyframes[before], &keyframes[after]);
+        let span = (to.hour - from.hour).rem_euclid(24.0);
+        let along = if span > 0.0 { ((hour - from.hour).rem_euclid(24.0) / span).clamp(0.0, 1.0) } else { 0.0 };
+        (from, to, along * along * (3.0 - 2.0 * along))
+    }
 }
 
 /// Parses a `sky.ron`.
@@ -179,6 +267,31 @@ mod tests {
         short.pop();
         assert!(SkyLight::from_bytes(&short).is_err());
         assert!(SkyLight::from_bytes(b"nope").is_err());
+    }
+
+    #[test]
+    fn the_cycle_blends_between_its_keyframes_round_the_day() {
+        let cycle = parse_sky_cycle(
+            r#"(keyframes: [
+                (hour: 6.0, sky: "day", brightness: 1.0),
+                (hour: 20.0, sky: "evening", brightness: 0.4),
+                (hour: 22.0, sky: "night", brightness: 0.04, turn: Stars),
+            ])"#,
+        )
+        .unwrap();
+        let (from, to, along) = cycle.at(21.0);
+        assert_eq!((from.sky.as_str(), to.sky.as_str(), along), ("evening", "night", 0.5));
+        // Past the last keyframe, round to the first.
+        let (from, to, along) = cycle.at(2.0);
+        assert_eq!((from.sky.as_str(), to.sky.as_str(), along), ("night", "day", 0.5));
+        let (from, _, along) = cycle.at(6.0);
+        assert_eq!((from.sky.as_str(), along), ("day", 0.0));
+        assert_eq!(cycle.keyframes[2].turn, SkyTurn::Stars);
+        assert!(parse_sky_cycle("(keyframes: [])").is_err());
+        assert!(
+            parse_sky_cycle(r#"(keyframes: [(hour: 9, sky: "a", brightness: 1), (hour: 3, sky: "b", brightness: 1)])"#)
+                .is_err()
+        );
     }
 
     #[test]

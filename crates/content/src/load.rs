@@ -14,7 +14,7 @@ use crate::definitions::{
     QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
 };
 use crate::layout::{UiNode, UiStyles, check_layout, check_styles, parse_layout, parse_styles};
-use crate::sky::{SKY_FILES, SkyLight, parse_sky};
+use crate::sky::{SKY_CYCLE_FILE, SKY_FILES, SkyLight, parse_sky, parse_sky_cycle};
 use venture_protocol::EquipSlot;
 use venture_rpg::Healing;
 use venture_rpg::MAX_LEVEL;
@@ -535,6 +535,18 @@ impl ContentPack {
                 client_files.push((to_slashes(&relative), bytes));
             }
             pack.skies.insert(name);
+        }
+        let cycle_path = Path::new(SKY_CYCLE_FILE);
+        if let Ok(bytes) = std::fs::read(folder.join(cycle_path)) {
+            match parse_sky_cycle(&String::from_utf8_lossy(&bytes)) {
+                Ok(cycle) => {
+                    for keyframe in cycle.keyframes.iter().filter(|keyframe| !pack.skies.contains(&keyframe.sky)) {
+                        errors.push(error(cycle_path, format!("there's no sky called \"{}\"", keyframe.sky)));
+                    }
+                }
+                Err(problem) => errors.push(error(cycle_path, problem)),
+            }
+            client_files.push((SKY_CYCLE_FILE.to_string(), bytes));
         }
 
         if let Ok(text) = std::fs::read_to_string(folder.join(CHARACTERS_FILE)) {

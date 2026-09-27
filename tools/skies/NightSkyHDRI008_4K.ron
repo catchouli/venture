@@ -1,0 +1,20 @@
+// Painted out of ambientCG's NightSkyHDRI008 when it's imported (see
+// crates/tools/src/skies.rs): a meteor and satellite trails, which would
+// hang frozen in the game's sky. Each is a corridor the trail (and any glow
+// round it) lies in: points are pixels of the 4096 × 2048 panorama, and the
+// importer finds the trail itself within it.
+(
+    paint_out: [
+        // The bright meteor, upper right, and its glow.
+        (points: [(3752, 412), (3680, 480), (3610, 560), (3560, 640), (3520, 730), (3480, 820), (3452, 876)], width: 44),
+        (points: [(3760, 405), (3690, 470), (3620, 550)], width: 80),
+        // The long trail across the left.
+        (points: [(858, 1028), (960, 1118), (1080, 1228), (1180, 1318), (1280, 1388), (1344, 1426)], width: 44),
+        // The faint trail at the far left.
+        (points: [(270, 1480), (230, 1525), (180, 1585), (130, 1625), (60, 1670), (8, 1696)], width: 40),
+        // The short dash below the Milky Way, and its glow.
+        (points: [(1815, 1367), (1880, 1383)], width: 64),
+        // The faint trail in the Milky Way.
+        (points: [(1664, 424), (1586, 566)], width: 40),
+    ],
+)
