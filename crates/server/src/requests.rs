@@ -14,16 +14,16 @@
 //! [`CharacterRequest`] (for [`crate::character`]), an [`EquipmentRequest`]
 //! (for [`crate::equipment`]), an [`ItemUseRequest`] (for
 //! [`crate::consumables`]), a [`AbilityRequest`] (for [`crate::abilities`]), a
-//! [`HotbarRequest`] (for [`crate::hotbar`]) or an [`AdminRequest`] (for
-//! [`crate::admin`]). Too many strikes and the connection is closed.
+//! [`HotbarRequest`] (for [`crate::hotbar`]), a [`PartyRequest`] (for
+//! [`crate::parties`]) or an [`AdminRequest`] (for [`crate::admin`]). Too many strikes and the connection is closed.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{
-    AdminCommand, ClientMessage, EntityId, HOTBAR_SLOTS, HotbarEntry, PROTOCOL_VERSION, ServerMessage, clean_chat_text,
-    clean_name, is_valid_token,
+    AdminCommand, ClientMessage, EntityId, HOTBAR_SLOTS, HotbarEntry, PROTOCOL_VERSION, PartyCommand, ServerMessage,
+    clean_chat_text, clean_name, clean_party_name, is_valid_token,
 };
 use venture_simulation::steering_direction;
 
@@ -63,6 +63,7 @@ impl Plugin for RequestsPlugin {
             .add_message::<ItemUseRequest>()
             .add_message::<AbilityRequest>()
             .add_message::<HotbarRequest>()
+            .add_message::<PartyRequest>()
             .add_systems(FixedUpdate, receive_messages.in_set(ServerSystems::Requests));
     }
 }
@@ -231,6 +232,33 @@ pub struct HotbarRequest {
     pub slots: Vec<Option<HotbarEntry>>,
 }
 
+/// A player's request about parties, for [`crate::parties`].
+#[derive(Message)]
+pub struct PartyRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// What they asked for.
+    pub action: PartyAction,
+}
+
+/// What a player asked about parties. Names are already cleaned; whether
+/// the request makes sense (are they in a party?) is for
+/// [`crate::parties`] to decide.
+pub enum PartyAction {
+    /// Start a party with this (valid) name.
+    Create(String),
+    /// Invite this entity (if it's a player).
+    Invite(EntityId),
+    /// Invite the player with this (validly shaped) name.
+    InviteNamed(String),
+    /// Accept the invitation they have.
+    Accept,
+    /// Decline the invitation they have.
+    Decline,
+    /// Leave their party.
+    Leave,
+}
+
 /// An admin command, for [`crate::admin`] (which checks the player is an admin).
 #[derive(Message)]
 pub struct AdminRequest {
@@ -295,6 +323,7 @@ fn receive_messages(
     mut item_uses: MessageWriter<ItemUseRequest>,
     mut abilities: MessageWriter<AbilityRequest>,
     mut hotbars: MessageWriter<HotbarRequest>,
+    mut parties: MessageWriter<PartyRequest>,
 ) {
     let now = time.elapsed_secs();
     while let Some(event) = link.next_event() {
@@ -345,6 +374,9 @@ fn receive_messages(
                     Verdict::Hotbar(request) => {
                         hotbars.write(request);
                     }
+                    Verdict::Party(request) => {
+                        parties.write(request);
+                    }
                     Verdict::Reply(message) => link.send(id, &message),
                     Verdict::Ignore => {}
                     Verdict::Strike => {
@@ -376,6 +408,7 @@ enum Verdict {
     UseItem(ItemUseRequest),
     Ability(AbilityRequest),
     Hotbar(HotbarRequest),
+    Party(PartyRequest),
     /// Answer the client directly, without changing anything.
     Reply(ServerMessage),
     Ignore,
@@ -523,9 +556,42 @@ fn judge_player_message(
             }
             return Verdict::Hotbar(HotbarRequest { player, slots });
         }
+        ClientMessage::Party(command) => return judge_party_command(player, connection, command, now),
         ClientMessage::Hello { .. } | ClientMessage::CreateCharacter { .. } => return Verdict::Strike,
     };
     Verdict::Player(PlayerRequest { player, action })
+}
+
+/// Validates a party command. Creating parties and inviting share chat's
+/// rate limit (so invitations can't be spammed); names are cleaned, and a
+/// name that isn't allowed is explained.
+fn judge_party_command(player: Entity, connection: &mut Connection, command: PartyCommand, now: f32) -> Verdict {
+    let notice = |text: String| Verdict::Reply(ServerMessage::Notice { text });
+    let action = match command {
+        PartyCommand::Create { name } | PartyCommand::InviteNamed { name } if name.len() > MAX_ID_BYTES => {
+            return Verdict::Strike;
+        }
+        PartyCommand::Create { .. } | PartyCommand::Invite { .. } | PartyCommand::InviteNamed { .. }
+            if !connection.chat.allow(now) =>
+        {
+            return notice("You're doing that too quickly.".to_string());
+        }
+        PartyCommand::Create { name } => match clean_party_name(&name) {
+            Ok(name) => PartyAction::Create(name),
+            Err(reason) => return notice(reason),
+        },
+        PartyCommand::Invite { target } => PartyAction::Invite(target),
+        PartyCommand::InviteNamed { name } => match clean_name(&name) {
+            Ok(name) => PartyAction::InviteNamed(name),
+            Err(_) => {
+                return notice(format!("There's no player called {}.", clean_chat_text(&name).unwrap_or_default()));
+            }
+        },
+        PartyCommand::Accept => PartyAction::Accept,
+        PartyCommand::Decline => PartyAction::Decline,
+        PartyCommand::Leave => PartyAction::Leave,
+    };
+    Verdict::Party(PartyRequest { player, action })
 }
 
 /// A token bucket: allows bursts of up to `capacity` events, refilling at

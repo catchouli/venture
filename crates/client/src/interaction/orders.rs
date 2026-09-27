@@ -104,6 +104,11 @@ impl Orders<'_, '_> {
         self.player.as_ref().is_some_and(|player| player.1.admin)
     }
 
+    /// Where the player's character is, if it's in the game.
+    pub fn position(&self) -> Option<Vec3> {
+        self.player.as_ref().map(|player| player.0.translation)
+    }
+
     /// Asks the server for something without predicting anything (for
     /// requests the server will probably turn down, and explain why).
     pub fn ask(&mut self, message: ClientMessage) {

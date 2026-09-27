@@ -341,6 +341,19 @@ PIECES = {
 
 # Tab icons ------------------------------------------------------------------
 
+def tab_party():
+    skin = (226, 186, 146)
+    left, right, middle = (70, 110, 160), (80, 130, 70), (150, 60, 50)
+    return [
+        (ellipse(8.5, 26, 6.5, 5), left),  # two behind...
+        (circle(8.5, 15.5, 4.3), skin),
+        (ellipse(23.5, 26, 6.5, 5), right),
+        (circle(23.5, 15.5, 4.3), skin),
+        (ellipse(16, 28, 8, 6), middle),  # ...and one in front
+        (circle(16, 15, 5.5), skin),
+    ]
+
+
 def tab_stats():
     skin, tunic = (226, 186, 146), (150, 60, 50)
     return [
@@ -396,6 +409,7 @@ def tab_emotes():
 
 
 TAB_ICONS = {
+    "tab_party.png": tab_party,
     "tab_stats.png": tab_stats,
     "tab_skills.png": tab_skills,
     "tab_abilities.png": tab_abilities,

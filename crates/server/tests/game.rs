@@ -72,6 +72,7 @@ impl TestServer {
             link,
             rules,
             item_cooldown: 1.0,
+            party: Default::default(),
             content,
             spawn_override: None,
             admins,
@@ -1373,4 +1374,84 @@ fn welcome_id(messages: &[ServerMessage]) -> EntityId {
         .iter()
         .find_map(|m| if let ServerMessage::Welcome { you, .. } = m { Some(*you) } else { None })
         .expect("a welcome")
+}
+
+/// The latest party a player was sent (`Some(None)`: they were told they're in none).
+fn latest_party(messages: &[ServerMessage]) -> Option<Option<venture_protocol::PartyInfo>> {
+    messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Party(party) => Some(party.clone()),
+        _ => None,
+    })
+}
+
+#[test]
+fn players_form_parties_by_invitation() {
+    use venture_protocol::PartyCommand;
+    let mut server = TestServer::new("parties");
+    let (ada, _) = server.join(TOKEN_A, "Ada");
+    let (bram, bram_id) = server.join(TOKEN_B, "Bram");
+    server.run(1);
+    ada.receive();
+    bram.receive();
+
+    // A party name that isn't allowed is explained.
+    ada.send(&ClientMessage::Party(PartyCommand::Create { name: "<b>".to_string() }));
+    server.run(1);
+    assert_eq!(notices(&ada.receive()), ["Party names must start with a letter or a digit."]);
+
+    ada.send(&ClientMessage::Party(PartyCommand::Create { name: "Wanderers".to_string() }));
+    server.run(1);
+    let messages = ada.receive();
+    assert_eq!(notices(&messages), ["You have created the party Wanderers."]);
+    let party = latest_party(&messages).flatten().expect("Ada's party");
+    assert_eq!((party.name.as_str(), party.members.len()), ("Wanderers", 1));
+
+    // Inviting by the entity (the "Invite target" button).
+    ada.send(&ClientMessage::Party(PartyCommand::Invite { target: bram_id }));
+    server.run(1);
+    assert_eq!(notices(&ada.receive()), ["Inviting Bram to party Wanderers..."]);
+    let messages = bram.receive();
+    assert_eq!(notices(&messages), ["You have been invited to party Wanderers."]);
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::PartyInvite(Some(invite)) if invite.from == "Ada")));
+
+    bram.send(&ClientMessage::Party(PartyCommand::Accept));
+    server.run(1);
+    let messages = bram.receive();
+    assert!(notices(&messages).contains(&"You have joined Wanderers.".to_string()));
+    assert!(messages.contains(&ServerMessage::PartyInvite(None)));
+    let party = latest_party(&messages).flatten().expect("Bram's party");
+    let names: Vec<&str> = party.members.iter().map(|member| member.name.as_str()).collect();
+    assert_eq!(names, ["Ada", "Bram"]);
+    assert!(party.members.iter().all(|member| member.max_health > 0 && member.level == 1));
+    assert!(notices(&ada.receive()).contains(&"Bram accepted the party invite.".to_string()));
+
+    // Leaving the game leaves the party.
+    bram.disconnect();
+    server.run(2);
+    let messages = ada.receive();
+    assert!(notices(&messages).contains(&"Bram has left the party.".to_string()));
+    let party = latest_party(&messages).flatten().expect("Ada's party");
+    assert_eq!(party.members.len(), 1);
+}
+
+#[test]
+fn party_invitations_run_out() {
+    use venture_protocol::PartyCommand;
+    let mut server = TestServer::new("party-invitations");
+    let (ada, _) = server.join(TOKEN_A, "Ada");
+    let (bram, _) = server.join(TOKEN_B, "Bram");
+    ada.send(&ClientMessage::Party(PartyCommand::Create { name: "Wanderers".to_string() }));
+    // Inviting by name, as `/invite bram` does.
+    ada.send(&ClientMessage::Party(PartyCommand::InviteNamed { name: "bram".to_string() }));
+    server.run(1);
+    bram.receive();
+    ada.receive();
+    server.run((15.0 * TICK_RATE) as usize + 1);
+    let messages = bram.receive();
+    assert!(notices(&messages).contains(&"Your invitation to join Wanderers has expired.".to_string()));
+    assert!(messages.contains(&ServerMessage::PartyInvite(None)));
+    assert!(notices(&ada.receive()).contains(&"Your party invite to Bram has expired.".to_string()));
+    bram.send(&ClientMessage::Party(PartyCommand::Accept));
+    server.run(1);
+    assert_eq!(notices(&bram.receive()), ["You don't have a party invitation."]);
 }

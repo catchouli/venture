@@ -302,6 +302,19 @@ def action_follow():
     ]
 
 
+def action_target():
+    red = (225, 70, 55)
+    return [
+        tile((60, 46, 44)),
+        (ring(16, 16, 9, 2.2), red),  # a reticle
+        (capsule(16, 3.5, 16, 9, 1.3), red),
+        (capsule(16, 23, 16, 28.5, 1.3), red),
+        (capsule(3.5, 16, 9, 16, 1.3), red),
+        (capsule(23, 16, 28.5, 16, 1.3), red),
+        (circle(16, 16, 2.2), (250, 220, 150)),
+    ]
+
+
 def emote_wave():
     skin = (232, 190, 150)
     return [
@@ -388,6 +401,7 @@ ICONS = {
     "action_attack.png": action_attack,
     "action_talk.png": action_talk,
     "action_follow.png": action_follow,
+    "action_target.png": action_target,
     "emote_wave.png": emote_wave,
     "action_town.png": action_town,
     "skill_fishing.png": skill_fishing,

@@ -1,0 +1,26 @@
+// A party invitation, top left under the player frame: who's inviting the player to which
+// party, how long is left to answer (the "invite_time" bar runs down), and buttons to accept or
+// decline (the same as typing /accept or /decline). The game shows it while the player has an
+// invitation. See docs/ui-layouts.md.
+(
+    id: "party_invite",
+    position: Absolute, left: 10, top: 98, width: 220,
+    direction: Column, gap: 6, padding: (7, 10),
+    piece: "panel", colour: "window", border: 1, border_colour: "border", corners: 4,
+    layer: 5, hidden: true,
+    children: [
+        (text: "{invite_from} invites you to the party {invite_party}", style: "invite_text"),
+        (direction: Row, align: Center, gap: 6, children: [
+            (bar: "invite_time", bar_style: "timer", height: 6, grow: 1),
+            (text: "{invite_seconds} s", style: "invite_seconds"),
+        ]),
+        (direction: Row, justify: SpaceAround, children: [
+            (id: "invite_accept", button: true, piece: "button", padding: (3, 14),
+             colour: "slot", border: 1, border_colour: "border", corners: 3,
+             children: [(text: "Accept", style: "button_label")]),
+            (id: "invite_decline", button: true, piece: "button", padding: (3, 14),
+             colour: "slot", border: 1, border_colour: "border", corners: 3,
+             children: [(text: "Decline", style: "button_label")]),
+        ]),
+    ],
+)

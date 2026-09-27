@@ -489,7 +489,17 @@ A chat message starting with `/` names an action and is never sent as chat:
 - `/wave`: wave hello (the server shows it to everyone within 40 m, as an
   `Emoted` message; emotes share chat's rate limit);
 - `/town`: go back to the starting town's square;
+- `/target`: select the nearest monster within 5 m (so it can't be used to
+  pull fights from afar), or with a name, `/target Old Tomas`, the nearest NPC
+  or monster with that name (ignoring case). Selecting is the client's own
+  business, so this never reaches the server. Its hotbar button is the
+  nameless kind;
+- `/party NAME`, `/invite [NAME]`, `/accept`, `/decline`, `/leave`: parties
+  (below);
 - `/help`: list the commands (shown by the client itself).
+
+Some actions take words after their name (`/party Wanderers`); the rest
+ignore any.
 
 Actions become ordinary protocol commands (`Follow`, `Interact`, `Attack`,
 `ReturnToTown`), which the server validates like any other. Actions on the
@@ -497,6 +507,34 @@ selected target are sent even when they can't work (`/follow` with an NPC
 selected), so the server decides and explains in a `Notice`; the client only
 predicts the ones that will work. An unknown command gets a message pointing
 to `/help`.
+
+## Parties
+
+Players can form parties, run entirely by the server's `parties.rs` (the
+only code that changes who's in one), in memory: nothing is saved.
+
+- `/party NAME` starts a party with you in it (names are 2 to 24 letters,
+  digits, spaces, apostrophes and hyphens, and unique among parties while
+  they last). Not while you're in one.
+- `/invite` invites the selected player (or `/invite NAME`, a player by
+  name). They must not be in a party or have another invitation open.
+  They're told in chat and get an invitation (`PartyInvite`) with 15 seconds
+  to answer (`party.invite_seconds` in `server.ron`; parties hold at most
+  `party.max_members`, 8).
+- `/accept` or `/decline` answers it; when it runs out, both sides are told
+  and the answer commands no longer work. Answering, or running out, ends
+  the invitation (`PartyInvite(None)`).
+- `/leave` leaves the party. Leaving the game leaves it too, and a party with
+  nobody left in it is gone (with any invitations to it).
+
+Members are sent their party (`Party`: its name, and each member's name,
+class, level, health and mana) whenever any of that changes, which is how
+they see each other's health (players' health is otherwise private). The
+client shows it in the party tab of the character window (**P**), and the
+other members in small frames under the player frame; the invitation shows
+there too, with a countdown and Accept and Decline buttons. The buttons
+(Create party, Invite target, Leave party, Accept, Decline) only give the
+chat commands, so the interface adds no rules of its own.
 
 ## Connection problems
 

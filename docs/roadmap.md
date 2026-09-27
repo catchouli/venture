@@ -14,6 +14,8 @@ like the finished game, with a character walking around it.
 - A 1.8 m placeholder character with a procedural run animation; click-to-move
   with A* pathfinding around water, cliffs, trees and rocks; a glowing move
   marker; follow camera; custom cursors.
+- Parties: `/party`, invitations that run out, a party tab and frames for
+  the other members; `/target` by name, or the nearest monster within 5 m.
 
 ## Now: soul (the vertical slice's look and feel)
 

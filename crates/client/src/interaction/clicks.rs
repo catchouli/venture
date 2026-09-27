@@ -56,13 +56,13 @@ fn handle_click(
         let already_selected = target.0 == Some(clicked);
         match targetables.get(clicked).map(|targetable| targetable.kind) {
             Ok(TargetKind::Player) if already_selected => {
-                actions.write(PerformAction(Action::Follow));
+                actions.write(PerformAction::new(Action::Follow));
             }
             Ok(TargetKind::Npc) if already_selected => {
-                actions.write(PerformAction(Action::Talk));
+                actions.write(PerformAction::new(Action::Talk));
             }
             Ok(TargetKind::Enemy) if already_selected => {
-                actions.write(PerformAction(Action::Attack));
+                actions.write(PerformAction::new(Action::Attack));
             }
             _ => target.0 = Some(clicked),
         }

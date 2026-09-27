@@ -381,7 +381,7 @@ fn activate(
             abilities.write(UseAbility(ability.clone()));
         }
         HotbarEntry::Action(action) => {
-            actions.write(PerformAction(Action::from_hotbar(*action)));
+            actions.write(PerformAction::new(Action::from_hotbar(*action)));
         }
         HotbarEntry::Item(item) => {
             items.write(UseItemKind(item.clone()));

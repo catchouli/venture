@@ -7,6 +7,8 @@ pub const MIN_NAME_CHARS: usize = 2;
 pub const MAX_NAME_CHARS: usize = 20;
 /// Most characters in one chat message.
 pub const MAX_CHAT_CHARS: usize = 200;
+/// Most characters in a party's name.
+pub const MAX_PARTY_NAME_CHARS: usize = 24;
 
 /// Tokens must be this many characters or more, so they can't be guessed.
 const MIN_TOKEN_CHARS: usize = 32;
@@ -27,6 +29,25 @@ pub fn clean_name(name: &str) -> Result<String, String> {
     }
     if !name.chars().all(|c| c.is_alphabetic() || c == ' ' || c == '\'' || c == '-') {
         return Err("Names can only contain letters, spaces, apostrophes and hyphens.".to_string());
+    }
+    Ok(name)
+}
+
+/// Tidies a requested party name, or explains why it isn't allowed. Party
+/// names are letters, digits, spaces, apostrophes and hyphens, start with a
+/// letter or digit, and are 2 to [`MAX_PARTY_NAME_CHARS`] characters long.
+/// Runs of spaces are collapsed.
+pub fn clean_party_name(name: &str) -> Result<String, String> {
+    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    let length = name.chars().count();
+    if !(2..=MAX_PARTY_NAME_CHARS).contains(&length) {
+        return Err(format!("Party names must be 2 to {MAX_PARTY_NAME_CHARS} characters long."));
+    }
+    if !name.chars().next().is_some_and(char::is_alphanumeric) {
+        return Err("Party names must start with a letter or a digit.".to_string());
+    }
+    if !name.chars().all(|c| c.is_alphanumeric() || c == ' ' || c == '\'' || c == '-') {
+        return Err("Party names can only contain letters, digits, spaces, apostrophes and hyphens.".to_string());
     }
     Ok(name)
 }
@@ -58,6 +79,16 @@ mod tests {
         assert!(clean_name("'Quote").is_err());
         assert!(clean_name("Robert'); DROP TABLE").is_err());
         assert!(clean_name(&"x".repeat(MAX_NAME_CHARS + 1)).is_err());
+    }
+
+    #[test]
+    fn party_names_are_tidied_and_checked() {
+        assert_eq!(clean_party_name("  The   Wanderers "), Ok("The Wanderers".to_string()));
+        assert_eq!(clean_party_name("7th Company"), Ok("7th Company".to_string()));
+        assert!(clean_party_name("x").is_err());
+        assert!(clean_party_name("-dash").is_err());
+        assert!(clean_party_name("<b>bold</b>").is_err());
+        assert!(clean_party_name(&"x".repeat(MAX_PARTY_NAME_CHARS + 1)).is_err());
     }
 
     #[test]

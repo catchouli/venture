@@ -135,6 +135,8 @@ pub enum HotbarAction {
     Wave,
     /// Go back to town.
     Town,
+    /// Select the nearest monster within reach (see `/target`).
+    Target,
 }
 
 /// Commands from a client. Each is a *request*; the server decides what happens.
@@ -263,6 +265,76 @@ pub enum ClientMessage {
         /// What's in each slot, from key 1.
         slots: Vec<Option<HotbarEntry>>,
     },
+    /// Something to do with parties.
+    Party(PartyCommand),
+}
+
+/// Something to do with parties (groups of players), in a
+/// [`ClientMessage::Party`]. The server answers in chat either way.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum PartyCommand {
+    /// Start a party with this name, with yourself in it (`/party NAME`).
+    Create {
+        /// The party's name.
+        name: String,
+    },
+    /// Invite a player to your party (`/invite`, with them selected).
+    Invite {
+        /// Who.
+        target: EntityId,
+    },
+    /// Invite a player to your party by name (`/invite NAME`).
+    InviteNamed {
+        /// Their name.
+        name: String,
+    },
+    /// Join the party you've been invited to (`/accept`).
+    Accept,
+    /// Turn down the party invitation (`/decline`).
+    Decline,
+    /// Leave your party (`/leave`).
+    Leave,
+}
+
+/// The party a player is in, in a [`ServerMessage::Party`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PartyInfo {
+    /// Its name.
+    pub name: String,
+    /// Everyone in it (the player too), in the order they joined.
+    pub members: Vec<PartyMember>,
+}
+
+/// Someone in a party, in a [`PartyInfo`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PartyMember {
+    /// Their entity.
+    pub id: EntityId,
+    /// Their name.
+    pub name: String,
+    /// Their class's name.
+    pub class: String,
+    /// Their level.
+    pub level: u32,
+    /// Health left.
+    pub health: u32,
+    /// Most health.
+    pub max_health: u32,
+    /// Mana left.
+    pub mana: u32,
+    /// Most mana.
+    pub max_mana: u32,
+}
+
+/// An invitation to join a party, in a [`ServerMessage::PartyInvite`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PartyInvite {
+    /// Who sent it.
+    pub from: String,
+    /// The party's name.
+    pub party: String,
+    /// Seconds left to answer it.
+    pub seconds: f32,
 }
 
 /// A gesture a character can make.
@@ -487,6 +559,13 @@ pub enum ServerMessage {
         /// The new content version.
         version: String,
     },
+    /// The player's party, sent when they join or leave one and whenever
+    /// anything shown about it changes (such as a member's health). `None`:
+    /// they aren't in one.
+    Party(Option<PartyInfo>),
+    /// The player has been invited to a party (`Some`), or the invitation
+    /// has been answered or has run out (`None`).
+    PartyInvite(Option<PartyInvite>),
 }
 
 /// One entity's state in a [`ServerMessage::Snapshot`].

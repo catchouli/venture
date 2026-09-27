@@ -28,7 +28,7 @@ const LOCKED_TINT: Color = Color::srgba(1.0, 1.0, 1.0, 0.3);
 /// How faded an unlearned ability looks when it can be learned now.
 const LEARNABLE_TINT: Color = Color::srgba(1.0, 1.0, 1.0, 0.6);
 /// The actions shown, in order.
-const ACTIONS: [Action; 4] = [Action::Attack, Action::Talk, Action::Follow, Action::Town];
+const ACTIONS: [Action; 5] = [Action::Attack, Action::Target, Action::Talk, Action::Follow, Action::Town];
 
 /// Shows the abilities tab.
 pub struct AbilitiesPlugin;

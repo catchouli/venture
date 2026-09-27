@@ -19,8 +19,10 @@ needs that's gone), and a layout with a problem never breaks the game: the
 server keeps the last good content, and the game has built-in copies of
 every layout to fall back on.
 
-So far the **player frame** (`player_frame.ron`) and the **hotbar**
-(`hotbar.ron`) are layouts; the other windows are moving over.
+So far the **player frame** (`player_frame.ron`), the **hotbar**
+(`hotbar.ron`), the **party frame** (`party_frame.ron`: the other members of
+the player's party, under the player frame) and the **party invitation**
+(`party_invite.ron`) are layouts; the other windows are moving over.
 
 ## Elements
 
@@ -108,6 +110,16 @@ What the game provides:
 | `mana_max` | the player's most mana |
 | `experience` | the player's experience towards the next level |
 | `experience_max` | the experience the next level takes |
+| `invite_from` | who invited the player to a party |
+| `invite_party` | the name of the party they're invited to |
+| `invite_seconds` | whole seconds left to answer the invitation |
+| `invite_time`, `invite_time_max` | time left to answer, out of the time it was open for (for a bar) |
+| `member_name`, `member_class`, `member_level` | a party member's name, class and level |
+| `member_health`, `member_health_max`, `member_mana`, `member_mana_max` | a party member's health and mana |
+
+The `member_` names only mean something inside the party frame's `member`
+template: the game makes a copy of it for each other member, and each copy
+shows its own member's data (see "Lists and rows" below).
 
 ## Bars
 
@@ -144,6 +156,8 @@ restyle, add or remove):
 | --- | --- |
 | `player_frame` | `player_frame` |
 | `hotbar` | `hotbar`, `slots`, `slot`, `icon`, `label`, `cooldown_shade`, `cooldown_text`, `key`, `count` |
+| `party_frame` | `party_frame`, `member` |
+| `party_invite` | `party_invite`, `invite_accept`, `invite_decline` (the buttons: the same as `/accept` and `/decline`) |
 
 For example, the hotbar copies its `slot` template ten times into `slots`,
 and fills in each copy's `icon`, `label`, `key`, `cooldown_shade` and
@@ -163,7 +177,12 @@ Code says what a layout shows and does; the layout says where and how.
 - **Lists and rows:** mark an element `template: true` in the layout and copy
   it with `Ui::copy(layout, id, count)`, which returns each copy's elements
   by id. Add components through `Ui::commands()`, so they come after the
-  copies are made.
+  copies are made. For a list where each entry shows its own data, copy it
+  with `Ui::copy_scoped(layout, id, scopes)`: in the copy for scope `"7"`,
+  `{member_name}` (and `bar: "member_health"`) show the data called
+  `member_name@7` (`scoped_name("member_name", "7")`), which code sets as
+  usual. The party frame (`crates/client/src/ui/party.rs`) does this, with
+  each member's entity id as the scope.
 - **Showing and hiding a window:** set the `Visibility` of the element with
   the window's `UiRoot`.
 - **A new window:** write its behaviour, add a first plain layout to

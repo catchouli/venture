@@ -1,5 +1,5 @@
 //! The character window: everything about the player's own character, in
-//! tabs. Each tab has a key (see [`Tab::key`]): Stats (**C**), Skills (**K**),
+//! tabs. Each tab has a key (see [`Tab::key`]): Party (**P**), Stats (**C**), Skills (**K**),
 //! Abilities (**L**), Inventory (**I**), Gear (**G**), Quests (**J**) and
 //! Emotes (**O**), and a button on the toolbar (see [`crate::ui::toolbar`]).
 //! Either opens the window on that tab, or closes it if it's already
@@ -15,6 +15,7 @@ pub mod abilities;
 pub mod emotes;
 pub mod equipment;
 pub mod inventory;
+pub mod party;
 pub mod quests;
 pub mod skills;
 pub mod stats;
@@ -68,6 +69,7 @@ impl Plugin for CharacterWindowPlugin {
                 equipment::EquipmentPlugin,
                 quests::QuestsPlugin,
                 emotes::EmotesPlugin,
+                party::PartyTabPlugin,
             ));
     }
 }
@@ -75,6 +77,8 @@ impl Plugin for CharacterWindowPlugin {
 /// A tab of the character window.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Tab {
+    /// The player's party.
+    Party,
     /// Name, class, level, stats.
     Stats,
     /// Gathering and making skills.
@@ -93,12 +97,13 @@ pub enum Tab {
 
 impl Tab {
     /// Every tab, in the order they're shown.
-    pub const ALL: [Tab; 7] =
-        [Tab::Stats, Tab::Skills, Tab::Abilities, Tab::Inventory, Tab::Equipment, Tab::Quests, Tab::Emotes];
+    pub const ALL: [Tab; 8] =
+        [Tab::Party, Tab::Stats, Tab::Skills, Tab::Abilities, Tab::Inventory, Tab::Equipment, Tab::Quests, Tab::Emotes];
 
     /// Its label.
     pub fn label(self) -> &'static str {
         match self {
+            Tab::Party => "Party",
             Tab::Stats => "Stats",
             Tab::Skills => "Skills",
             Tab::Abilities => "Abilities",
@@ -112,6 +117,7 @@ impl Tab {
     /// The key that opens it.
     pub fn key(self) -> KeyCode {
         match self {
+            Tab::Party => KeyCode::KeyP,
             Tab::Stats => KeyCode::KeyC,
             Tab::Skills => KeyCode::KeyK,
             Tab::Abilities => KeyCode::KeyL,
@@ -125,6 +131,7 @@ impl Tab {
     /// The key's name, for hints.
     pub fn key_name(self) -> &'static str {
         match self {
+            Tab::Party => "P",
             Tab::Stats => "C",
             Tab::Skills => "K",
             Tab::Abilities => "L",
@@ -138,6 +145,7 @@ impl Tab {
     /// Its name in the theme's tab icons and in `VENTURE_OPEN` (see [`DevSettings`]).
     pub fn id(self) -> &'static str {
         match self {
+            Tab::Party => "party",
             Tab::Stats => "stats",
             Tab::Skills => "skills",
             Tab::Abilities => "abilities",

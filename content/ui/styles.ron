@@ -23,11 +23,20 @@
         "slot_key": (size: 10, colour: "key", shadow: true),
         "slot_label": (size: 11, colour: "white"),
         "cooldown": (size: 15, colour: "white", shadow: true),
+        "member_name": (size: 12, colour: "title"),
+        // (Meant to be italic: give it an italic font from ui/ with `font: "....ttf"`.)
+        "member_class": (size: 10, colour: "quiet"),
+        "member_level": (size: 11, colour: "key", shadow: true),
+        "invite_text": (size: 12, colour: "text"),
+        "invite_seconds": (size: 11, colour: "quiet"),
+        "button_label": (size: 12, colour: "title"),
     },
     // Each bar's fill, and the darker empty part behind it.
     bars: {
         "health": (fill: (0.75, 0.15, 0.12), back: (0.24, 0.05, 0.04)),
         "mana": (fill: (0.18, 0.35, 0.8), back: (0.05, 0.08, 0.24)),
         "experience": (fill: (0.85, 0.7, 0.3), back: (0.22, 0.16, 0.05)),
+        // Time left to answer a party invitation.
+        "timer": (fill: (0.8, 0.75, 0.6), back: (0.2, 0.18, 0.14)),
     },
 )

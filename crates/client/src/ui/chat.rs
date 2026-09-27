@@ -215,14 +215,21 @@ fn send_typed_message(
 }
 
 /// For development: says (or runs) the `VENTURE_SAY` messages once the
-/// world around the player has loaded.
+/// world around the player has loaded (and `VENTURE_SAY_DELAY` more seconds
+/// have passed).
 fn say_once_if_requested(
+    time: Res<Time>,
     dev: Res<DevSettings>,
     progress: Res<StreamingProgress>,
     mut said: Local<bool>,
+    mut waited: Local<f32>,
     mut sender: ChatSender,
 ) {
     if *said || !progress.measured || progress.waiting > 0 {
+        return;
+    }
+    *waited += time.delta_secs();
+    if *waited < dev.say_delay {
         return;
     }
     for text in &dev.say {
@@ -263,7 +270,7 @@ impl ChatSender<'_> {
         }
         match Action::named(name) {
             Some(action) => {
-                self.actions.write(PerformAction(action));
+                self.actions.write(PerformAction::with(action, &arguments.join(" ")));
             }
             None => {
                 let problem = if name.is_empty() {

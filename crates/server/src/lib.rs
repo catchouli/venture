@@ -24,6 +24,8 @@
 //! 7. [`monsters`], [`abilities`] and [`combat`]: monsters and fighting them
 //!    (abilities is the only code that uses abilities; combat is the only code
 //!    that damages anything).
+//! 8. [`parties`]: groups of players, and invitations to them (the only code
+//!    that changes who's in a party).
 //!
 //! Inventories and quest logs are the exception that proves the rule: several
 //! modules may change them (shops, dialogue), but only through their own
@@ -59,6 +61,7 @@ pub mod link;
 pub mod monsters;
 mod names;
 pub mod npcs;
+pub mod parties;
 pub mod profiles;
 pub mod quests;
 pub mod requests;
@@ -90,6 +93,8 @@ pub struct GameServer {
     pub rules: Rules,
     /// How long players wait between using items, in seconds (from the config file).
     pub item_cooldown: f32,
+    /// Rules for parties (from the config file).
+    pub party: config::PartyConfig,
     /// The content pack.
     pub content: ContentSetup,
     /// Where new characters start, if not the world's spawn point (for development).
@@ -161,6 +166,7 @@ impl GameServer {
             .insert_resource(self.link)
             .insert_resource(GameRules(self.rules))
             .insert_resource(consumables::ItemCooldown(self.item_cooldown))
+            .insert_resource(parties::PartyRules(self.party))
             .insert_resource(Admins { names: self.admins, everyone: self.everyone_is_admin })
             .insert_resource(sessions::SpawnPoint(self.spawn_override))
             .configure_sets(
@@ -193,7 +199,7 @@ impl GameServer {
                 equipment::EquipmentPlugin,
                 monsters::MonstersPlugin,
                 (abilities::AbilitiesPlugin, hotbar::HotbarPlugin, combat::CombatPlugin),
-                consumables::ConsumablesPlugin,
+                (consumables::ConsumablesPlugin, parties::PartiesPlugin),
                 content::ContentPlugin,
             ));
     }
