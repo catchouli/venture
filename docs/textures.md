@@ -1,4 +1,4 @@
-# Ground textures
+# Ground textures and skies
 
 The terrain wears PBR textures (colour, normal map, roughness, ambient
 occlusion) from the content pack: `content/textures/<name>/`. Today there are
@@ -82,6 +82,37 @@ Every texture is sampled everywhere (21 samples a pixel): sampling can't
 depend on the weights without losing mipmap selection (it needs neighbouring
 pixels to take the same path). Metres per repeat are in `GROUND_TEXTURES`
 (grass 2.5, dirt 3, rock 4).
+
+## The sky
+
+The sky comes from an HDR panorama (an ambientCG HDRI's `*_HDR.exr`),
+downloaded to `~/assets/skies/` and baked by:
+
+```sh
+cargo run --release -p venture_tools --bin import_sky -- ~/assets/skies/DaySkyHDRI070B_4K day
+```
+
+into `content/skies/day/` (about 0.9 MB in all; see `venture_content::sky`):
+
+| File | What |
+| --- | --- |
+| `sky.jpg` | The skybox: six 1024 × 1024 cube faces stacked, sRGB |
+| `light.bin` | Image-based lighting: a 32² irradiance cube and a 128² radiance cube with a mipmap per roughness (GGX-prefiltered, filtered importance sampling), in RGB9E5 |
+| `sky.ron` | The direction of its sun, and its horizon colour |
+
+It's baked ahead because Bevy filters environment maps at run time with
+compute shaders, which WebGL2 doesn't have. Everything is on one brightness
+scale where the bright sky (the 98th percentile of the panorama) is 1; the
+skybox clips there, and the light clips its sun out at 4 (the game's sun is
+a directional light, and a second sun in the sky light would double the
+highlight).
+
+In the game (`world/lighting.rs`) the sky is turned so its sun is in the
+game's south-west, the directional light goes where the sky's sun is (so
+its height and the shadows match the picture), the flat ambient light gives
+way to the sky's light, and distant haze takes the sky's horizon colour.
+`SKY_BRIGHTNESS` sets how bright the sky's 1 is (1000 cd/m², so with
+Bevy's default exposure a bright sky shows at about 1).
 
 ## Growing to many ground materials
 

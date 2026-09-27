@@ -55,6 +55,13 @@ them to 1024 × 1024 and converts them to JPEGs (see `docs/textures.md`).
 | Ground111 | `content/textures/dirt/`: bare earth and paths | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 | Ground110 | `content/textures/rock/`: rock, basalt and steep slopes | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 
+Skies are ambientCG HDRIs too, downloaded to `~/assets/skies/` and baked into
+`content/skies/` by `import_sky`:
+
+| Sky | What we use it for | Licence |
+| --- | --- | --- |
+| DaySkyHDRI070B | `content/skies/day/`: the daytime sky and its light | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+
 ## Everything else
 
 Everything else in the repository (code, content, placeholder icons, sounds

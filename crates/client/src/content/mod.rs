@@ -18,6 +18,7 @@ use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 use venture_content::characters::{CharacterModels, parse_character_models};
 use venture_content::layout::{UiNode, UiStyles, parse_layout, parse_styles};
+use venture_content::sky::{SkyDef, SkyLight, parse_sky};
 use venture_content::{
     AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, SkillDef, ThemeDef,
     parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
@@ -77,6 +78,8 @@ pub struct ContentStore {
     /// Character models, if the content has them. (The model files
     /// themselves go to the asset server: see [`ContentAssets`].)
     pub character_models: Option<CharacterModels>,
+    /// Skies, by name (their pictures go to the asset server).
+    pub skies: HashMap<String, SkyFiles>,
     /// Model files that changed in the last download (to reload).
     pub changed_models: Vec<String>,
     /// The files held, by path, with their hashes (to skip unchanged files).
@@ -106,6 +109,20 @@ impl ContentAssets {
         );
         app.insert_resource(self.clone());
     }
+}
+
+/// A sky's description and light, as they arrive.
+#[derive(Clone, Debug, Default)]
+pub struct SkyFiles {
+    /// Its sun and horizon.
+    pub def: Option<SkyDef>,
+    /// Its light.
+    pub light: Option<SkyLight>,
+}
+
+/// The sky a `skies/<name>/...` path belongs to.
+fn sky_name(path: &str) -> String {
+    path.split('/').nth(1).unwrap_or_default().to_string()
 }
 
 /// The asset source name for content files (`content://characters/body_male.gltf`).
@@ -140,6 +157,10 @@ enum FileData {
     UiImage(Vec<u8>),
     /// A font of the theme's.
     Font(Vec<u8>),
+    /// A sky's description (`skies/<name>/sky.ron`).
+    Sky(SkyDef),
+    /// A sky's light (`skies/<name>/light.bin`).
+    SkyLight(Box<SkyLight>),
 }
 
 /// Where content files come from.
@@ -263,6 +284,10 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
         Some("characters") => FileData::Model(bytes.to_vec()),
         // (Loaded by the asset server, like models: `content://textures/grass/colour.jpg`.)
         Some("textures") => FileData::Model(bytes.to_vec()),
+        // (The picture is loaded by the asset server: `content://skies/day/sky.jpg`.)
+        Some("skies") if path.ends_with("sky.ron") => FileData::Sky(parse_sky(&text())?),
+        Some("skies") if path.ends_with("light.bin") => FileData::SkyLight(Box::new(SkyLight::from_bytes(bytes)?)),
+        Some("skies") => FileData::Model(bytes.to_vec()),
         Some("sounds.ron") => FileData::GameSounds(parse_game_sounds(&text())?),
         Some("skills") => FileData::Skills(parse_skills(&text())?),
         Some("ui") if path.starts_with("ui/layouts/") => FileData::Layout(Box::new(parse_layout(&text())?)),
@@ -301,6 +326,7 @@ fn finish_download(
             store.layouts.clear();
             store.ui_styles = None;
             store.character_models = None;
+            store.skies.clear();
             store.changed_models =
                 downloaded.changed.iter().filter(|path| path.starts_with("characters/")).cloned().collect();
             for (path, file) in &downloaded.files {
@@ -345,6 +371,10 @@ fn finish_download(
                     FileData::Font(bytes) => {
                         let name = path.rsplit('/').next().unwrap_or(path).to_string();
                         store.fonts.insert(name, Font::from_bytes(bytes.clone()));
+                    }
+                    FileData::Sky(def) => store.skies.entry(sky_name(path)).or_default().def = Some(def.clone()),
+                    FileData::SkyLight(light) => {
+                        store.skies.entry(sky_name(path)).or_default().light = Some((**light).clone());
                     }
                 }
             }

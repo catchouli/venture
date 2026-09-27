@@ -14,6 +14,7 @@ use crate::definitions::{
     QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
 };
 use crate::layout::{UiNode, UiStyles, check_layout, check_styles, parse_layout, parse_styles};
+use crate::sky::{SKY_FILES, SkyLight, parse_sky};
 use venture_protocol::EquipSlot;
 use venture_rpg::Healing;
 use venture_rpg::MAX_LEVEL;
@@ -42,6 +43,10 @@ const MAX_FONT_BYTES: usize = 4 * 1024 * 1024;
 const TEXTURES_FOLDER: &str = "textures";
 /// The pictures each texture has (see `docs/textures.md`).
 pub const TEXTURE_PICTURES: [&str; 3] = ["colour.jpg", "normal.jpg", "surface.jpg"];
+/// Skies: a folder of files for each (see [`crate::sky`]).
+const SKIES_FOLDER: &str = "skies";
+/// The largest a sky file may be, in bytes.
+const MAX_SKY_FILE_BYTES: usize = 4 << 20;
 /// The largest a texture picture may be, in bytes.
 const MAX_TEXTURE_BYTES: usize = 4 << 20;
 /// The first bytes of every JPEG file.
@@ -109,6 +114,8 @@ pub struct ContentPack {
     pub dialogue: BTreeMap<String, String>,
     /// Textures (by name: folders in `textures/`).
     pub textures: BTreeSet<String>,
+    /// Skies (by name: folders in `skies/`).
+    pub skies: BTreeSet<String>,
     /// The part clients download.
     pub client: ClientContent,
 }
@@ -492,6 +499,42 @@ impl ContentPack {
                 client_files.push((to_slashes(&relative), bytes));
             }
             pack.textures.insert(name);
+        }
+
+        let mut sky_folders: Vec<PathBuf> = std::fs::read_dir(folder.join(SKIES_FOLDER))
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| Some(entry.ok()?.path()))
+            .filter(|path| path.is_dir())
+            .collect();
+        sky_folders.sort();
+        for sky in sky_folders {
+            let name = file_name(&sky);
+            let subfolder = Path::new(SKIES_FOLDER).join(&name);
+            for wanted in SKY_FILES {
+                let relative = subfolder.join(wanted);
+                let bytes = match std::fs::read(folder.join(&relative)) {
+                    Ok(bytes) => bytes,
+                    Err(_) => {
+                        errors.push(error(&subfolder, format!("sky \"{name}\" has no {wanted}")));
+                        continue;
+                    }
+                };
+                let problem = match wanted {
+                    _ if bytes.len() > MAX_SKY_FILE_BYTES => {
+                        Some(format!("sky files must be at most {} MB", MAX_SKY_FILE_BYTES >> 20))
+                    }
+                    "sky.jpg" if !bytes.starts_with(&JPEG_SIGNATURE) => Some("this isn't a JPEG picture".to_string()),
+                    "light.bin" => SkyLight::from_bytes(&bytes).err(),
+                    "sky.ron" => parse_sky(&String::from_utf8_lossy(&bytes)).err(),
+                    _ => None,
+                };
+                if let Some(problem) = problem {
+                    errors.push(error(&relative, problem));
+                }
+                client_files.push((to_slashes(&relative), bytes));
+            }
+            pack.skies.insert(name);
         }
 
         if let Ok(text) = std::fs::read_to_string(folder.join(CHARACTERS_FILE)) {

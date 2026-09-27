@@ -2,13 +2,15 @@
 //! rendering as the game (from `venture_client`), reading the models straight
 //! from the content folder rather than downloading them.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use bevy::asset::io::AssetSourceBuilder;
 use bevy::prelude::*;
 use venture_client::characters::{humans, model, monsters};
-use venture_client::content::{CONTENT_SOURCE, ContentStore};
+use venture_client::content::{CONTENT_SOURCE, ContentStore, SkyFiles};
 use venture_content::characters::{CharacterModels, parse_character_models};
+use venture_content::sky::{SkyLight, parse_sky};
 use venture_content::{AppearanceDef, ItemDef};
 
 use crate::document::Document;
@@ -46,7 +48,22 @@ fn load_character_models(mut commands: Commands, project: Res<crate::Project>) {
     // (Fixed: a new version would make the game load every model again.)
     store.version = Some("editor".to_string());
     store.character_models = models;
+    store.skies = read_skies(&project.content);
     commands.insert_resource(store);
+}
+
+/// Every sky's description and light, from the content folder (their
+/// pictures are loaded from `content://`, which reads the folder too).
+fn read_skies(content: &Path) -> HashMap<String, SkyFiles> {
+    let mut skies = HashMap::new();
+    let folders = std::fs::read_dir(content.join("skies")).into_iter().flatten().filter_map(|entry| entry.ok());
+    for folder in folders.map(|entry| entry.path()).filter(|path| path.is_dir()) {
+        let name = folder.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        let def = std::fs::read_to_string(folder.join("sky.ron")).ok().and_then(|text| parse_sky(&text).ok());
+        let light = std::fs::read(folder.join("light.bin")).ok().and_then(|bytes| SkyLight::from_bytes(&bytes).ok());
+        skies.insert(name, SkyFiles { def, light });
+    }
+    skies
 }
 
 /// Keeps the appearances the game's rendering sees up to date.

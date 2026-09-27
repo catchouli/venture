@@ -1,6 +1,6 @@
 [package]
 name = "venture_tools"
-description = "Tools for preparing the game's assets: importing ambientCG textures into the content pack."
+description = "Tools for preparing the game's assets: importing ambientCG textures and skies into the content pack."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,9 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-image = { workspace = true, features = ["png", "jpeg"] }
+image = { workspace = true, features = ["png", "jpeg", "exr"] }
+ron.workspace = true
+venture_content.workspace = true
 
 [lints]
 workspace = true
