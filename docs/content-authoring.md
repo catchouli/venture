@@ -180,7 +180,8 @@ icons, sounds and looks.
 
 Skills are what characters get better at by doing them (gathering and
 making things). Each has its own level and experience, on the same curve as
-character levels, and the Skills tab lists them in file order. For now they
+character levels but going on to 99 (characters stop at 60), and the Skills
+tab lists them in file order. For now they
 only have names and levels: what each one involves is still being designed
 (see [vision.md](vision.md)). The `id` is saved in profiles.
 

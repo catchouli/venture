@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 
 /// The highest level a character can reach.
 pub const MAX_LEVEL: u32 = 60;
+/// The highest level a skill (such as fishing) can reach.
+pub const MAX_SKILL_LEVEL: u32 = 99;
 /// Stat points gained at each new level.
 const STAT_POINTS_PER_LEVEL: u32 = 2;
 /// Ability points gained at each new level...
@@ -88,22 +90,32 @@ impl Default for Progress {
 }
 
 impl Progress {
-    /// Adds experience, going up as many levels as it's enough for. At the
-    /// top level, experience stops counting.
+    /// Adds a character's experience, going up as many levels as it's enough
+    /// for. At the top level ([`MAX_LEVEL`]), experience stops counting.
     pub fn add_experience(&mut self, amount: u64) -> LevelUp {
+        self.add_experience_up_to(amount, MAX_LEVEL)
+    }
+
+    /// Adds experience to a skill, which goes on to [`MAX_SKILL_LEVEL`].
+    /// (Skills give no points: only the levels count.)
+    pub fn add_skill_experience(&mut self, amount: u64) -> u32 {
+        self.add_experience_up_to(amount, MAX_SKILL_LEVEL).levels
+    }
+
+    fn add_experience_up_to(&mut self, amount: u64, top: u32) -> LevelUp {
         let mut gained = LevelUp::default();
-        if self.level >= MAX_LEVEL {
+        if self.level >= top {
             return gained;
         }
         self.experience = self.experience.saturating_add(amount);
-        while self.level < MAX_LEVEL && self.experience >= experience_to_next_level(self.level) {
+        while self.level < top && self.experience >= experience_to_next_level(self.level) {
             self.experience -= experience_to_next_level(self.level);
             self.level += 1;
             gained.levels += 1;
             gained.stat_points += stat_points_at(self.level);
             gained.ability_points += ability_points_at(self.level);
         }
-        if self.level >= MAX_LEVEL {
+        if self.level >= top {
             self.experience = 0;
         }
         gained
@@ -115,9 +127,18 @@ impl Progress {
         (1..self.level).map(experience_to_next_level).sum::<u64>() + self.experience
     }
 
-    /// Experience still needed to reach the next level (0 at the top).
+    /// Experience still needed to reach a character's next level (0 at the top).
     pub fn experience_needed(&self) -> u64 {
-        if self.level >= MAX_LEVEL { 0 } else { experience_to_next_level(self.level) - self.experience }
+        self.experience_needed_below(MAX_LEVEL)
+    }
+
+    /// Experience still needed to reach a skill's next level (0 at the top).
+    pub fn skill_experience_needed(&self) -> u64 {
+        self.experience_needed_below(MAX_SKILL_LEVEL)
+    }
+
+    fn experience_needed_below(&self, top: u32) -> u64 {
+        if self.level >= top { 0 } else { experience_to_next_level(self.level) - self.experience }
     }
 }
 
@@ -136,6 +157,20 @@ mod tests {
         for (total, sharers) in [(0, 2), (7, 8), (1_000_003, 6)] {
             assert_eq!(split_experience(total, sharers).iter().sum::<u64>(), total);
         }
+    }
+
+    #[test]
+    fn skills_go_past_the_character_level_cap() {
+        let mut character = Progress { level: MAX_LEVEL, experience: 0 };
+        assert_eq!(character.add_experience(1_000_000), LevelUp::default());
+        assert_eq!(character.experience_needed(), 0);
+
+        let mut skill = Progress { level: MAX_LEVEL, experience: 0 };
+        assert_eq!(skill.add_skill_experience(experience_to_next_level(MAX_LEVEL)), 1);
+        assert_eq!(skill.level, MAX_LEVEL + 1);
+        assert!(skill.skill_experience_needed() > 0);
+        skill.add_skill_experience(u64::MAX);
+        assert_eq!((skill.level, skill.experience, skill.skill_experience_needed()), (MAX_SKILL_LEVEL, 0, 0));
     }
 
     #[test]

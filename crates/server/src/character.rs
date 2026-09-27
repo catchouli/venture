@@ -179,7 +179,7 @@ impl Character {
     /// Adds experience to a skill, going up levels if it's enough. Returns
     /// how many levels it went up.
     pub fn add_skill_experience(&mut self, skill: &str, amount: u64) -> u32 {
-        self.skills.entry(skill.to_string()).or_default().add_experience(amount).levels
+        self.skills.entry(skill.to_string()).or_default().add_skill_experience(amount)
     }
 
     /// Their character sheet, as the player sees it.
@@ -218,7 +218,7 @@ impl Character {
                         skill: def.id.clone(),
                         level: progress.level,
                         experience: progress.experience,
-                        experience_to_next: progress.experience + progress.experience_needed(),
+                        experience_to_next: progress.experience + progress.skill_experience_needed(),
                     }
                 })
                 .collect(),
