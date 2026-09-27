@@ -133,36 +133,55 @@ colours. That is how this bug was found: with the water hidden, NaN normals
 showed on the sea floor, and the flagged values sat on silhouette pixels
 with low roughness and grazing N·V.
 
-## The sky
+## The skies
 
-The sky comes from an HDR panorama (an ambientCG HDRI's `*_HDR.exr`),
+Each sky comes from an HDR panorama (an ambientCG HDRI's `*_HDR.exr`),
 downloaded to `~/assets/skies/` and baked by:
 
 ```sh
 cargo run --release -p venture_tools --bin import_sky -- ~/assets/skies/DaySkyHDRI070B_4K day
+cargo run --release -p venture_tools --bin import_sky -- ~/assets/skies/EveningSkyHDRI047B_4K evening
+cargo run --release -p venture_tools --bin import_sky -- ~/assets/skies/NightSkyHDRI008_4K night
 ```
 
-into `content/skies/day/` (about 0.9 MB in all; see `venture_content::sky`):
+into `content/skies/<name>/` (see `venture_content::sky`):
 
 | File | What |
 | --- | --- |
-| `sky.jpg` | The skybox: six 1024 × 1024 cube faces stacked, sRGB |
+| `sky.jpg` | The sky: six 1024 × 1024 cube faces stacked, sRGB (about 0.4 MB; the starry night, 2.9 MB, as stars barely compress) |
 | `light.bin` | Image-based lighting: a 32² irradiance cube and a 128² radiance cube with a mipmap per roughness (GGX-prefiltered, filtered importance sampling), in RGB9E5 |
-| `sky.ron` | The direction of its sun, and its horizon colour |
+| `sky.ron` | Where its sun was, and its horizon colour |
 
 It's baked ahead because Bevy filters environment maps at run time with
 compute shaders, which WebGL2 doesn't have. Everything is on one brightness
 scale where the bright sky (the 98th percentile of the panorama) is 1; the
-skybox clips there, and the light clips its sun out at 4 (the game's sun is
-a directional light, and a second sun in the sky light would double the
-highlight).
+sky clips there, and its light clips at 4.
 
-In the game (`world/lighting.rs`) the sun moves with the time of day (see
-[plan-day-night.md](plan-day-night.md)), and the sky is turned so its sun's
-glow stays on the sun's bearing; the flat ambient light gives way to the
-sky's light, and distant haze takes the sky's horizon colour.
-`SKY_BRIGHTNESS` sets how bright the sky's 1 is (1000 cd/m², so with
-Bevy's default exposure a bright sky shows at about 1).
+**What's painted out:**
+
+- **The sun**, when there's really one there (far brighter than the sky: a
+  sun behind cloud, or a night sky's brightest star, is left alone). The
+  game draws its own sun where the time of day puts it, so the photo's
+  would be a second one. The patch reaches as far as the sun brightens the
+  sky (14° from its middle, for DaySkyHDRI070B), and is filled smoothly from
+  the colours round its edge (from a blurred copy, each weighted by how near
+  it is), leaving a soft glow, as behind thin cloud.
+- **Anything listed in `tools/skies/<panorama folder>.ron`**: corridors
+  (lines through the panorama's pixels, with a width) in which the importer
+  finds thin bright trails (pixels well above their neighbourhood, joined
+  into runs longer than a star) and fills them like a clone stamp from
+  clean sky 40 px away, stars and all; then swaps each corridor's blurry
+  part for the surrounding sky's, which takes away a meteor's glow but
+  keeps the stars in front of it. NightSkyHDRI008's meteor and four
+  satellite trails are listed there.
+
+**The day's skies:** `content/skies/cycle.ron` says which sky shows at
+which time of day, how bright, and how it's turned (following the sun, so
+its glow is on the sun's bearing; or turning round the pole star, a turn a
+day, for the stars). The game blends between the keyframes: see
+[plan-day-night.md](plan-day-night.md). `SKY_BRIGHTNESS` (in
+`world/lighting.rs`) sets how bright a sky's 1 is at a brightness of 1
+(1000 cd/m², so with Bevy's default exposure a bright sky shows at about 1).
 
 ## Light and colour
 

@@ -13,4 +13,6 @@ credits). Licence details are in [licenses/README.md](licenses/README.md).
 - Created using Ground111 from ambientCG.com, licensed under the Creative Commons CC0 1.0 Universal License.
 - Created using Ground110 from ambientCG.com, licensed under the Creative Commons CC0 1.0 Universal License.
 - Created using DaySkyHDRI070B from ambientCG.com, licensed under the Creative Commons CC0 1.0 Universal License.
+- Created using EveningSkyHDRI047B from ambientCG.com, licensed under the Creative Commons CC0 1.0 Universal License.
+- Created using NightSkyHDRI008 from ambientCG.com, licensed under the Creative Commons CC0 1.0 Universal License.
 - Text font Fira Mono by Mozilla, licensed under the SIL Open Font License 1.1.

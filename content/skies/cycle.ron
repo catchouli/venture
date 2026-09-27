@@ -1,0 +1,19 @@
+// The day's skies: which sky shows at which time of day, and how bright
+// (1 is a sky's usual brightness). The game blends smoothly between
+// keyframes, and from the last round to the first. `turn`: FollowSun (the
+// default: the glow where its sun was follows the game's sun), Stars
+// (slowly round the pole star, a turn a day), or Fixed(degrees).
+// The sun rises at 03:00 and sets at 21:00 (see `day` in server.ron).
+// See docs/plan-day-night.md.
+(
+    keyframes: [
+        // Still night, then dawn: the evening sky, turned to the rising sun.
+        (hour: 1.5, sky: "night", brightness: 0.05, turn: Stars),
+        (hour: 3.0, sky: "evening", brightness: 0.35),
+        (hour: 5.0, sky: "day", brightness: 1.0),
+        // Day until evening comes on towards sunset.
+        (hour: 19.0, sky: "day", brightness: 1.0),
+        (hour: 20.8, sky: "evening", brightness: 0.4),
+        (hour: 22.3, sky: "night", brightness: 0.05, turn: Stars),
+    ],
+)
