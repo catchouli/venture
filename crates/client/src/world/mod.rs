@@ -5,6 +5,7 @@ pub mod daylight;
 pub mod lighting;
 pub mod props;
 pub mod query;
+pub mod sky;
 pub mod source;
 pub mod streaming;
 pub mod terrain_material;
@@ -22,6 +23,7 @@ impl Plugin for WorldPlugin {
         app.add_plugins((
             source::WorldSourcePlugin,
             lighting::LightingPlugin,
+            sky::SkyPlugin,
             time_of_day::TimeOfDayPlugin,
             terrain_material::TerrainMaterialPlugin,
             water_material::WaterMaterialPlugin,

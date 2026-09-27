@@ -20,7 +20,7 @@ use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 use venture_content::characters::{CharacterModels, parse_character_models};
 use venture_content::layout::{UiNode, UiStyles, parse_layout, parse_styles};
-use venture_content::sky::{SkyDef, SkyLight, parse_sky};
+use venture_content::sky::{SKY_CYCLE_FILE, SkyCycle, SkyDef, SkyLight, parse_sky, parse_sky_cycle};
 use venture_content::{
     AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, ManifestFile, SkillDef,
     ThemeDef, parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
@@ -83,6 +83,8 @@ pub struct ContentStore {
     pub character_models: Option<CharacterModels>,
     /// Skies, by name (their pictures go to the asset server).
     pub skies: HashMap<String, SkyFiles>,
+    /// Which sky shows when (`skies/cycle.ron`), if the content says.
+    pub sky_cycle: Option<SkyCycle>,
     /// Model files that changed in the last download (to reload).
     pub changed_models: Vec<String>,
     /// The files held, by path, with their hashes (to skip unchanged files).
@@ -164,6 +166,8 @@ enum FileData {
     Sky(SkyDef),
     /// A sky's light (`skies/<name>/light.bin`).
     SkyLight(Box<SkyLight>),
+    /// Which sky shows when (`skies/cycle.ron`).
+    SkyCycle(SkyCycle),
 }
 
 /// Where content files come from.
@@ -346,6 +350,7 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
         // (Loaded by the asset server, like models: `content://textures/grass/colour.jpg`.)
         Some("textures") => FileData::Model(bytes.to_vec()),
         // (The picture is loaded by the asset server: `content://skies/day/sky.jpg`.)
+        Some("skies") if path == SKY_CYCLE_FILE => FileData::SkyCycle(parse_sky_cycle(&text())?),
         Some("skies") if path.ends_with("sky.ron") => FileData::Sky(parse_sky(&text())?),
         Some("skies") if path.ends_with("light.bin") => FileData::SkyLight(Box::new(SkyLight::from_bytes(bytes)?)),
         Some("skies") => FileData::Model(bytes.to_vec()),
@@ -388,6 +393,7 @@ fn finish_download(
             store.ui_styles = None;
             store.character_models = None;
             store.skies.clear();
+            store.sky_cycle = None;
             store.changed_models =
                 downloaded.changed.iter().filter(|path| path.starts_with("characters/")).cloned().collect();
             for (path, file) in &downloaded.files {
@@ -434,6 +440,7 @@ fn finish_download(
                         store.fonts.insert(name, Font::from_bytes(bytes.clone()));
                     }
                     FileData::Sky(def) => store.skies.entry(sky_name(path)).or_default().def = Some(def.clone()),
+                    FileData::SkyCycle(cycle) => store.sky_cycle = Some(cycle.clone()),
                     FileData::SkyLight(light) => {
                         store.skies.entry(sky_name(path)).or_default().light = Some((**light).clone());
                     }

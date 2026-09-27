@@ -17,7 +17,9 @@ pub struct TimeOfDayPlugin;
 
 impl Plugin for TimeOfDayPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TimeOfDay>().add_systems(Update, keep_time);
+        // (The rules say how fast the day goes: the defaults until the server
+        // says, and in the editor, which has no server.)
+        app.init_resource::<TimeOfDay>().init_resource::<GameRules>().add_systems(Update, keep_time);
     }
 }
 
@@ -31,11 +33,17 @@ impl Default for TimeOfDay {
     }
 }
 
+/// Whether a server has said the time (the clock only runs once one has: the
+/// editor, with no server, stays at mid-afternoon).
+#[derive(Default)]
+struct Told(bool);
+
 fn keep_time(
     time: Res<Time>,
     rules: Res<GameRules>,
     mut events: MessageReader<FromServer>,
     mut clock: ResMut<TimeOfDay>,
+    mut told_before: Local<Told>,
 ) {
     let told = events.read().filter_map(|FromServer(message)| match message {
         ServerMessage::Time { hour } => Some(*hour),
@@ -43,7 +51,8 @@ fn keep_time(
     });
     if let Some(hour) = told.last() {
         clock.0 = hour;
-    } else {
+        told_before.0 = true;
+    } else if told_before.0 {
         clock.0 = rules.0.day.after(clock.0, time.delta_secs());
     }
 }
