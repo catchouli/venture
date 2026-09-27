@@ -37,13 +37,15 @@ that do something, more quests and places).
 
 ## Next: the look (environment)
 
-- **Ground texture splatting:** blend real (or procedural) textures per
-  material, instead of vertex colour plus detail noise.
+- **Ground texture splatting:** done for grass, dirt and rock (PBR
+  textures from ambientCG; see [textures.md](textures.md)). Next: more
+  materials (sand, snow), indexed splatting and height blending.
 - **Grass and flowers:** instanced grass tufts and flower clumps near the
   camera, fading out with distance (a big part of Lineage 2's feel).
 - **Better trees and rocks:** more varied, more detailed models; wind sway.
-- **Water:** gentle waves, shoreline foam, depth-based colour.
-- **Sky:** a gradient sky with clouds and a sun, and time of day.
+- **Water:** waves and sky reflections are done; shoreline foam and
+  depth-based colour next.
+- **Sky:** an HDR sky with image-based lighting is done; time of day next.
 - **Terrain level of detail**, so the view distance can grow (distant chunks
   meshed at lower resolution).
 

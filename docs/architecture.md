@@ -84,6 +84,7 @@ src/
     streaming.rs       chunks around the camera: data, meshes, unloading
     terrain_mesh.rs    terrain and liquid meshes
     terrain_material.rs + shaders/terrain.wgsl   the terrain's shader
+    water_material.rs + shaders/water.wgsl       water's shader (waves, reflections)
     props.rs           tree, rock and bush meshes
     query.rs           ground height, raycasts, blocked cells
     lighting.rs        sun, sky and ambient light

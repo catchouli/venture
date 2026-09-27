@@ -23,6 +23,7 @@ use crate::world::props::{PropTemplates, props_mesh};
 use crate::world::source::{WorldInfo, WorldSource};
 use crate::world::terrain_material::{TerrainExtension, TerrainMaterial};
 use crate::world::terrain_mesh::{Neighbourhood, fluid_mesh, terrain_mesh};
+use crate::world::water_material::{WaterMaterial, water_material};
 
 /// Chunks within this many chunks of the anchor are shown.
 const VIEW_RADIUS: i32 = 4;
@@ -118,7 +119,7 @@ pub struct ChunkMeshes {
 #[derive(Resource)]
 struct ChunkAssets {
     terrain: Handle<TerrainMaterial>,
-    water: Handle<StandardMaterial>,
+    water: Handle<WaterMaterial>,
     lava: Handle<StandardMaterial>,
     props: Handle<StandardMaterial>,
     prop_templates: Arc<PropTemplates>,
@@ -128,6 +129,7 @@ fn create_assets(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut terrain_materials: ResMut<Assets<TerrainMaterial>>,
+    mut water_materials: ResMut<Assets<WaterMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
     commands.insert_resource(ChunkAssets {
@@ -136,13 +138,7 @@ fn create_assets(
             base: StandardMaterial { perceptual_roughness: 0.95, reflectance: 0.15, ..default() },
             extension: TerrainExtension::new(&mut images),
         }),
-        water: materials.add(StandardMaterial {
-            base_color: palette::WATER,
-            alpha_mode: AlphaMode::Blend,
-            perceptual_roughness: 0.35,
-            reflectance: 0.3,
-            ..default()
-        }),
+        water: water_materials.add(water_material()),
         lava: materials.add(StandardMaterial {
             base_color: palette::LAVA,
             emissive: palette::LAVA_GLOW,
@@ -300,7 +296,10 @@ fn finish_mesh_tasks(
         let Some(built) = check_ready(&mut task.0) else { continue };
         let mut chunk = commands.entity(entity);
         chunk.remove::<MeshTask>().insert((Mesh3d(meshes.add(built.terrain)), MeshMaterial3d(assets.terrain.clone())));
-        let parts = [(built.water, &assets.water), (built.lava, &assets.lava), (built.props, &assets.props)];
+        if let Some(water) = built.water {
+            chunk.with_child((Mesh3d(meshes.add(water)), MeshMaterial3d(assets.water.clone())));
+        }
+        let parts = [(built.lava, &assets.lava), (built.props, &assets.props)];
         for (mesh, material) in parts {
             if let Some(mesh) = mesh {
                 chunk.with_child((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material.clone())));

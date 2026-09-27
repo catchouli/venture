@@ -30,6 +30,9 @@ const SKY: &str = "day";
 /// How bright the sky is: its brightness scale's 1 in candelas per square
 /// metre (for both the skybox and the light it casts).
 const SKY_BRIGHTNESS: f32 = 1000.0;
+/// How bright the sun is, in lux. (About 8:1 over the day sky's light on open
+/// ground once the sky is up: bright enough for clear shadows.)
+const SUN_ILLUMINANCE: f32 = 14_000.0;
 /// The flat ambient light without a sky.
 const PLAIN_AMBIENT: f32 = 450.0;
 /// Where the sun is, round the horizon: towards the south-west (x east, z south).
@@ -100,7 +103,7 @@ fn spawn_sun(mut commands: Commands) {
         Sun,
         DirectionalLight {
             color: Color::srgb(1.0, 0.95, 0.85),
-            illuminance: light_consts::lux::AMBIENT_DAYLIGHT,
+            illuminance: SUN_ILLUMINANCE,
             shadow_maps_enabled: true,
             ..default()
         },
