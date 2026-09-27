@@ -1,0 +1,16 @@
+ambientCG (https://ambientcg.com) textures
+
+Every asset on ambientCG is released under the Creative Commons CC0 1.0
+Universal License (public domain dedication):
+https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+From ambientCG's licence page (https://docs.ambientcg.com/license/, checked
+2026-09-27): the assets may be used commercially without permission, copied,
+modified and distributed, including as raw files inside a game. Attribution
+isn't required, but is appreciated. Their suggested wording:
+
+  Created using <asset name> from ambientCG.com, licensed under the Creative
+  Commons CC0 1.0 Universal License.
+
+The downloads themselves don't include a licence file, so this note stands
+in for one.

@@ -2,7 +2,9 @@
 
 What the game includes that we didn't make, and the licence each is under.
 Each licence file sits beside this one. When adding anything from outside
-(models, textures, sounds, fonts, rules text), add it here with its licence.
+(models, textures, sounds, fonts, rules text), add it here with its licence,
+and add a line crediting it to `ATTRIBUTION.md` at the top of the repository
+(kept short, for the game's credits).
 
 ## Rules
 
@@ -38,6 +40,20 @@ their own, or as a pack, even modified). Shipping them inside the game is
 fine. Publishing the raw files (say, if this repository were ever made
 public) could count as redistributing them, so check the licence before
 doing that, or keep these files out of anything published.
+
+## Ground and surface textures
+
+From [ambientCG](https://ambientcg.com), all CC0 1.0 Universal (public
+domain; attribution optional, but we give it in `ATTRIBUTION.md`). Downloaded
+(4K PNG versions) to `~/assets/surfaces/` and imported into
+`content/textures/` by `venture_tools`'s `import_texture`, which shrinks
+them to 1024 × 1024 and converts them to JPEGs (see `docs/textures.md`).
+
+| Texture | What we use it for | Licence |
+| --- | --- | --- |
+| Grass005 | `content/textures/grass/`: grass and meadows | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Ground111 | `content/textures/dirt/`: bare earth and paths | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Ground110 | `content/textures/rock/`: rock, basalt and steep slopes | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 
 ## Everything else
 

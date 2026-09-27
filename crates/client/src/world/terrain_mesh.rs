@@ -2,7 +2,9 @@
 //!
 //! The terrain is a smooth-shaded heightfield: one vertex per cell corner,
 //! with normals and colours worked out from the surrounding corners and
-//! cells. Near a chunk's edge those belong to the neighbouring chunks, so
+//! cells. Each vertex also says how much of it wears each ground texture:
+//! grass and dirt in its first UVs, rock in its second (the terrain shader
+//! works in world space, so it has no other use for UVs). Near a chunk's edge those belong to the neighbouring chunks, so
 //! chunks are meshed with their eight neighbours at hand (a
 //! [`Neighbourhood`]). That way lighting and colour blend seamlessly across
 //! chunk borders.
@@ -10,13 +12,13 @@
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use venture_world::{CHUNK_SIZE, Chunk, ChunkPos, FluidKind, TerrainCell};
+use venture_world::{CHUNK_SIZE, Chunk, ChunkPos, FluidKind, Ground, TerrainCell};
 
 use crate::common::coords::to_bevy;
 use crate::common::mesh_data::MeshData;
 use crate::common::palette;
 
-/// Metres of ground covered by one unit of texture coordinates.
+/// Metres of liquid surface covered by one unit of texture coordinates.
 const METRES_PER_UV: f32 = 4.0;
 
 /// A chunk plus its eight neighbours, for looking just past the chunk's edges.
@@ -79,6 +81,8 @@ pub fn terrain_mesh(area: &Neighbourhood) -> Mesh {
     let (origin_x, origin_y) = chunk.pos.origin_cell();
     let corners = CHUNK_SIZE + 1;
     let mut mesh = MeshData::default();
+    // How much of each corner is rock (the other weights are in its UVs).
+    let mut rockiness: Vec<[f32; 2]> = Vec::new();
 
     for y in 0..corners {
         for x in 0..corners {
@@ -96,9 +100,14 @@ pub fn terrain_mesh(area: &Neighbourhood) -> Mesh {
                 .fold(Vec4::ZERO, |sum, colour| sum + colour)
                 / 4.0;
 
-            let (world_x, world_y) = ((origin_x + x) as f32, (origin_y + y) as f32);
-            let uv = Vec2::new(world_x, world_y) / METRES_PER_UV;
-            mesh.vertex(to_bevy(x as f32, y as f32, height), normal, colour.to_array(), uv);
+            // How much of the corner wears each ground texture.
+            let share = |texture: GroundTexture| {
+                let count = cells.iter().filter(|&&(cx, cy)| ground_texture(area.cell(cx, cy).ground) == Some(texture));
+                count.count() as f32 / 4.0
+            };
+            let weights = Vec2::new(share(GroundTexture::Grass), share(GroundTexture::Dirt));
+            rockiness.push([share(GroundTexture::Rock), 0.0]);
+            mesh.vertex(to_bevy(x as f32, y as f32, height), normal, colour.to_array(), weights);
         }
     }
 
@@ -118,7 +127,28 @@ pub fn terrain_mesh(area: &Neighbourhood) -> Mesh {
             }
         }
     }
-    mesh.into_mesh()
+    mesh.into_mesh().with_inserted_attribute(Mesh::ATTRIBUTE_UV_1, rockiness)
+}
+
+/// The ground textures (see `terrain_material`), in the order the shader has them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroundTexture {
+    /// Grass and meadows.
+    Grass,
+    /// Bare earth and paths.
+    Dirt,
+    /// Rock and basalt (and, in the shader, any steep slope).
+    Rock,
+}
+
+/// The texture a kind of ground wears, if any (the rest get procedural detail).
+pub fn ground_texture(ground: Ground) -> Option<GroundTexture> {
+    match ground {
+        Ground::Grass | Ground::MeadowGrass => Some(GroundTexture::Grass),
+        Ground::Dirt | Ground::Path => Some(GroundTexture::Dirt),
+        Ground::Rock | Ground::Basalt => Some(GroundTexture::Rock),
+        Ground::Sand | Ground::Snow | Ground::Ash => None,
+    }
 }
 
 /// Flat surfaces for `kind` of liquid in the centre chunk, or `None` if there

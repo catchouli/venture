@@ -13,7 +13,7 @@ venture_simulation.workspace = true
 venture_protocol.workspace = true
 venture_rpg.workspace = true
 venture_content.workspace = true
-bevy = { workspace = true, features = ["default", "wav"] }
+bevy = { workspace = true, features = ["default", "wav", "jpeg"] }
 ewebsock = "0.8"
 ehttp = "0.7"
 

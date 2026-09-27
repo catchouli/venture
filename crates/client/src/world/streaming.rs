@@ -128,12 +128,13 @@ fn create_assets(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut terrain_materials: ResMut<Assets<TerrainMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     commands.insert_resource(ChunkAssets {
         // White, so the vertex colours show through; the shader adds the detail.
         terrain: terrain_materials.add(TerrainMaterial {
             base: StandardMaterial { perceptual_roughness: 0.95, reflectance: 0.15, ..default() },
-            extension: TerrainExtension::default(),
+            extension: TerrainExtension::new(&mut images),
         }),
         water: materials.add(StandardMaterial {
             base_color: palette::WATER,

@@ -1,6 +1,6 @@
 //! Loading and checking a content pack.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::characters::{CharacterModels, check_character_models, parse_character_models};
@@ -38,6 +38,14 @@ const STYLES_FILE: &str = "ui/styles.ron";
 const MAX_UI_IMAGE_BYTES: usize = 1024 * 1024;
 /// The largest a font may be, in bytes.
 const MAX_FONT_BYTES: usize = 4 * 1024 * 1024;
+/// Ground and surface textures: a folder of pictures for each.
+const TEXTURES_FOLDER: &str = "textures";
+/// The pictures each texture has (see `docs/textures.md`).
+pub const TEXTURE_PICTURES: [&str; 3] = ["colour.jpg", "normal.jpg", "surface.jpg"];
+/// The largest a texture picture may be, in bytes.
+const MAX_TEXTURE_BYTES: usize = 4 << 20;
+/// The first bytes of every JPEG file.
+const JPEG_SIGNATURE: [u8; 3] = [0xFF, 0xD8, 0xFF];
 /// The largest an icon file may be, in bytes.
 const MAX_ICON_BYTES: usize = 64 * 1024;
 /// The first bytes of every PNG file.
@@ -99,6 +107,8 @@ pub struct ContentPack {
     pub scripts: BTreeMap<String, String>,
     /// Dialogue sources, by file name within `dialogue/`.
     pub dialogue: BTreeMap<String, String>,
+    /// Textures (by name: folders in `textures/`).
+    pub textures: BTreeSet<String>,
     /// The part clients download.
     pub client: ClientContent,
 }
@@ -454,6 +464,36 @@ impl ContentPack {
                 client_files.push((to_slashes(&relative), bytes));
             }
         }
+        let mut texture_folders: Vec<PathBuf> = std::fs::read_dir(folder.join(TEXTURES_FOLDER))
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| Some(entry.ok()?.path()))
+            .filter(|path| path.is_dir())
+            .collect();
+        texture_folders.sort();
+        for texture in texture_folders {
+            let name = file_name(&texture);
+            let subfolder = format!("{TEXTURES_FOLDER}/{name}");
+            let pictures = read_binary_files(folder, &subfolder, "jpg", &mut errors);
+            for wanted in TEXTURE_PICTURES {
+                if !pictures.iter().any(|(relative, _)| file_name(relative) == wanted) {
+                    errors.push(error(Path::new(&subfolder), format!("texture \"{name}\" has no {wanted}")));
+                }
+            }
+            for (relative, bytes) in pictures {
+                if !bytes.starts_with(&JPEG_SIGNATURE) {
+                    errors.push(error(&relative, "this isn't a JPEG picture".to_string()));
+                } else if bytes.len() > MAX_TEXTURE_BYTES {
+                    errors.push(error(
+                        &relative,
+                        format!("texture pictures must be at most {} MB", MAX_TEXTURE_BYTES >> 20),
+                    ));
+                }
+                client_files.push((to_slashes(&relative), bytes));
+            }
+            pack.textures.insert(name);
+        }
+
         if let Ok(text) = std::fs::read_to_string(folder.join(CHARACTERS_FILE)) {
             let file = Path::new(CHARACTERS_FILE);
             match parse_character_models(&text) {
@@ -970,6 +1010,18 @@ mod tests {
         let folder = TestPack::new("one-starting-class", &[("classes/all.ron", &both)]);
         let pack = ContentPack::load(&folder.0).unwrap();
         assert_eq!(pack.classes.iter().filter(|class| class.starting).count(), 1);
+    }
+
+    #[test]
+    fn textures_need_all_three_pictures_as_jpegs() {
+        let folder = TestPack::new(
+            "textures",
+            &[("textures/moss/colour.jpg", "not a picture"), ("textures/moss/normal.jpg", "nor this")],
+        );
+        let errors = ContentPack::load(&folder.0).unwrap_err();
+        let messages: Vec<&str> = errors.iter().map(|error| error.message.as_str()).collect();
+        assert!(messages.contains(&"texture \"moss\" has no surface.jpg"), "{messages:?}");
+        assert!(messages.iter().filter(|message| **message == "this isn't a JPEG picture").count() == 2);
     }
 
     #[test]

@@ -46,13 +46,15 @@ content/
                        animations (glTF), and characters.ron, which names them (sent to clients)
   items/*.ron          things players can carry (sent to clients)
   icons/*.png          item, ability and action pictures (sent to clients)
+  textures/<name>/     ground textures: colour, normal and surface JPEGs (sent to clients;
+                       see textures.md)
   skills/*.ron         gathering and making skills (sent to clients)
   sounds/*.wav         sounds (sent to clients)
   sounds.ron           the game's own sounds: hits, misses, levelling up
   ui/theme.ron, ui/*   the interface's look: frame pictures, tab icons, font (sent to clients)
   ui/layouts/*.ron     where each window's parts go (see ui-layouts.md)
   ui/styles.ron        the interface's colours, text styles and bar colours
-  monsters/*.ron      monsters: stats, attack, behaviour and look
+  monsters/*.ron       monsters: stats, attack, behaviour and look
   spawners/*.ron       where monsters live
   respawn_points.ron   where knocked-out players wake up
   new_characters.ron   what new characters start with
