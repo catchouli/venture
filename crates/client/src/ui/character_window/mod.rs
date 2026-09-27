@@ -1,7 +1,9 @@
 //! The character window: everything about the player's own character, in
 //! tabs. Each tab has a key (see [`Tab::key`]): Party (**P**), Stats (**C**), Skills (**K**),
 //! Abilities (**L**), Inventory (**I**), Gear (**G**), Quests (**J**) and
-//! Emotes (**O**), and a button on the toolbar (see [`crate::ui::toolbar`]).
+//! Emotes (**O**), and a button on the toolbar (see [`crate::ui::toolbar`]),
+//! along the bottom of the screen. The window opens above the toolbar, beside
+//! the hotbar.
 //! Either opens the window on that tab, or closes it if it's already
 //! showing. The window's title is the open tab's name. (Tabs' first letters
 //! are used where they're free; W, A, S, D, Q, E, R and F move the character
@@ -36,8 +38,9 @@ pub const WINDOW_WIDTH: f32 = 340.0;
 /// Distance from the window to the right of the screen, in pixels (clear of
 /// the hotbar, down the bottom right).
 pub const RIGHT: f32 = 80.0;
-/// How far below the top of the screen the window sits (under the toolbar), in pixels.
-const TOP: f32 = 50.0;
+/// How far above the bottom of the screen windows sit (above the toolbar,
+/// along the bottom edge), in pixels.
+pub const BOTTOM: f32 = 58.0;
 /// Colour of the open tab's label.
 const OPEN_TAB_COLOUR: Color = Color::srgb(0.96, 0.9, 0.75);
 /// Colour of section headings within pages.
@@ -213,7 +216,7 @@ pub fn spawn_window(mut commands: Commands) {
             Interaction::default(),
             Node {
                 position_type: PositionType::Absolute,
-                top: px(TOP),
+                bottom: px(BOTTOM),
                 right: px(RIGHT),
                 width: px(WINDOW_WIDTH),
                 ..window_frame()
