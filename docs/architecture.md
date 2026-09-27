@@ -107,6 +107,9 @@ src/
     nameplates.rs      names above characters, with orbs on the target and speech bubbles
     speech.rs          what characters said recently (shown in the bubbles)
     level_up.rs        the level-up effect
+  fishing/           fishing: mod.rs (casting where water's clicked with a rod in hand, striking
+                     and reeling, the float and line), panel.rs (what's happening, and the
+                     fight's tension, line out and the fish's strength)
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
     admin_commands.rs  /setlevel, /reset, /setclass, /setgender, /time, /timescale, /give and /setskill, for admins

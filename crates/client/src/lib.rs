@@ -16,6 +16,7 @@ pub mod characters;
 pub mod common;
 pub mod content;
 pub mod dev;
+pub mod fishing;
 pub mod interaction;
 pub mod map;
 pub mod network;
@@ -48,6 +49,7 @@ pub fn run() {
         characters::CharactersPlugin,
         camera::CameraPlugin,
         interaction::InteractionPlugin,
+        fishing::FishingPlugin,
         ui::UiPlugin,
         map::MapPlugin,
         sound::SoundPlugin,

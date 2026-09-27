@@ -1,10 +1,10 @@
 //! Questions about the loaded terrain: how high the ground is, where a ray
-//! from the camera hits it, and where characters can walk.
+//! from the camera hits it (or the water on it), and where characters can walk.
 //!
 //! These read the loaded chunk data (from the server's baked world).
 
 use bevy::math::{Ray3d, Vec3};
-use venture_world::{CHUNK_SIZE, CellPos};
+use venture_world::{CHUNK_SIZE, CellPos, FluidKind};
 
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::world::streaming::{ChunkStore, ObstacleStore};
@@ -22,13 +22,36 @@ pub fn ground_height(store: &ChunkStore, x: f32, y: f32) -> Option<f32> {
     Some(chunk.height_at(x - origin_x as f32, y - origin_y as f32))
 }
 
+/// The water's surface at world point `(x, y)`, if there's water there
+/// (and its chunk is loaded).
+pub fn water_level(store: &ChunkStore, x: f32, y: f32) -> Option<f32> {
+    let cell = CellPos::containing(x, y);
+    let chunk = store.0.get(&cell.chunk())?;
+    let (local_x, local_y) = cell.local();
+    chunk.cell(local_x, local_y).fluid.filter(|fluid| fluid.kind == FluidKind::Water).map(|fluid| fluid.level)
+}
+
 /// Where a ray first hits loaded ground, if it does. Found by stepping along
 /// the ray until it goes below the ground, then narrowing down by bisection.
 pub fn raycast_ground(store: &ChunkStore, ray: Ray3d) -> Option<Vec3> {
+    raycast(ray, |x, y| ground_height(store, x, y))
+}
+
+/// Where a ray first hits loaded ground or water (the water's surface, not
+/// the bed under it), if it does.
+pub fn raycast_surface(store: &ChunkStore, ray: Ray3d) -> Option<Vec3> {
+    raycast(ray, |x, y| {
+        let ground = ground_height(store, x, y)?;
+        Some(water_level(store, x, y).map_or(ground, |water| water.max(ground)))
+    })
+}
+
+/// Where a ray first goes below a surface given by `height`.
+fn raycast(ray: Ray3d, height: impl Fn(f32, f32) -> Option<f32>) -> Option<Vec3> {
     let above_ground = |distance: f32| {
         let point = ray.get_point(distance);
         let (x, y) = from_bevy(point);
-        ground_height(store, x, y).map(|ground| point.y > ground)
+        height(x, y).map(|ground| point.y > ground)
     };
     let mut previous = 0.0;
     let mut distance = RAY_STEP;
@@ -44,7 +67,7 @@ pub fn raycast_ground(store: &ChunkStore, ray: Ray3d) -> Option<Vec3> {
                 }
             }
             let (x, y) = from_bevy(ray.get_point(below));
-            return Some(to_bevy(x, y, ground_height(store, x, y)?));
+            return Some(to_bevy(x, y, height(x, y)?));
         }
         previous = distance;
         distance += RAY_STEP;

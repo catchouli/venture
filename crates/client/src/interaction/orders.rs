@@ -99,6 +99,21 @@ impl Orders<'_, '_> {
         }
     }
 
+    /// Stops where the player is and casts a fishing line at `at` with
+    /// `tackle` (an item id). The server checks the rest.
+    pub fn cast(&mut self, at: Point, tackle: &str) {
+        self.to_server.write(ToServer(ClientMessage::Stop));
+        self.to_server.write(ToServer(ClientMessage::Fishing(venture_protocol::FishingCommand::Cast {
+            x: at.0,
+            y: at.1,
+            tackle: tackle.to_string(),
+        })));
+        if let Some(player) = self.player.as_mut() {
+            player.1.following = None;
+            player.1.movement = Movement::Idle;
+        }
+    }
+
     /// Whether the player is an admin.
     pub fn is_admin(&self) -> bool {
         self.player.as_ref().is_some_and(|player| player.1.admin)

@@ -34,6 +34,10 @@
 //! - `VENTURE_CHOOSE=1,2`: pick these replies (numbered from 1), one per
 //!   dialogue page, as conversations offer them.
 //! - `VENTURE_SELECT_NEAREST=1`: select the character (player or NPC) nearest yours once one is in sight.
+//! - `VENTURE_FISH=x,y`: once loaded, take the first fishing rod in the bag
+//!   in hand (if none is), and cast at `(x, y)`.
+//! - `VENTURE_FISH_AUTO=1`: and strike at the bite, and reel while the fish
+//!   rests (to see a fight).
 //!
 //! Environment variables don't exist on the web, so there these are all unset.
 
@@ -79,6 +83,10 @@ pub struct DevSettings {
     pub features: venture_protocol::Features,
     /// Whether to show character creation even in an automated run.
     pub show_creation: bool,
+    /// Where to cast a fishing line once loaded.
+    pub fish_at: Option<Point>,
+    /// Whether to play the fish once it bites.
+    pub fish_auto: bool,
 }
 
 impl DevSettings {
@@ -113,6 +121,8 @@ impl DevSettings {
             features: std::env::var("VENTURE_LOOK").map(|look| features(&look)).unwrap_or_default(),
             show_creation: std::env::var_os("VENTURE_SHOW_CREATION").is_some(),
             choose: numbers("VENTURE_CHOOSE").unwrap_or_default().into_iter().map(|n| n as u32).collect(),
+            fish_at: numbers("VENTURE_FISH").filter(|n| n.len() == 2).map(|n| (n[0], n[1])),
+            fish_auto: std::env::var_os("VENTURE_FISH_AUTO").is_some(),
         }
     }
 }

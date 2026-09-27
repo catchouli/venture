@@ -83,11 +83,15 @@ Each step ends playable or testable, and is committed.
    content (`content/items/fish.ron` and `fishing.ron`, with placeholder
    icons); attraction, bites, hooking and landing as tested rules
    (`venture_rpg::fishing`); skills to 99; water kinds in the bake.
-3. **The loop, plainly shown.** Server stages, protocol, and a client that
-   shows it with simple indicators (text and bars, a float as a marker):
-   cast, bite, strike, fight, land. Enough to answer the slice's first
-   questions (does the strike timing read? does the fight make sense?)
-   before any polish.
+3. **Done: the loop, plainly shown.** Server stages, protocol, and a client
+   that shows it with simple indicators (text and bars, a float as a
+   marker): cast, bite, strike, fight, land. Enough to answer the slice's
+   first questions (does the strike timing read? does the fight make
+   sense?) before any polish. To try it: `/give ledger_rod`, `/give
+   wooden_reel`, `/give worm 20` (admins), take the rod in hand from the
+   bag, and click the water. Not yet: the client running the fight ahead
+   (reeling waits for the server's answer, a round trip), others seeing
+   you fish.
 4. **Shadows.** What's in the water for each player, and how it's drawn
    (solid, faint), moving and gathering round the bait.
 5. **Looks and feel.** The line and float, the rod bending, splashes, fight
