@@ -87,7 +87,7 @@ fn blocking_radius(kind: PropKind) -> Option<f32> {
 
 #[cfg(test)]
 mod tests {
-    use venture_world::{ChunkPos, Fluid, Prop};
+    use venture_world::{ChunkPos, Fluid, FluidBody, Prop};
 
     use super::*;
 
@@ -100,8 +100,8 @@ mod tests {
     #[test]
     fn deep_water_and_trees_block() {
         let mut chunk = Chunk::new(ChunkPos::new(0, 0));
-        chunk.cell_mut(5, 5).fluid = Some(Fluid { kind: FluidKind::Water, level: 2.0 });
-        chunk.cell_mut(6, 5).fluid = Some(Fluid { kind: FluidKind::Water, level: 0.3 });
+        chunk.cell_mut(5, 5).fluid = Some(Fluid { kind: FluidKind::Water, body: FluidBody::Lake, level: 2.0 });
+        chunk.cell_mut(6, 5).fluid = Some(Fluid { kind: FluidKind::Water, body: FluidBody::Lake, level: 0.3 });
         chunk.props.push(Prop { kind: PropKind::Oak, x: 20.5, y: 20.5, ground_height: 0.0, scale: 1.0, rotation: 0.0 });
         let obstacles = ChunkObstacles::from_chunk(&chunk, &WalkingLimits::default());
         assert!(obstacles.is_blocked(5, 5), "deep water");

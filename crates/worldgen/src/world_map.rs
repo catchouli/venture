@@ -5,7 +5,7 @@
 //! are chosen and joined by roads. Chunk generation reads this map, which is
 //! what keeps rivers and roads continuous across chunks.
 
-use venture_world::{Biome, Fluid, FluidKind};
+use venture_world::{Biome, Fluid, FluidBody, FluidKind};
 
 use crate::WorldGenConfig;
 use crate::distance_field::{Nearest, nearest_sources};
@@ -119,11 +119,11 @@ impl WorldMap {
         let still_fluid: Vec<Option<Fluid>> = (0..size * size)
             .map(|index| {
                 if drainage.filled[index] < config.sea_level {
-                    return Some(Fluid { kind: FluidKind::Water, level: config.sea_level });
+                    return Some(Fluid { kind: FluidKind::Water, body: FluidBody::Sea, level: config.sea_level });
                 }
                 let lake = lakes[index]?;
                 let kind = if lava_lakes[lake] { FluidKind::Lava } else { FluidKind::Water };
-                Some(Fluid { kind, level: drainage.filled[index] })
+                Some(Fluid { kind, body: FluidBody::Lake, level: drainage.filled[index] })
             })
             .collect();
 

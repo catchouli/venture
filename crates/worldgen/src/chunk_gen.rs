@@ -5,7 +5,7 @@
 //! margin as wide as the widest beach. Every value depends only on its world
 //! position, so the margins agree with the neighbouring chunks.
 
-use venture_world::{CHUNK_SIZE, Chunk, ChunkPos, Fluid, FluidKind, TerrainCell};
+use venture_world::{CHUNK_SIZE, Chunk, ChunkPos, Fluid, FluidBody, FluidKind, TerrainCell};
 
 use crate::distance_field::{Nearest, nearest_sources};
 use crate::geometry::{Point, lerp_point};
@@ -167,9 +167,12 @@ fn fluid_over_cell(
     corner_heights: [f32; 4],
 ) -> Option<CellFluid> {
     let lowest = corner_heights.into_iter().fold(f32::INFINITY, f32::min);
-    let river = nearest_river(&features.rivers, x, y)
-        .filter(|river| river.distance_to_edge() < RIVER_SPILL_REACH)
-        .map(|river| CellFluid { fluid: Fluid { kind: FluidKind::Water, level: river.surface }, is_river: true });
+    let river = nearest_river(&features.rivers, x, y).filter(|river| river.distance_to_edge() < RIVER_SPILL_REACH).map(
+        |river| CellFluid {
+            fluid: Fluid { kind: FluidKind::Water, body: FluidBody::River, level: river.surface },
+            is_river: true,
+        },
+    );
     // The sea or lake at the surrounding map points, or failing that the
     // nearest one if it's close enough to flood a shallow dip here. Either
     // way, only if no higher ground (such as a crater's rim) lies between.

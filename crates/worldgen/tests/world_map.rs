@@ -1,6 +1,8 @@
 //! Whole-world checks on the coarse map and generated chunks.
 
-use venture_world::{CHUNK_SIZE, ChunkPos};
+use std::collections::BTreeMap;
+
+use venture_world::{CHUNK_SIZE, ChunkPos, FluidBody, FluidKind};
 use venture_worldgen::{WorldGenConfig, WorldGenerator};
 
 fn world() -> WorldGenerator {
@@ -28,6 +30,7 @@ fn liquids_cover_ground_below_their_surface() {
     let world = world();
     let chunks = world.config().world_size / CHUNK_SIZE;
     let mut wet_cells = 0;
+    let mut bodies = BTreeMap::new();
     for cy in 0..chunks {
         for cx in 0..chunks {
             let chunk = world.generate_chunk(ChunkPos::new(cx, cy));
@@ -37,11 +40,18 @@ fn liquids_cover_ground_below_their_surface() {
                     wet_cells += 1;
                     let lowest = chunk.cell_corner_heights(x, y).into_iter().fold(f32::INFINITY, f32::min);
                     assert!(lowest < fluid.level, "a covered cell's ground is entirely above the surface");
+                    if fluid.body == FluidBody::Sea {
+                        assert_eq!((fluid.kind, fluid.level), (FluidKind::Water, world.config().sea_level));
+                    }
+                    *bodies.entry(format!("{:?}", fluid.body)).or_insert(0) += 1;
                 }
             }
         }
     }
     assert!(wet_cells > 0, "the test world should have water");
+    // Rivers and the sea are told apart (for fishing). This small world has
+    // no lakes.
+    assert!(["River", "Sea"].iter().all(|body| bodies.contains_key(*body)), "bodies of water: {bodies:?}");
 }
 
 #[test]

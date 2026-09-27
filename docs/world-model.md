@@ -20,7 +20,8 @@ How the world is represented as data. The types live in `crates/world`.
   (`CellPos`) covers the square from `(x, y)` to `(x + 1, y + 1)`.
 - Heights are stored at cell **corners**. Each cell also has a `TerrainCell`:
   its ground material (`Ground`), any liquid over it (`Fluid`: water or lava,
-  with a surface height) and its `Biome`.
+  with a surface height, and the body it's part of, `FluidBody`: river,
+  lake or sea, which says what fish live there) and its `Biome`.
 - The world is split into **chunks** of 64 × 64 cells (`ChunkPos`). A `Chunk`
   holds 65 × 65 corner heights, 64 × 64 cells, and the props (trees, rocks,
   bushes) standing on it. Corners on a chunk's edge are shared with, and
