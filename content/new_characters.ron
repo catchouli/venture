@@ -2,6 +2,10 @@
     miasma: 25,
     items: [
         (item: "bread", count: 1),
+        // A beginner's fishing kit: take the rod in hand and click water to cast.
+        (item: "ledger_rod", count: 1),
+        (item: "wooden_reel", count: 1),
+        (item: "worm", count: 20),
     ],
     abilities: ["rest"],
 )

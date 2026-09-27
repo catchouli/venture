@@ -33,4 +33,13 @@
         dialogue: Some("Baker"),
         wander_radius: 4.0,
     ),
+    (
+        id: "tackle_seller",
+        name: "Wendel",
+        appearance: "angler",
+        at: (2340.0, 2176.0),
+        script: Some("angler.rhai"),
+        dialogue: Some("Angler"),
+        wander_radius: 3.0,
+    ),
 ]
