@@ -17,7 +17,7 @@
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
-use bevy::render::view::screenshot::{Screenshot, save_to_disk};
+use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
 
 use crate::dev::settings::DevSettings;
 use crate::network::ClientState;
@@ -45,6 +45,7 @@ impl Plugin for ScreenshotPlugin {
             target: Handle::default(),
             frames: 0,
             taken: false,
+            captured: false,
             delay: Timer::from_seconds(delay, TimerMode::Once),
         })
         .add_systems(Startup, create_target)
@@ -62,6 +63,9 @@ struct PendingScreenshot {
     /// Extra time to wait once loaded, before settling and capturing.
     delay: Timer,
     taken: bool,
+    /// Whether the picture has come back from the GPU (it takes a few
+    /// frames, and quitting before then loses it).
+    captured: bool,
 }
 
 /// Creates the offscreen image the camera renders into.
@@ -112,10 +116,13 @@ fn take_screenshot_when_loaded(
     }
     pending.frames += 1;
     if !pending.taken && pending.frames >= SETTLE_FRAMES {
-        commands.spawn(Screenshot::image(pending.target.clone())).observe(save_to_disk(pending.path.clone()));
+        commands
+            .spawn(Screenshot::image(pending.target.clone()))
+            .observe(save_to_disk(pending.path.clone()))
+            .observe(|_: On<ScreenshotCaptured>, mut pending: ResMut<PendingScreenshot>| pending.captured = true);
         pending.taken = true;
         pending.frames = 0;
-    } else if pending.taken && pending.frames >= SAVE_FRAMES {
+    } else if pending.captured && pending.frames >= SAVE_FRAMES {
         exit.write(AppExit::Success);
     }
 }

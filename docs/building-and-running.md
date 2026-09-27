@@ -98,6 +98,13 @@ The web client connects to the server that served the page. It uses WebGL2,
 so it runs in every modern browser. On the web there are no background
 threads, so chunk loading is spread across frames.
 
+The server Brotli-compresses the built `.wasm` and `.js` when it starts (it
+writes `.br` files beside them in `dist/`; after rebuilding the web client,
+restart the server to compress the new build, or it's gzipped as it's sent
+instead), and browsers keep everything
+that can't change for good, so return visits load from their cache (see
+"Caching in the browser" in [client-server.md](client-server.md)).
+
 Development WebAssembly files are very large because they include debug
 information. Use the `wasm-release` profile for anything you share.
 

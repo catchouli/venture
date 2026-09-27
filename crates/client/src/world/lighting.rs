@@ -59,21 +59,37 @@ struct Sun;
 
 /// The sky, as it loads.
 #[derive(Resource, Default)]
-enum SkyState {
+pub enum SkyState {
     /// Not asked for yet.
     #[default]
     Waiting,
     /// Its picture is loading; its light is ready.
-    Loading { picture: Handle<Image>, def: SkyDef, diffuse: Handle<Image>, specular: Handle<Image> },
+    Loading {
+        /// The skybox picture, loading.
+        picture: Handle<Image>,
+        /// Its sun and horizon.
+        def: SkyDef,
+        /// Its irradiance cube.
+        diffuse: Handle<Image>,
+        /// Its radiance cube.
+        specular: Handle<Image>,
+    },
     /// Ready to put on cameras.
     Ready(Sky),
     /// The content has no sky (or it couldn't be loaded).
     None,
 }
 
+impl SkyState {
+    /// Whether the sky is up, or won't be (for the loading screen).
+    pub fn settled(&self) -> bool {
+        matches!(self, SkyState::Ready(_) | SkyState::None)
+    }
+}
+
 /// A loaded sky, as cameras wear it.
 #[derive(Clone)]
-struct Sky {
+pub struct Sky {
     skybox: Skybox,
     light: EnvironmentMapLight,
     haze: Color,

@@ -35,6 +35,9 @@ pub struct ManifestFile {
     pub path: String,
     /// SHA-256 of the file, in hex.
     pub hash: String,
+    /// Its size, in bytes (for showing download progress).
+    #[serde(default)]
+    pub size: u64,
 }
 
 impl ClientContent {
@@ -43,7 +46,11 @@ impl ClientContent {
         files.sort_by(|a, b| a.0.cmp(&b.0));
         let described: Vec<ManifestFile> = files
             .iter()
-            .map(|(path, bytes)| ManifestFile { path: path.clone(), hash: hex(&Sha256::digest(bytes)) })
+            .map(|(path, bytes)| ManifestFile {
+                path: path.clone(),
+                hash: hex(&Sha256::digest(bytes)),
+                size: bytes.len() as u64,
+            })
             .collect();
         let mut all = Sha256::new();
         for file in &described {
@@ -57,6 +64,12 @@ impl ClientContent {
     /// The bytes of a file, if it's one of the client files.
     pub fn file(&self, path: &str) -> Option<&[u8]> {
         self.files.iter().find(|(file, _)| file == path).map(|(_, bytes)| bytes.as_slice())
+    }
+
+    /// Whether a file's current hash is this one (so a response for it may
+    /// be cached for good: the same address never means other bytes).
+    pub fn has_hash(&self, path: &str, hash: &str) -> bool {
+        self.manifest.files.iter().any(|file| file.path == path && file.hash == hash)
     }
 }
 

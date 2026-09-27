@@ -25,6 +25,16 @@ pub use rules::{MAX_CHAT_CHARS, MAX_NAME_CHARS, MIN_NAME_CHARS, clean_chat_text,
 /// turns away clients speaking a different version.
 pub const PROTOCOL_VERSION: u32 = 20;
 
+/// A short fingerprint of a file's bytes (64-bit FNV-1a, in hex), for
+/// telling versions of it apart in web addresses (so browsers can keep a
+/// response for good: the same address never means other bytes). Not for
+/// security.
+pub fn fingerprint(bytes: &[u8]) -> String {
+    let hash =
+        bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |hash, &byte| (hash ^ byte as u64).wrapping_mul(0x0100_0000_01b3));
+    format!("{hash:016x}")
+}
+
 /// The largest message a client may send, in bytes. Anything bigger is
 /// refused before decoding.
 pub const MAX_CLIENT_MESSAGE_BYTES: usize = 2048;

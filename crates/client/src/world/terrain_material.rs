@@ -116,7 +116,7 @@ impl MaterialExtension for TerrainExtension {
 
 /// The ground textures' pictures, once asked for.
 #[derive(Resource, Default)]
-struct GroundTextures {
+pub struct GroundTextures {
     /// For each picture (colour, normal map, surface), each texture's.
     loading: Option<[[Handle<Image>; 3]; 3]>,
     /// Whether they're in the terrain material (or couldn't be).
@@ -124,6 +124,13 @@ struct GroundTextures {
 }
 
 /// Asks for the ground textures once the content (which has them) is here.
+impl GroundTextures {
+    /// Whether they're on the ground, or won't be (for the loading screen).
+    pub fn settled(&self) -> bool {
+        self.done
+    }
+}
+
 fn load_ground_textures(
     content: Res<ContentStore>,
     asset_server: Res<AssetServer>,

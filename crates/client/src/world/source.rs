@@ -16,7 +16,9 @@ pub struct WorldSourcePlugin;
 impl Plugin for WorldSourcePlugin {
     fn build(&self, app: &mut App) {
         let source = match app.world().resource::<ServerChoice>() {
-            ServerChoice::Remote { base_url } => WorldSource::Http { base_url: format!("{base_url}/world") },
+            ServerChoice::Remote { base_url } => {
+                WorldSource::Http { base_url: format!("{base_url}/world"), version: None }
+            }
             #[cfg(not(target_arch = "wasm32"))]
             ServerChoice::Local { world_folder, .. } => WorldSource::Folder(world_folder.clone()),
         };
@@ -33,6 +35,10 @@ pub enum WorldSource {
     Http {
         /// The address.
         base_url: String,
+        /// The world's fingerprint, once its manifest has loaded: other
+        /// files are asked for with it (`?v=`), so browsers can keep them
+        /// until the world changes.
+        version: Option<String>,
     },
     /// A folder on disk (desktop `--local` mode).
     #[cfg(not(target_arch = "wasm32"))]
@@ -56,7 +62,10 @@ impl WorldSource {
         let source = self.clone();
         async move {
             match source {
-                WorldSource::Http { base_url } => fetch(format!("{base_url}/{path}")).await,
+                WorldSource::Http { base_url, version: Some(version) } => {
+                    fetch(format!("{base_url}/{path}?v={version}")).await
+                }
+                WorldSource::Http { base_url, version: None } => fetch(format!("{base_url}/{path}")).await,
                 #[cfg(not(target_arch = "wasm32"))]
                 WorldSource::Folder(folder) => {
                     let file = folder.join(path);
@@ -77,10 +86,17 @@ fn start_loading_manifest(mut commands: Commands, source: Res<WorldSource>) {
     commands.insert_resource(ManifestTask(task));
 }
 
-fn finish_loading_manifest(mut commands: Commands, task: Option<ResMut<ManifestTask>>) {
+fn finish_loading_manifest(
+    mut commands: Commands,
+    task: Option<ResMut<ManifestTask>>,
+    mut source: ResMut<WorldSource>,
+) {
     let Some(mut task) = task else { return };
     let Some(result) = check_ready(&mut task.0) else { return };
     commands.remove_resource::<ManifestTask>();
+    if let (Ok(bytes), WorldSource::Http { version, .. }) = (&result, &mut *source) {
+        *version = Some(venture_protocol::fingerprint(bytes));
+    }
     let manifest = result.and_then(|bytes| {
         let text = String::from_utf8(bytes).map_err(|_| "the world manifest isn't text".to_string())?;
         WorldManifest::from_ron(&text).map_err(|error| error.to_string())

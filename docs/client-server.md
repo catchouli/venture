@@ -156,16 +156,45 @@ The client needs content for display: NPC appearances now, and later item
 icons and descriptions, dialogue text, UI strings and client-side scripts.
 
 - The server publishes the client's part of the content pack at
-  `/content/manifest.ron`: each file with its SHA-256 hash, plus a version
+  `/content/manifest.ron`: each file with its SHA-256 hash and size, plus a version
   that changes whenever any file does. The files are served at
   `/content/<path>`. Only files in the manifest can be fetched: NPC
   definitions and scripts are never served.
-- On joining, the client downloads the manifest and the files it lists.
+- On joining, the client downloads the manifest and the files it lists,
+  all at once (so a distant server's round trips overlap), each asked for
+  with its hash (`/content/<path>?h=<hash>`).
 - When the server hot-reloads content, it sends `ContentChanged { version }`.
   Clients download the new manifest and only the files whose hash changed,
   then redraw what changed (NPCs are restyled in place).
 - In `--local` mode the client reads the files straight from the server
   running inside it.
+
+### Caching in the browser
+
+Browsers keep for good anything whose address changes with its bytes, so a
+returning player downloads only what changed:
+
+| What | Address | Kept |
+| --- | --- | --- |
+| Content files | `/content/<path>?h=<SHA-256>` | For good, if the hash is current |
+| World files | `/world/<path>?v=<fingerprint of the world manifest>` | For good, if the fingerprint is current |
+| The web client's `.wasm` and `.js` | Named with Trunk's hash | For good |
+| The manifests, `index.html` | Plain | Checked every time (a quick "not modified") |
+
+The server Brotli-compresses the web client's `.wasm` and `.js` once when it
+starts (about 3 s; 33 MB of WebAssembly becomes 7 MB) and serves those, and
+gzips the rest as it goes. On a return visit, everything but the two
+manifests comes from the browser's cache.
+
+### The loading screen
+
+On the web, the page shows a bar while the game itself downloads (counting
+the WebAssembly as it arrives; the server sends its real size in
+`x-uncompressed-length`). Once the game runs, its own loading screen
+(`ui/loading_screen.rs`) takes over: connecting, downloading the content
+(by bytes, from the manifest's sizes), preparing the ground textures and
+sky, and loading the land around the character, then fades into the game.
+A new player goes to character creation as soon as the content is in.
 
 ## Scripts on both sides, and whether client scripts are safe
 
