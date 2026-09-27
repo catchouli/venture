@@ -288,21 +288,28 @@ fn start_mesh_tasks(
 
 fn finish_mesh_tasks(
     mut commands: Commands,
-    mut tasks: Query<(Entity, &mut MeshTask)>,
+    mut tasks: Query<(Entity, &Transform, &mut MeshTask)>,
     mut meshes: ResMut<Assets<Mesh>>,
     assets: Res<ChunkAssets>,
 ) {
-    for (entity, mut task) in &mut tasks {
+    for (entity, transform, mut task) in &mut tasks {
         let Some(built) = check_ready(&mut task.0) else { continue };
+        // The water, lava and props sit at the chunk's origin, as the chunk
+        // does. Chunks never move, so their place in the world is set here
+        // too: children added to a parent that has already been placed
+        // weren't always reached by Bevy's transform propagation, and stayed
+        // at the world's origin (so they were culled, leaving patches of
+        // ground with no water or trees).
+        let placed = (Transform::IDENTITY, GlobalTransform::from(*transform));
         let mut chunk = commands.entity(entity);
         chunk.remove::<MeshTask>().insert((Mesh3d(meshes.add(built.terrain)), MeshMaterial3d(assets.terrain.clone())));
         if let Some(water) = built.water {
-            chunk.with_child((Mesh3d(meshes.add(water)), MeshMaterial3d(assets.water.clone())));
+            chunk.with_child((Mesh3d(meshes.add(water)), MeshMaterial3d(assets.water.clone()), placed));
         }
         let parts = [(built.lava, &assets.lava), (built.props, &assets.props)];
         for (mesh, material) in parts {
             if let Some(mesh) = mesh {
-                chunk.with_child((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material.clone())));
+                chunk.with_child((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material.clone()), placed));
             }
         }
     }
