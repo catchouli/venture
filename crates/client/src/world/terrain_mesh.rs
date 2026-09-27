@@ -151,31 +151,58 @@ pub fn ground_texture(ground: Ground) -> Option<GroundTexture> {
     }
 }
 
-/// Flat surfaces for `kind` of liquid in the centre chunk, or `None` if there
+/// The surfaces of `kind` of liquid in the centre chunk, or `None` if there
 /// is none. In chunk-local coordinates.
 ///
 /// Each surface also spreads one cell past the covered cells. The terrain
 /// hides the part that ends up under ground, so shorelines follow the true
 /// line where ground meets the surface, instead of the edges of cells.
+///
+/// The surface is one continuous sheet: each corner is at the average level
+/// of the liquid cells around it, so still water is flat and streams slope
+/// smoothly downhill (rather than in steps, one per cell, which showed as a
+/// grid of seams). Corners on a chunk's edge see the same cells from either
+/// side, so neighbouring chunks' surfaces meet.
 pub fn fluid_mesh(area: &Neighbourhood, kind: FluidKind) -> Option<Mesh> {
-    let mut mesh = MeshData::default();
-    let white = [1.0; 4];
-    for y in 0..CHUNK_SIZE {
-        for x in 0..CHUNK_SIZE {
-            let level = (-1..=1)
+    // Each cell's level (the highest of its own and its neighbours'
+    // liquid), for the chunk's cells and a ring of one cell around them.
+    let side = (CHUNK_SIZE + 2) as usize;
+    let at = |x: i32, y: i32| (y + 1) as usize * side + (x + 1) as usize;
+    let mut levels = vec![None; side * side];
+    for y in -1..=CHUNK_SIZE {
+        for x in -1..=CHUNK_SIZE {
+            levels[at(x, y)] = (-1..=1)
                 .flat_map(|dy| (-1..=1).map(move |dx| (x + dx, y + dy)))
                 .filter_map(|(nx, ny)| area.cell(nx, ny).fluid)
                 .filter(|fluid| fluid.kind == kind)
                 .map(|fluid| fluid.level)
                 .reduce(f32::max);
-            let Some(level) = level else { continue };
+        }
+    }
 
+    let mut mesh = MeshData::default();
+    let white = [1.0; 4];
+    // Each corner's vertex, made the first time a cell needs it.
+    let corners = (CHUNK_SIZE + 1) as usize;
+    let mut vertices: Vec<Option<u32>> = vec![None; corners * corners];
+    let mut corner = |mesh: &mut MeshData, x: i32, y: i32| {
+        *vertices[y as usize * corners + x as usize].get_or_insert_with(|| {
+            let around = [(x - 1, y - 1), (x, y - 1), (x - 1, y), (x, y)];
+            let (sum, count) = around
+                .iter()
+                .filter_map(|&(cx, cy)| levels[at(cx, cy)])
+                .fold((0.0, 0.0), |(sum, count), level| (sum + level, count + 1.0));
             let (fx, fy) = (x as f32, y as f32);
-            let mut corner = |dx: f32, dy: f32| {
-                let position = to_bevy(fx + dx, fy + dy, level);
-                mesh.vertex(position, Vec3::Y, white, Vec2::new(fx + dx, fy + dy) / METRES_PER_UV)
-            };
-            let (i00, i10, i01, i11) = (corner(0.0, 0.0), corner(1.0, 0.0), corner(0.0, 1.0), corner(1.0, 1.0));
+            mesh.vertex(to_bevy(fx, fy, sum / count), Vec3::Y, white, Vec2::new(fx, fy) / METRES_PER_UV)
+        })
+    };
+    for y in 0..CHUNK_SIZE {
+        for x in 0..CHUNK_SIZE {
+            if levels[at(x, y)].is_none() {
+                continue;
+            }
+            let (i00, i10) = (corner(&mut mesh, x, y), corner(&mut mesh, x + 1, y));
+            let (i01, i11) = (corner(&mut mesh, x, y + 1), corner(&mut mesh, x + 1, y + 1));
             mesh.triangle(i00, i01, i10);
             mesh.triangle(i10, i01, i11);
         }

@@ -18,6 +18,7 @@ use std::f32::consts::FRAC_PI_2;
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
+use bevy::render::view::{ColorGrading, ColorGradingGlobal};
 
 use crate::characters::player::{LocalPlayer, PlayerSystems};
 use crate::common::coords::{from_bevy, to_bevy};
@@ -185,13 +186,20 @@ fn spawn_camera(
         // left to choose, Bevy might pick one of those.)
         IsDefaultUiCamera,
         // A soft bloom, so glowing things (the move marker, lava) glow.
-        Bloom { intensity: 0.12, ..Bloom::NATURAL },
-        // Warm haze that thickens with distance and hides where chunks stop.
+        // (Kept low: bloom without a threshold spreads a veil over everything
+        // bright, such as the sun on water.)
+        Bloom { intensity: 0.06, ..Bloom::NATURAL },
+        // A touch more colour than the tonemapper leaves (it desaturates
+        // bright colours).
+        ColorGrading { global: ColorGradingGlobal { post_saturation: 1.1, ..default() }, ..default() },
+        // Haze that thickens with distance and hides where chunks stop (it
+        // takes the sky's horizon colour once the sky is up). It starts well
+        // out, so the middle distance stays clear.
         DistanceFog {
             color: palette::HAZE,
             directional_light_color: Color::srgba(1.0, 0.9, 0.7, 0.4),
             directional_light_exponent: 20.0,
-            falloff: FogFalloff::Linear { start: 60.0, end: 290.0 },
+            falloff: FogFalloff::Linear { start: 110.0, end: 290.0 },
         },
         Transform::from_translation(focus + orbit.offset()).looking_at(focus, Vec3::Y),
         orbit,

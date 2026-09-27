@@ -1,4 +1,4 @@
-# Ground textures and skies
+# Ground textures, sky, light and water
 
 The terrain wears PBR textures (colour, normal map, roughness, ambient
 occlusion) from the content pack: `content/textures/<name>/`. Today there are
@@ -164,6 +164,53 @@ way to the sky's light, and distant haze takes the sky's horizon colour.
 `SKY_BRIGHTNESS` sets how bright the sky's 1 is (1000 cd/m², so with
 Bevy's default exposure a bright sky shows at about 1).
 
+## Light and colour
+
+The world camera renders in HDR: `Bloom` requires Bevy's `Hdr`, so the
+scene goes to an `Rgba16Float` target, then Bevy's default tonemapper
+(TonyMcMapface) and deband dithering, with 4× MSAA. All of that works on
+WebGL2. Settings that set the look (`camera.rs`, `world/lighting.rs`):
+
+- **Sun:** 14 000 lux (`SUN_ILLUMINANCE`). The day sky's light on open
+  ground is about 900 lux (its irradiance looking up is about 0.29 on its
+  scale, × 1000 cd/m² × π), and the sun at its 31° height gives about
+  7 300, so about 8:1: clear shadows, while shade still reads.
+- **Bloom:** `Bloom::NATURAL` at 0.06. It has no threshold, so it spreads a
+  veil over everything bright (the sun on water); at 0.12 that softened the
+  whole picture.
+- **Colour grading:** saturation × 1.1 after tonemapping (TonyMcMapface
+  desaturates bright colours). AgX and a contrast grade were tried and
+  looked worse (washed out, and backlit characters went black).
+- **Haze:** linear from 110 m to 290 m, where the loaded chunks end (it
+  has to be full there). A longer view needs terrain level of detail.
+
+## Water
+
+Water (`world/water_material.rs`, `shaders/water.wgsl`) is Bevy's PBR
+material extended with a shader, drawn with premultiplied alpha:
+
+- **Waves:** six travelling sine waves (lengths 0.5 to 9 m, deep-water
+  speeds) give the surface's slope, so it reflects the sky and glitters
+  under the sun.
+- **No sparkle in the distance:** each wave fades out once a pixel spans
+  more than about a third of its cycle (`fwidth` of its phase), and the
+  slope variance it had is added to GGX's α², so distant water turns
+  glossy rather than aliasing (the idea behind Toksvig's method). N·V is
+  kept above 0.05, so specular can't overflow (see the sparkles, above).
+- **Reflections at full strength:** the shader lights the surface twice,
+  once with a black base colour, to separate the reflection from the
+  water's own colour. Only the water's colour is see-through (scaled by
+  opacity); the sky and sun reflections are added in full. Opacity rises
+  towards grazing angles (Schlick Fresnel, F0 0.02).
+- **One sheet:** the water mesh (`fluid_mesh`) puts each corner at the
+  average level of the liquid cells around it, so streams slope smoothly
+  instead of stepping once per cell (which showed as a grid of seams).
+
+Not yet: shoreline foam and colour by depth, which need the depth behind
+the water. Bevy's depth prepass can't be read by a transparent pass on
+WebGL2, so they'd need another way (such as depth baked into the mesh from
+the heightfield).
+
 ## Growing to many ground materials
 
 The arrays scale in bindings (WebGL2 guarantees at least 256 layers), but
@@ -174,7 +221,11 @@ one weight per material per vertex doesn't. The plan for many materials:
   per pixel stays the same however many materials exist.
 - **Height blending:** blend by each texture's height (its displacement or
   ambient occlusion) rather than linearly, so stones poke through grass
-  instead of fading into it.
+  instead of fading into it. (A first try, with ambient occlusion as the
+  height, made things worse: grass's occlusion is brighter overall, so it
+  won patches in dirt, where they took the dirt's tint and looked like
+  smudges. It needs heights centred on each texture's average, and each
+  texture tinted separately rather than by one blended vertex colour.)
 - **Memory:** an uncompressed 1K layer with mipmaps is about 5.6 MB per map,
   so sixteen materials would be around 180 MB. That needs GPU compression
   (BC7 on desktop, ASTC or ETC2 on phones) or smaller layers on the web,
