@@ -83,6 +83,56 @@ depend on the weights without losing mipmap selection (it needs neighbouring
 pixels to take the same path). Metres per repeat are in `GROUND_TEXTURES`
 (grass 2.5, dirt 3, rock 4).
 
+### The sparkles on distant ground (fixed)
+
+When the textures first went in, distant ground had bright, glowing specks
+that jumped about as the camera moved, each with a black pixel in the middle
+and a soft halo. The cause was a chain of four things:
+
+1. **Multisampling shades outside the triangle.** The camera uses 4× MSAA,
+   which runs the fragment shader once per pixel, at the pixel's centre. On
+   a pixel that a triangle only partly covers, the centre can lie outside
+   it, and the interpolated vertex attributes are then *extrapolated*. Far
+   away, where terrain triangles are a pixel or two across, most pixels are
+   edge pixels, and the extrapolation can be large. (GLSL's and WGSL's
+   `centroid` interpolation exists to prevent this, but Bevy's vertex
+   outputs don't use it.)
+2. **The texture weights were divided by their total.** The shader turns the
+   weights in UV_0 and UV_1 into shares that add up to 1 by dividing by
+   their sum. Extrapolated weights such as (1.6, −1.5, 0) sum to about 0.1,
+   giving shares of +16 and −15: a huge colour, and a roughness that's
+   negative or nearly 0.
+3. **Mirror-smooth ground at a grazing angle overflows.** With roughness
+   clamped to Bevy's minimum (0.089) and N·V nearly 0 (distant ground is
+   seen edge-on), GGX's D × V is around 10⁷. Times the sun that's far past
+   65 504, the largest half-float: the HDR target (`Rgba16Float`, which
+   bloom requires) stores it as +Inf.
+4. **Tonemapping and bloom.** The tonemapper turns Inf into NaN, which is
+   written as black: the black centre. Bloom's downsampling spreads the Inf
+   into its neighbours as a bright blob: the halo. The next frame the
+   pixels land differently on the triangles, so the sparkles move.
+
+The fix is to clamp the weights to 0..1 before dividing, which is valid
+anywhere a pixel can be shaded. Two more bugs turned up on the way and were
+fixed with it: blended texture normals were normalised before mixing with
+the procedural normal, so ground no texture covers (sand, snow, the sea
+floor) normalised a zero vector into a NaN normal; and the vertex colour
+is clamped to be non-negative, since it extrapolates in the same way.
+
+If that effect is ever wanted on purpose (glints on snow, sand or water),
+the controlled version is very low roughness plus a high-frequency normal,
+with the result clamped below the half-float limit, never an overflow.
+
+**Debugging tip.** To find pixels like these, temporarily colour the
+terrain shader's output by what's wrong with it. Test for NaN and Inf by
+their bits, `(bitcast<u32>(x) & 0x7f800000u) == 0x7f800000u`, because
+`x != x` can be optimised away. Flag values over about 1000 as well, since
+the overflow happens *after* the shader, when the colour is stored. Then
+take screenshots with `VENTURE_SCREENSHOT` and search them for the marker
+colours. That is how this bug was found: with the water hidden, NaN normals
+showed on the sea floor, and the flagged values sat on silhouette pixels
+with low roughness and grazing N·V.
+
 ## The sky
 
 The sky comes from an HDR panorama (an ambientCG HDRI's `*_HDR.exr`),

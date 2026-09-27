@@ -158,7 +158,7 @@ fn fragment(
     var pbr_input = pbr_input_from_standard_material(in, is_front);
     let p = in.world_position.xyz;
     let normal = normalize(in.world_normal);
-    let ground = pbr_input.material.base_color.rgb;
+    let ground = max(pbr_input.material.base_color.rgb, vec3<f32>(0.0));
 
     // The procedural surface, for ground without a texture.
     let grain = value_noise(p * 4.0);
@@ -183,13 +183,18 @@ fn fragment(
 
     // How much each texture covers here: steep slopes are rock, whatever the ground.
     let textured = terrain.params.w;
+    // (The weights are clamped: with multisampling, a pixel on the edge of a
+    // triangle is shaded at its centre even when that's outside the
+    // triangle, which extrapolates them past 0..1; divided by their total,
+    // they then made huge colours and negative roughness. See
+    // docs/textures.md, "The sparkles on distant ground".)
 #ifdef VERTEX_UVS_A
-    let grass_dirt = in.uv * (1.0 - steepness);
+    let grass_dirt = saturate(in.uv) * (1.0 - steepness);
 #else
     let grass_dirt = vec2<f32>(0.0);
 #endif
 #ifdef VERTEX_UVS_B
-    let rock_ground = in.uv_b.x;
+    let rock_ground = saturate(in.uv_b.x);
 #else
     let rock_ground = 0.0;
 #endif
@@ -216,12 +221,15 @@ fn fragment(
     let share = weights / total;
     let colour = grass_colour * share.x + dirt_colour * share.y + rock_colour * share.z;
     let surface = grass.surface * share.x + dirt.surface * share.y + rock.surface * share.z;
-    let texture_normal = normalize(grass.normal * share.x + dirt.normal * share.y + rock.normal * share.z);
+    // (Normalised only after mixing: where no texture covers the ground the
+    // textures' sum is zero, and normalising a zero vector gives NaN. See
+    // docs/textures.md, "The sparkles on distant ground".)
+    let texture_normal = grass.normal * share.x + dirt.normal * share.y + rock.normal * share.z;
 
     pbr_input.material.base_color = vec4<f32>(mix(procedural, colour, covered), pbr_input.material.base_color.a);
     pbr_input.material.perceptual_roughness = mix(pbr_input.material.perceptual_roughness, surface.y, covered);
     pbr_input.diffuse_occlusion *= mix(1.0, surface.x, covered);
-    pbr_input.N = normalize(mix(bumped, texture_normal, covered));
+    pbr_input.N = normalize(bumped * (1.0 - covered) + texture_normal * covered);
 
     pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
 
