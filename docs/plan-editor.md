@@ -105,9 +105,9 @@ anything.
   creature, with the spawn radius drawn on the ground (and the aggro radius
   for aggressive ones); respawn points and settlement centres as markers.
 - **Tools:** select (click), move (drag along the ground; it follows the
-  terrain), duplicate, delete, and add from a palette. Placements relative to
-  a settlement stay relative when moved; "make absolute" converts one to a
-  world position.
+  terrain), duplicate, delete, and add from a palette. Everything is placed
+  at a world position (placing relative to settlements was dropped: the
+  editor makes exact spots easy).
 - **Properties:** every field, with references (appearance, creature,
   script, dialogue, shop) as dropdowns of what exists, and "open" buttons to
   jump to them.

@@ -19,8 +19,8 @@ with what exists today: see [plan-editor.md](plan-editor.md).
 
 This is the plan; little of it exists yet. Today's pieces are the overlay
 stamps (see [world-generation-engine.md](world-generation-engine.md)), the
-generator's own prop scattering and roads, and content placed relative to
-settlements (see [content-authoring.md](content-authoring.md)).
+generator's own prop scattering and roads, and content placed at world
+positions (see [content-authoring.md](content-authoring.md)).
 
 ## The layers
 

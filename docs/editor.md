@@ -18,13 +18,13 @@ as for `--local`.
   placed in it: NPCs (in their real models), spawners (showing their
   creature, with the area creatures appear in drawn on the ground, and the
   distance aggressive ones notice players from), and respawn points.
-  - On the left is every placed thing: click one to choose it and look at
-    it. **Add** puts a new NPC, spawner or respawn point where the camera is
-    looking (relative to the starting town). **Copy** adds a copy two metres
-    east, **Delete** removes it, and **Make absolute** pins it to its spot in
-    the world rather than to its settlement.
+  - On the left is every placed thing near where the camera is looking
+    (**Only within** sets how near, or untick it to list everything): click
+    one to choose it and look at it. **Add** puts a new NPC, spawner or
+    respawn point where the camera is looking. **Copy** adds a copy two
+    metres east, and **Delete** removes it.
   - Click a thing in the view to choose it, and drag it to move it along
-    the ground. Things placed relative to a settlement stay relative to it.
+    the ground.
   - The chosen thing's every field is on the right.
   - **Save and play here** saves, then starts the game (`--local`) with a
     new character at the camera's spot. It uses a profile of its own
@@ -117,4 +117,4 @@ aren't kept, so notes about an entry go in its `notes` field (see
 Tests (`cargo test -p venture_editor`) check that saving everything gives the
 game the same content, that awkward text survives, that undo works, that
 problems are found before saving, and that placed things are added, copied,
-made absolute and deleted properly.
+and deleted properly.

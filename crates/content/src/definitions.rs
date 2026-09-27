@@ -152,7 +152,7 @@ const _: () = assert!(PICKED_RANGE <= FEATURE_RANGE);
 ///
 /// ```ron
 /// (id: "millbrook_guard", name: "Guard Aldren", appearance: "guard",
-///  at: StartingSettlement(offset: (6.0, 3.0)), script: Some("guard.rhai"), dialogue: Some("Guard"))
+///  at: (2334.0, 2171.0), script: Some("guard.rhai"), dialogue: Some("Guard"))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
@@ -165,8 +165,8 @@ pub struct NpcDef {
     /// Which appearance to use (an [`AppearanceDef`] id).
     #[cfg_attr(feature = "reflect", reflect(@Refers::Appearance))]
     pub appearance: String,
-    /// Where the NPC lives.
-    pub at: Placement,
+    /// Where the NPC lives, in metres (east, south) from the world's corner.
+    pub at: (f32, f32),
     /// The script that gives the NPC its behaviour (a file in `scripts/`), if any.
     #[serde(default, skip_serializing_if = "is_default")]
     #[cfg_attr(feature = "reflect", reflect(@Refers::Script))]
@@ -181,71 +181,6 @@ pub struct NpcDef {
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
-}
-
-/// Where something is placed in the world. Placing things relative to
-/// settlements keeps content in the right spot even when the terrain
-/// generator is tuned.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
-pub enum Placement {
-    /// Relative to the settlement new characters start in, in metres (east, south).
-    StartingSettlement {
-        /// Offset from the settlement's centre.
-        offset: (f32, f32),
-    },
-    /// Relative to a settlement, by its number in the baked world (0 is the best site).
-    Settlement {
-        /// The settlement's number.
-        index: usize,
-        /// Offset from the settlement's centre.
-        offset: (f32, f32),
-    },
-    /// At a position in the world, in metres.
-    Position((f32, f32)),
-}
-
-/// Where the world's settlements are, for working out placements: the
-/// starting settlement's centre, and every settlement's centre in order.
-#[derive(Clone, Debug, Default)]
-pub struct Settlements {
-    /// The centre of the settlement new characters start in.
-    pub starting: Option<(f32, f32)>,
-    /// Every settlement's centre, by number.
-    pub all: Vec<(f32, f32)>,
-}
-
-impl Placement {
-    /// Where it is in the world, if its settlement exists.
-    pub fn position(&self, settlements: &Settlements) -> Option<(f32, f32)> {
-        let (centre, (dx, dy)) = match self {
-            Placement::Position(position) => return Some(*position),
-            Placement::StartingSettlement { offset } => (settlements.starting?, offset),
-            Placement::Settlement { index, offset } => (*settlements.all.get(*index)?, offset),
-        };
-        Some((centre.0 + dx, centre.1 + dy))
-    }
-
-    /// The same kind of placement, moved to a position in the world (so
-    /// something placed relative to a settlement stays relative to it).
-    pub fn moved_to(&self, (x, y): (f32, f32), settlements: &Settlements) -> Placement {
-        let centre = match self {
-            Placement::Position(_) => None,
-            Placement::StartingSettlement { .. } => settlements.starting,
-            Placement::Settlement { index, .. } => settlements.all.get(*index).copied(),
-        };
-        let offset = centre.map(|(cx, cy)| (round_to_centimetres(x - cx), round_to_centimetres(y - cy)));
-        match (self, offset) {
-            (Placement::StartingSettlement { .. }, Some(offset)) => Placement::StartingSettlement { offset },
-            (Placement::Settlement { index, .. }, Some(offset)) => Placement::Settlement { index: *index, offset },
-            _ => Placement::Position((round_to_centimetres(x), round_to_centimetres(y))),
-        }
-    }
-}
-
-/// Rounds to the nearest centimetre (so moved things save as tidy numbers).
-fn round_to_centimetres(metres: f32) -> f32 {
-    (metres * 100.0).round() / 100.0
 }
 
 /// Something a player can carry.
@@ -818,7 +753,7 @@ pub struct CreatureAttack {
 /// after it dies.
 ///
 /// ```ron
-/// (id: "rabbit_east", creature: "rabbit", at: StartingSettlement(offset: (35.0, 5.0)),
+/// (id: "rabbit_east", creature: "rabbit", at: (2363.0, 2173.0),
 ///  radius: 8.0, respawn_seconds: 20.0)
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -830,8 +765,8 @@ pub struct SpawnerDef {
     /// Which creature (a [`CreatureDef`] id).
     #[cfg_attr(feature = "reflect", reflect(@Refers::Creature))]
     pub creature: String,
-    /// Where: creatures appear within `radius` of here.
-    pub at: Placement,
+    /// Where: creatures appear within `radius` of here, in metres (east, south).
+    pub at: (f32, f32),
     /// How far from `at` (in metres) a creature may appear.
     #[serde(default, skip_serializing_if = "is_default")]
     pub radius: f32,
@@ -845,7 +780,7 @@ pub struct SpawnerDef {
 /// A place players wake up after dying. They wake at the nearest one.
 ///
 /// ```ron
-/// (name: "the town square", at: StartingSettlement(offset: (0.0, 0.0)))
+/// (name: "the town square", at: (2328.0, 2168.0))
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
@@ -853,8 +788,8 @@ pub struct SpawnerDef {
 pub struct RespawnPoint {
     /// Its name, as in "You wake up in {name}."
     pub name: String,
-    /// Where it is.
-    pub at: Placement,
+    /// Where it is, in metres (east, south).
+    pub at: (f32, f32),
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
@@ -887,24 +822,6 @@ mod tests {
             head: None,
             notes: String::new(),
         }
-    }
-
-    #[test]
-    fn placements_move_and_stay_relative() {
-        let settlements = Settlements { starting: Some((100.0, 200.0)), all: vec![(100.0, 200.0), (500.0, 500.0)] };
-        let square = Placement::StartingSettlement { offset: (3.0, -4.0) };
-        assert_eq!(square.position(&settlements), Some((103.0, 196.0)));
-        assert_eq!(
-            square.moved_to((110.25, 190.0), &settlements),
-            Placement::StartingSettlement { offset: (10.25, -10.0) }
-        );
-        let far = Placement::Settlement { index: 1, offset: (0.0, 0.0) };
-        assert_eq!(far.moved_to((501.0, 499.0), &settlements), Placement::Settlement { index: 1, offset: (1.0, -1.0) });
-        assert_eq!(
-            Placement::Position((1.0, 2.0)).moved_to((7.123, 8.0), &settlements),
-            Placement::Position((7.12, 8.0))
-        );
-        assert_eq!(Placement::Settlement { index: 9, offset: (0.0, 0.0) }.position(&settlements), None);
     }
 
     #[test]

@@ -478,7 +478,7 @@ fn fastrand_suffix() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-const GREETER: &str = r#"[(id: "greeter", name: "Greeter Tom", appearance: "villager", at: Position((120.0, 100.0)), script: Some("greeter.rhai"))]"#;
+const GREETER: &str = r#"[(id: "greeter", name: "Greeter Tom", appearance: "villager", at: (120.0, 100.0), script: Some("greeter.rhai"))]"#;
 const GREETING: &str = r#"fn on_interact(npc, player) { npc.say("Hello, " + player.name + "!"); }"#;
 
 /// The first NPC a client has been told about: its id and name.
@@ -561,7 +561,7 @@ fn changed_content_replaces_changed_npcs() {
 #[test]
 fn npc_speech_only_reaches_players_nearby() {
     // The NPC speaks whenever it's idle; the listener is 10 m away.
-    let npcs = r#"[(id: "crier", name: "Town Crier", appearance: "villager", at: Position((110.0, 100.0)), script: Some("greeter.rhai"))]"#;
+    let npcs = r#"[(id: "crier", name: "Town Crier", appearance: "villager", at: (110.0, 100.0), script: Some("greeter.rhai"))]"#;
     let script = r#"fn on_idle(npc) { npc.say("Hear ye!"); }"#;
     let mut server = TestServer::with_content("speech", content_with(npcs, script));
     let (near, _) = server.join(TOKEN_A, "Nearby");
@@ -625,7 +625,7 @@ fn players_are_told_why_they_cant_follow_npcs_or_talk_to_players() {
 }
 
 const TALKER: &str =
-    r#"[(id: "talker", name: "Tom", appearance: "villager", at: Position((102.0, 100.0)), dialogue: Some("Tom"))]"#;
+    r#"[(id: "talker", name: "Tom", appearance: "villager", at: (102.0, 100.0), dialogue: Some("Tom"))]"#;
 const TALK: &str = "title: Tom\n---\nTom: Hello, {player_name()}.\n-> Who are you?\n    Tom: I'm Tom.\n-> Bye.\n===\n";
 
 /// The conversation pages in a batch of messages: (lines, options).
@@ -814,7 +814,7 @@ fn latest_journal(messages: &[ServerMessage]) -> Option<Vec<(String, String, boo
 
 #[test]
 fn quests_start_complete_and_reward_once() {
-    let npcs = r#"[(id: "tom", name: "Tom", appearance: "villager", at: Position((102.0, 100.0)), script: Some("greeter.rhai"), dialogue: Some("Tom"))]"#;
+    let npcs = r#"[(id: "tom", name: "Tom", appearance: "villager", at: (102.0, 100.0), script: Some("greeter.rhai"), dialogue: Some("Tom"))]"#;
     let mut server = TestServer::with_content("quest", content_with_dialogue(npcs, CELEBRATION, Some(ERRAND)));
     let client = server.connect();
     client.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
@@ -1113,8 +1113,8 @@ fn character_sheets_list_every_skill_starting_at_level_1() {
 /// A pack with one creature near the spawn point (at (103, 100)) and a
 /// respawn point at a camp.
 fn creature_pack(creature: &str) -> ContentPack {
-    let spawner = r#"[(id: "one", creature: "beast", at: Position((103.0, 100.0)), respawn_seconds: 1.0)]"#;
-    let respawn = r#"[(name: "the camp", at: Position((80.0, 80.0))), (name: "far away", at: Position((10.0, 10.0)))]"#;
+    let spawner = r#"[(id: "one", creature: "beast", at: (103.0, 100.0), respawn_seconds: 1.0)]"#;
+    let respawn = r#"[(name: "the camp", at: (80.0, 80.0)), (name: "far away", at: (10.0, 10.0))]"#;
     let extra = [("creatures/beast.ron", creature), ("spawners/one.ron", spawner), ("respawn_points.ron", respawn)];
     content_with_files("[]", "", None, &extra)
 }

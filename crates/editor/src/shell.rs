@@ -13,15 +13,13 @@ use venture_content::ContentError;
 
 use crate::Project;
 use venture_client::common::coords::{from_bevy, to_bevy};
-use venture_client::world::source::WorldInfo;
 
 use crate::camera::EditorCamera;
 use crate::document::Document;
 use crate::fields::{Choices, Fields, referred_as, rename_everywhere, users};
 use crate::grips::{appearance_panel, grip_panel};
 use crate::places::{
-    EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, add_place, copy_place, delete_place, make_absolute,
-    marker_heights, settlements,
+    EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, add_place, copy_place, delete_place, marker_heights,
 };
 use crate::previews::{class_preview, creature_preview};
 
@@ -33,7 +31,7 @@ pub struct ShellPlugin;
 
 impl Plugin for ShellPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Shell { check_due: Some(0.0), ..default() })
+        app.insert_resource(Shell { check_due: Some(0.0), nearby: Some(DEFAULT_NEARBY), ..default() })
             .init_resource::<ViewRect>()
             .add_systems(Startup, spawn_interface_camera)
             .add_systems(EguiPrimaryContextPass, shell_ui)
@@ -70,7 +68,13 @@ pub struct Shell {
     status: String,
     /// Whether content tabs show every entry in a table, rather than one entry.
     table: bool,
+    /// The World tab lists only things this near (metres) where the camera
+    /// looks, if set.
+    nearby: Option<f32>,
 }
+
+/// How near things are listed on the World tab, to begin with (metres).
+const DEFAULT_NEARBY: f32 = 100.0;
 
 impl Shell {
     /// Shows content tabs as tables (or one entry at a time).
@@ -560,6 +564,8 @@ fn previews(ui: &mut egui::Ui, document: &Document, (c, f, i): EntryRef, title: 
 fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document: &mut Document, now: f64) {
     let mut go_to = None;
     let mut action = None;
+    let mut cameras = world.query::<&EditorCamera>();
+    let focus = cameras.single(world).map(|camera| from_bevy(camera.focus)).unwrap_or_default();
     world.resource_scope(|world, mut selection: Mut<Selection>| {
         let places = world.resource::<Places>();
         let chosen_place = places.list.iter().find(|place| selection.is(place)).cloned();
@@ -584,30 +590,39 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                     if ui.button("Delete").clicked() {
                         action = Some(WorldAction::Delete(place.clone()));
                     }
-                    if ui
-                        .button("Make absolute")
-                        .on_hover_text("Place it at this spot in the world, not relative to its settlement")
-                        .clicked()
-                    {
-                        action = Some(WorldAction::MakeAbsolute(place.clone()));
-                    }
                 });
             }
             ui.separator();
+            ui.horizontal(|ui| {
+                let mut limited = shell.nearby.is_some();
+                ui.checkbox(&mut limited, "Only within")
+                    .on_hover_text("List only things this near where the camera is looking");
+                let mut metres = shell.nearby.unwrap_or(DEFAULT_NEARBY);
+                ui.add_enabled(limited, egui::DragValue::new(&mut metres).range(1.0..=10000.0).speed(5.0).suffix(" m"));
+                shell.nearby = limited.then_some(metres);
+            });
+            let nearby = shell.nearby;
+            let chosen = selection.clone();
+            let near = |place: &Place| {
+                let (x, y) = place.position;
+                nearby.is_none_or(|metres| (x - focus.0).hypot(y - focus.1) <= metres) || chosen.is(place)
+            };
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for kind in PlaceKind::ALL {
                     let of_kind: Vec<&Place> = places.list.iter().filter(|place| place.kind == kind).collect();
-                    egui::CollapsingHeader::new(format!("{} ({})", kind.title(), of_kind.len()))
+                    let shown: Vec<&Place> = of_kind.iter().copied().filter(|place| near(place)).collect();
+                    let count = match shown.len() == of_kind.len() {
+                        true => format!("{}", of_kind.len()),
+                        false => format!("{} of {}", shown.len(), of_kind.len()),
+                    };
+                    egui::CollapsingHeader::new(format!("{} ({count})", kind.title()))
+                        .id_salt(kind.title())
                         .default_open(true)
                         .show(ui, |ui| {
-                            for place in of_kind {
-                                let label = match place.position {
-                                    Some(_) => place.label.clone(),
-                                    None => format!("{} (not in this world)", place.label),
-                                };
-                                if ui.selectable_label(selection.is(place), label).clicked() {
+                            for place in shown {
+                                if ui.selectable_label(selection.is(place), &place.label).clicked() {
                                     selection.0 = Some((place.kind, place.key.clone()));
-                                    go_to = place.position;
+                                    go_to = Some(place.position);
                                 }
                             }
                         });
@@ -671,7 +686,6 @@ enum WorldAction {
     Add(PlaceKind),
     Copy(Place),
     Delete(Place),
-    MakeAbsolute(Place),
     PlayHere,
 }
 
@@ -679,28 +693,20 @@ const PLAY_HERE_HELP: &str = "Saves, then starts the game (--local) with a new c
 It uses a profile of its own (\"editor\"), with admin powers, so your usual character is left alone.";
 
 fn world_action(world: &mut World, shell: &mut Shell, document: &mut Document, action: WorldAction, now: f64) {
-    let Some(settlements) = world.get_resource::<WorldInfo>().map(settlements) else {
-        shell.status = "The world hasn't loaded yet.".to_string();
-        return;
-    };
     let mut cameras = world.query::<&EditorCamera>();
     let focus = cameras.single(world).map(|camera| from_bevy(camera.focus)).unwrap_or_default();
     let chosen = match action {
-        WorldAction::Add(kind) => match add_place(document, kind, focus, &settlements, now) {
+        WorldAction::Add(kind) => match add_place(document, kind, focus, now) {
             Ok(key) => Some((kind, key)),
             Err(error) => {
                 shell.status = format!("Couldn't add it: {error}.");
                 None
             }
         },
-        WorldAction::Copy(place) => copy_place(document, &place, &settlements, now).map(|key| (place.kind, key)),
+        WorldAction::Copy(place) => copy_place(document, &place, now).map(|key| (place.kind, key)),
         WorldAction::Delete(place) => {
             delete_place(document, &place, now);
             None
-        }
-        WorldAction::MakeAbsolute(place) => {
-            make_absolute(document, &place, now);
-            Some((place.kind, place.key))
         }
         WorldAction::PlayHere => {
             save_all(shell, document);

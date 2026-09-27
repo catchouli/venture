@@ -72,7 +72,7 @@ anything worth saying about a particular entry goes in its `notes` field,
 which every entry has and the game ignores:
 
 ```ron
-(id: "goblin_east", creature: "goblin", at: StartingSettlement(offset: (80.0, -40.0)),
+(id: "goblin_east", creature: "goblin", at: (2408.0, 2128.0),
  radius: 10.0, respawn_seconds: 45.0, notes: "A little way out, on open ground."),
 ```
 
@@ -429,7 +429,7 @@ home gives up, goes back, and heals.
 
 ```ron
 [
-    (id: "goblin_north", creature: "goblin", at: StartingSettlement(offset: (0.0, -85.0)),
+    (id: "goblin_north", creature: "goblin", at: (2328.0, 2083.0),
      radius: 10.0, respawn_seconds: 45.0),
 ]
 ```
@@ -444,7 +444,7 @@ restarts all spawners.
 
 ```ron
 [
-    (name: "the town square", at: StartingSettlement(offset: (0.0, 0.0))),
+    (name: "the town square", at: (2328.0, 2168.0)),
 ]
 ```
 
@@ -510,7 +510,7 @@ the `on_quest_stage` hook.
         id: "town_guard",               // unique; used to recognise the NPC across reloads
         name: "Guard Aldren",           // shown to players
         appearance: "guard",
-        at: StartingSettlement(offset: (11.0, 1.0)),
+        at: (2339.0, 2169.0),
         script: Some("guard.rhai"),     // optional
         dialogue: Some("Guard"),        // optional: the Yarn node its conversation starts at
         wander_radius: 0.0,             // optional: how far from home it may wander (metres)
@@ -518,13 +518,10 @@ the `on_quest_stage` hook.
 ]
 ```
 
-Placement (`at`) is relative to the generated world's settlements, so content
-stays put even when the terrain generator is tuned. Offsets are in metres,
-`(east, south)`:
-- `StartingSettlement(offset: (x, y))`: the town new characters start in.
-- `Settlement(index: n, offset: (x, y))`: settlement number `n` in the baked
-  world (0 is the best site).
-- `Position((x, y))`: an exact spot in the world.
+`at` is a spot in the world, in metres `(east, south)` from its north-west
+corner (the same for spawners and respawn points). The easiest way to pick
+one is to drag the NPC around in the editor. (If the terrain generator is
+retuned so towns move, placed things have to be moved with them.)
 
 ### Two ways NPCs talk
 

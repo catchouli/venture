@@ -345,7 +345,7 @@ fn dice_edit(ui: &mut egui::Ui, dice: &mut Dice) -> bool {
 }
 
 /// A field or kind name made readable: "armour_class" is "Armour class",
-/// "StartingSettlement" is "Starting settlement".
+/// "RespawnPoint" is "Respawn point".
 pub fn readable(name: &str) -> String {
     let mut words = String::new();
     for (index, letter) in name.chars().enumerate() {
@@ -648,7 +648,7 @@ mod tests {
     #[test]
     fn names_are_readable() {
         assert_eq!(readable("armour_class"), "Armour class");
-        assert_eq!(readable("StartingSettlement"), "Starting settlement");
+        assert_eq!(readable("RespawnPoint"), "Respawn point");
         assert_eq!(readable("id"), "Id");
     }
 }

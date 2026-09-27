@@ -24,7 +24,6 @@ use crate::combat::{Health, KnockedOut, Strike};
 use crate::content::LoadedContent;
 use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
 use crate::link::Link;
-use crate::npcs::resolve_placement;
 use crate::world::ServerWorld;
 
 /// A creature led further than this from home (in metres) gives up the fight.
@@ -110,7 +109,6 @@ impl Default for Dead {
 fn match_content(
     mut commands: Commands,
     content: Res<LoadedContent>,
-    world: Res<ServerWorld>,
     mut link: ResMut<Link>,
     spawners: Query<(Entity, &Spawner)>,
     creatures: Query<&NetworkId, With<Creature>>,
@@ -130,10 +128,7 @@ fn match_content(
         commands.entity(entity).despawn();
     }
     for def in &content.pack.spawners {
-        let Some(centre) = resolve_placement(&def.at, &world.manifest) else {
-            warn!("Spawner \"{}\" is placed at a settlement the world doesn't have; skipping it.", def.id);
-            continue;
-        };
+        let centre = def.at;
         let mut respawn = Timer::from_seconds(def.respawn_seconds, TimerMode::Once);
         respawn.finish();
         commands.spawn(Spawner { def: def.clone(), centre, creature: None, respawn, warned: false });

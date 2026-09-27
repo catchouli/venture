@@ -8,12 +8,11 @@
 use std::ops::Range;
 
 use bevy::prelude::*;
+use venture_content::NpcDef;
 use venture_content::script_hooks::{ON_IDLE, ON_INTERACT, ON_QUEST_STAGE, ON_SPAWN};
-use venture_content::{NpcDef, Placement};
 use venture_navigation::Point;
 use venture_protocol::{EntityKind, ServerMessage, clean_chat_text};
 use venture_simulation::plan_route;
-use venture_world::WorldManifest;
 
 use crate::ServerSystems;
 use crate::content::LoadedContent;
@@ -71,19 +70,6 @@ pub struct NpcInteraction {
     pub player: Entity,
 }
 
-/// Where a placement is in the world, if its settlement exists.
-pub fn resolve_placement(placement: &Placement, manifest: &WorldManifest) -> Option<Point> {
-    placement.position(&settlements(manifest))
-}
-
-/// Where the world's settlements are, for placements.
-pub fn settlements(manifest: &WorldManifest) -> venture_content::Settlements {
-    venture_content::Settlements {
-        starting: manifest.starting_settlement().map(|settlement| settlement.position),
-        all: manifest.settlements.iter().map(|settlement| settlement.position).collect(),
-    }
-}
-
 /// Makes the NPCs in the world match the content pack whenever it changes:
 /// new NPCs appear, removed ones leave, and changed ones are replaced. An NPC
 /// whose only change is its script keeps going, with the new script.
@@ -121,10 +107,7 @@ fn match_content(
     }
 
     for def in content.pack.npcs.iter().filter(|def| !kept.contains(&def.id)) {
-        let Some(home) = resolve_placement(&def.at, &world.manifest) else {
-            warn!("NPC \"{}\" is placed at a settlement the world doesn't have; skipping it.", def.id);
-            continue;
-        };
+        let home = def.at;
         if world.is_blocked(home.0.floor() as i32, home.1.floor() as i32) {
             warn!("NPC \"{}\" stands somewhere that can't be walked on (at {home:?}).", def.id);
         }
