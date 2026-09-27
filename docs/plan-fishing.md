@@ -79,9 +79,10 @@ Each step ends playable or testable, and is committed.
    get fixed first: fishing puts them in front of the player's eyes. (Soft
    shores from depth baked into the water mesh, and rivers covering the low
    ground beside them; see "Water" in `textures.md`.)
-2. **Rules and data.** Species, bait, lures, rods and reels as content;
-   attraction, bites, hooking and landing as tested rules; skills to 99;
-   water kinds in the bake.
+2. **Done: rules and data.** Species, bait, lures, rods and reels as
+   content (`content/items/fish.ron` and `fishing.ron`, with placeholder
+   icons); attraction, bites, hooking and landing as tested rules
+   (`venture_rpg::fishing`); skills to 99; water kinds in the bake.
 3. **The loop, plainly shown.** Server stages, protocol, and a client that
    shows it with simple indicators (text and bars, a float as a marker):
    cast, bite, strike, fight, land. Enough to answer the slice's first

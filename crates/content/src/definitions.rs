@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "reflect")]
 use venture_protocol::Refers;
 use venture_protocol::{BodyType, EquipSlot, FEATURE_RANGE, Features, ItemLook, MonsterLook};
+use venture_rpg::fishing::{Bait, FishTraits, Lure, Method};
 use venture_rpg::{ClassRules, Dice, Healing, Stat, Stats};
+use venture_world::{Biome, FluidBody};
 
 /// The cut of an NPC's clothes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -221,6 +223,10 @@ pub struct ItemDef {
     /// uses one up: eating bread heals, say.
     #[serde(default, skip_serializing_if = "is_default")]
     pub on_use: ItemEffect,
+    /// What it is to fishing, if anything: a rod, a reel, bait, a lure, a
+    /// trap, or a fish (fish are items: they go in the bag and sell).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub fishing: Option<FishingPart>,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
@@ -240,6 +246,97 @@ pub enum ItemEffect {
     Nothing,
     /// It heals (never past the most health).
     Heal(Healing),
+}
+
+/// What an item is to fishing (see `docs/plan-fishing.md`).
+///
+/// ```ron
+/// fishing: Some(Rod(method: Ledger, reach: 12.0, level: 1))
+/// fishing: Some(Reel(strength: 3.0, capacity: 30.0, level: 1))
+/// fishing: Some(Bait((diets: [Insect], hook: Small)))
+/// fishing: Some(Lure((diets: [Fish], temperament: Aggressive, depth: Midwater, finish: Flashy, hook: Small)))
+/// fishing: Some(Trap(capacity: 3, soak: 1200.0, level: 1))
+/// fishing: Some(Fish((level: 1, experience: 110, waters: [River], biomes: [Grassland],
+///     traits: (diet: Insect, temperament: Skittish, depth: Midwater, size: Small, finish: Some(Natural)))))
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+pub enum FishingPart {
+    /// A rod, for one method: how far it casts (metres), and the fishing
+    /// level it needs.
+    Rod {
+        /// The way of fishing it's for (not `Trap`).
+        method: Method,
+        /// How far it casts, in metres.
+        reach: f32,
+        /// The fishing level it needs.
+        level: u32,
+    },
+    /// A reel, spooled with its line: the line's strength (kilograms), how
+    /// much line it holds (metres), and the fishing level it needs.
+    Reel {
+        /// The hardest pull the line takes, in kilograms.
+        strength: f32,
+        /// How much line it holds, in metres.
+        capacity: f32,
+        /// The fishing level it needs.
+        level: u32,
+    },
+    /// Bait, one used a cast (or to bait a trap).
+    Bait(Bait),
+    /// A lure (it never wears out).
+    Lure(Lure),
+    /// A trap to leave in the water: how many catches it holds, how long it
+    /// takes to fill (seconds), and the fishing level it needs.
+    Trap {
+        /// How many catches it holds.
+        capacity: u32,
+        /// How long it takes to fill, in seconds.
+        soak: f32,
+        /// The fishing level it needs.
+        level: u32,
+    },
+    /// A fish (or crab, or anything else that can be caught).
+    Fish(FishDef),
+}
+
+/// A kind of fish: where it lives, what it's like, and what catching it gives.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[serde(deny_unknown_fields)]
+pub struct FishDef {
+    /// The fishing level it can be caught from (its shadow shows faintly
+    /// ten levels before).
+    pub level: u32,
+    /// The fishing experience catching one gives.
+    pub experience: u32,
+    /// Its traits, which say what draws it.
+    pub traits: FishTraits,
+    /// The kinds of water it lives in.
+    // (World types aren't reflected: world code has no Bevy in it.)
+    #[cfg_attr(feature = "reflect", reflect(ignore))]
+    pub waters: Vec<FluidBody>,
+    /// The biomes it lives in.
+    #[cfg_attr(feature = "reflect", reflect(ignore))]
+    pub biomes: Vec<Biome>,
+    /// Whether rods catch it (crayfish, say, are only caught in traps).
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub rods: bool,
+    /// How often traps catch it, next to the others in its water (0: never).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub trap: f32,
+    /// Whether it's bycatch in traps (critters and junk, which fill a
+    /// quarter of a trap's catches).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub bycatch: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 /// What an equippable item does when worn.

@@ -7,17 +7,18 @@ use crate::characters::{CharacterModels, check_character_models, parse_character
 use crate::client::{
     ClientContent, parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
 };
-use crate::definitions::MonsterDef;
 use crate::definitions::{
     AbilityDef, AbilityEffect, AppearanceDef, ClassDef, GameSounds, ItemDef, ItemEffect, MAX_HIT_DIE,
     MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef,
     QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
 };
+use crate::definitions::{FishingPart, MonsterDef};
 use crate::layout::{UiNode, UiStyles, check_layout, check_styles, parse_layout, parse_styles};
 use crate::sky::{SKY_CYCLE_FILE, SKY_FILES, SkyLight, parse_sky, parse_sky_cycle};
 use venture_protocol::EquipSlot;
 use venture_rpg::Healing;
-use venture_rpg::MAX_LEVEL;
+use venture_rpg::fishing::{self, Method};
+use venture_rpg::{MAX_LEVEL, MAX_SKILL_LEVEL};
 
 /// The file saying what new characters start with.
 const NEW_CHARACTERS_FILE: &str = "new_characters.ron";
@@ -274,6 +275,8 @@ impl ContentPack {
                 Err(message) => errors.push(error(&relative, message)),
             }
         }
+
+        errors.extend(check_fishing(&pack.items).into_iter().map(|message| error(Path::new("items"), message)));
 
         for (relative, text) in read_files(folder, "abilities", "ron", &mut errors) {
             match parse_abilities(&text) {
@@ -605,6 +608,9 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
         }
         ItemEffect::Heal(_) => {}
     }
+    if let Some(fishing) = &item.fishing {
+        check_fishing_part(fishing, &mut problem);
+    }
     if let Some(equip) = &item.equip {
         if equip.slots.is_empty() {
             problem("it must fill at least one equipment slot".to_string());
@@ -619,6 +625,87 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
             }
             None if wielded => problem("items in the DominantHand slot need weapon stats".to_string()),
             _ => {}
+        }
+    }
+}
+
+/// Checks the fishing items make sense together: every fish rods catch is
+/// drawn and hooked by some bait or lure, and some reel can land it; every
+/// fish traps catch has a trap to catch it in.
+fn check_fishing(items: &BTreeMap<String, ItemDef>) -> Vec<String> {
+    let parts: Vec<&FishingPart> = items.values().filter_map(|item| item.fishing.as_ref()).collect();
+    let rods: Vec<Method> = parts
+        .iter()
+        .filter_map(|part| if let FishingPart::Rod { method, .. } = part { Some(*method) } else { None })
+        .collect();
+    let mut problems = Vec::new();
+    for item in items.values() {
+        let Some(FishingPart::Fish(fish)) = &item.fishing else { continue };
+        let traits = &fish.traits;
+        if fish.rods {
+            let drawn = parts.iter().any(|part| match part {
+                FishingPart::Bait(bait) => rods.iter().any(|&method| {
+                    method != Method::Lure
+                        && fishing::bait_attraction(traits, bait, method) > 0.0
+                        && fishing::hook_fit(bait.hook, traits.size) > 0.0
+                }),
+                FishingPart::Lure(lure) => {
+                    rods.contains(&Method::Lure)
+                        && fishing::lure_attraction(traits, lure) > 0.0
+                        && fishing::hook_fit(lure.hook, traits.size) > 0.0
+                }
+                _ => false,
+            });
+            if !drawn {
+                problems.push(format!("fish \"{}\": no bait or lure draws and hooks it", item.id));
+            }
+            let landed = parts.iter().any(|part| {
+                matches!(part, FishingPart::Reel { strength, capacity, .. }
+                    if fishing::reel_lands(*strength, *capacity, traits.size))
+            });
+            if !landed {
+                problems.push(format!("fish \"{}\": no reel is strong enough to land it", item.id));
+            }
+        }
+        if fish.trap > 0.0 && !parts.iter().any(|part| matches!(part, FishingPart::Trap { .. })) {
+            problems.push(format!("fish \"{}\": traps catch it, but there's no trap", item.id));
+        }
+    }
+    problems
+}
+
+fn check_fishing_part(part: &FishingPart, problem: &mut impl FnMut(String)) {
+    let positive = |value: f32| value > 0.0 && value.is_finite();
+    let level = |level: u32| (1..=MAX_SKILL_LEVEL).contains(&level);
+    let mut need = |ok: bool, message: &str| {
+        if !ok {
+            problem(message.to_string());
+        }
+    };
+    let level_message = format!("its fishing level must be from 1 to {MAX_SKILL_LEVEL}");
+    match part {
+        FishingPart::Rod { method, reach, level: needed } => {
+            need(*method != Method::Trap, "rods are for Ledger, Float or Lure fishing (traps are their own items)");
+            need(positive(*reach), "its reach must be more than 0");
+            need(level(*needed), &level_message);
+        }
+        FishingPart::Reel { strength, capacity, level: needed } => {
+            need(positive(*strength) && positive(*capacity), "its strength and capacity must be more than 0");
+            need(level(*needed), &level_message);
+        }
+        FishingPart::Bait(bait) => need(!bait.diets.is_empty(), "bait must draw at least one diet"),
+        FishingPart::Lure(lure) => need(!lure.diets.is_empty(), "a lure must draw at least one diet"),
+        FishingPart::Trap { capacity, soak, level: needed } => {
+            need(*capacity > 0 && positive(*soak), "its capacity and soak time must be more than 0");
+            need(level(*needed), &level_message);
+        }
+        FishingPart::Fish(fish) => {
+            need(level(fish.level), &level_message);
+            need(fish.experience > 0, "it must give some experience");
+            need(!fish.waters.is_empty() && !fish.biomes.is_empty(), "it must live in at least one water and biome");
+            need(fish.trap >= 0.0 && fish.trap.is_finite(), "its trap weight can't be negative");
+            need(fish.rods || fish.trap > 0.0, "something must catch it (rods, or a trap weight)");
+            need(!fish.bycatch || fish.trap > 0.0, "bycatch needs a trap weight");
         }
     }
 }
@@ -950,6 +1037,23 @@ fn to_slashes(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fish_need_bait_that_draws_them_and_a_reel_that_lands_them() {
+        let items = |text: &str| -> BTreeMap<String, ItemDef> {
+            parse_items(text).unwrap().into_iter().map(|item| (item.id.clone(), item)).collect()
+        };
+        let dace = r#"(id: "dace", name: "Dace", description: "", icon: "", fishing: Some(Fish((level: 1, experience: 10,
+            traits: (diet: Insect, temperament: Skittish, depth: Midwater, size: Small), waters: [River], biomes: [Grassland]))))"#;
+        let rod = r#"(id: "rod", name: "Rod", description: "", icon: "", fishing: Some(Rod(method: Float, reach: 10.0, level: 1)))"#;
+        let reel = r#"(id: "reel", name: "Reel", description: "", icon: "", fishing: Some(Reel(strength: 3.0, capacity: 30.0, level: 1)))"#;
+        let worm = r#"(id: "worm", name: "Worm", description: "", icon: "", fishing: Some(Bait((diets: [Insect], hook: Small))))"#;
+        let corn = r#"(id: "corn", name: "Corn", description: "", icon: "", fishing: Some(Bait((diets: [Herbivore], hook: Small))))"#;
+        assert!(check_fishing(&items(&format!("[{dace}, {rod}, {reel}, {worm}]"))).is_empty());
+        let problems = check_fishing(&items(&format!("[{dace}, {rod}, {corn}]")));
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(problems[0].contains("no bait or lure") && problems[1].contains("no reel"));
+    }
 
     /// A content folder in the temporary directory, deleted afterwards.
     struct TestPack(PathBuf);

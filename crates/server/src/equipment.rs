@@ -220,6 +220,7 @@ mod tests {
             value: 1,
             equip: Some(Equippable { slots, armour, weapon, look: look(style), parts: Vec::new() }),
             on_use: Default::default(),
+            fishing: None,
             notes: String::new(),
         };
         let sword = WeaponDef { damage: Dice::new(1, 6), speed: 1.0, stat: Stat::Strength };

@@ -21,6 +21,7 @@ sha2.workspace = true
 venture_rpg.workspace = true
 venture_protocol.workspace = true
 venture_simulation.workspace = true
+venture_world.workspace = true
 rhai = { workspace = true, optional = true }
 yarnspinner = { workspace = true, optional = true }
 
