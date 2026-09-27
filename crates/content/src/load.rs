@@ -599,6 +599,12 @@ fn check_model_names(pack: &ContentPack, errors: &mut Vec<ContentError>) {
             errors.push(error(Path::new("items"), message));
         }
     }
+    for creature in pack.creatures.values() {
+        if let Some(model) = creature.look.model.as_ref().filter(|model| !models.creatures.contains_key(*model)) {
+            let message = format!("creature \"{}\": there's no creature model called \"{model}\"", creature.id);
+            errors.push(error(Path::new("creatures"), message));
+        }
+    }
     for appearance in pack.appearances.values() {
         for part in appearance.parts.iter().filter(|part| !has_part(part)) {
             let message = format!("appearance \"{}\": there's no outfit part called \"{part}\"", appearance.id);

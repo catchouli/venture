@@ -7,6 +7,7 @@ use std::f32::consts::PI;
 use bevy::prelude::*;
 use venture_protocol::{BodyType, CreatureLook, CreatureShape, ItemLook, LookStyle};
 
+use crate::characters::humans::HumanLook;
 use crate::characters::model::{CharacterAssets, Gait, Look, Worn, spawn_character};
 
 /// How big a goblin is, next to a person.
@@ -47,6 +48,26 @@ pub fn spawn_creature(
     transform: Transform,
     look: &CreatureLook,
 ) -> Entity {
+    // A creature with a model is dressed in it (see `humans`), once the
+    // models have loaded; until then it has its shape.
+    if let Some(model) = &look.model {
+        let entity = spawn_shape(commands, assets, materials, transform, look, false);
+        commands.entity(entity).insert(HumanLook::of_creature(model));
+        return entity;
+    }
+    spawn_shape(commands, assets, materials, transform, look, true)
+}
+
+/// A creature's placeholder shape. (`scaled` shrinks goblins to goblin size;
+/// a model has its own size.)
+fn spawn_shape(
+    commands: &mut Commands,
+    assets: &CharacterAssets,
+    materials: &mut Assets<StandardMaterial>,
+    transform: Transform,
+    look: &CreatureLook,
+    scaled: bool,
+) -> Entity {
     let mut material = |(r, g, b): (f32, f32, f32), roughness: f32| {
         materials.add(StandardMaterial {
             base_color: Color::srgb(r, g, b),
@@ -67,7 +88,8 @@ pub fn spawn_creature(
                 worn: vec![Worn { style: club.style, main: material(club.main, 0.8), trim: material(club.trim, 0.8) }],
                 pointy_ears: true,
             };
-            spawn_character(commands, assets, transform.with_scale(Vec3::splat(GOBLIN_SCALE)), &goblin)
+            let scale = if scaled { GOBLIN_SCALE } else { 1.0 };
+            spawn_character(commands, assets, transform.with_scale(Vec3::splat(scale)), &goblin)
         }
         CreatureShape::Rabbit => {
             let fur = material(look.main, 0.9);

@@ -334,6 +334,9 @@ on one shared skeleton, animated by one file of animations. They live in
   (metres, and degrees about X, Y, then Z). `covers` hides the body under the
   part (`Torso`, `Arms`, `Hands`, `Hips`, `Legs`, `Feet`) so skin doesn't
   poke through, and `hides_hair` is for hoods and helmets.
+- **creatures** are whole models for creatures (`"puglin": (model:
+  "puglin.gltf", scale: 0.9)`). They're on the characters' skeleton, so
+  they play the same animations.
 - **plain_clothes** fill in wherever nothing worn covers the body.
 - **outfits** are the parts for each appearance `outfit`.
 
@@ -417,7 +420,9 @@ everyone knows:
 ```
 
 The shapes are placeholder models drawn by the client (`Rabbit` and `Goblin`
-so far), coloured with `main` and `trim`. A creature led more than 30 m from
+so far), coloured with `main` and `trim`. `model: Some("puglin")` in the
+`look` dresses the creature in a creature model from `characters.ron`
+instead, once the models have loaded (the shape stays until then). A creature led more than 30 m from
 home gives up, goes back, and heals.
 
 ### Spawners

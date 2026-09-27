@@ -41,6 +41,7 @@ BASE = "Universal Base Characters[Standard]"
 OUTFITS = "Modular Character Outfits - Fantasy[Standard]"
 ANIMATIONS = "Universal Animation Library[Standard]"
 PROPS = "Fantasy Props MegaKit[Standard]"
+BESTIARY = "Bestiary - Dungeon Monsters Kit[Standard]"
 
 # (source, output name) for each model.
 MODELS = [
@@ -66,6 +67,9 @@ MODELS = [
 MODELS += [
     (f"{PROPS}/Exports/glTF/Sword_Bronze.gltf", "sword_bronze"),
     (f"{PROPS}/Exports/glTF/Shield_Wooden.gltf", "shield_wooden"),
+    # Monsters on the same skeleton (so they share the animations).
+    (f"{BESTIARY}/Exports/GLB (Godot-Unreal)/Imp.glb", "imp"),
+    (f"{BESTIARY}/Exports/GLB (Godot-Unreal)/Puglin.glb", "puglin"),
 ]
 
 ANIMATION_FILE = f"{ANIMATIONS}/Unreal-Godot/UAL1_Standard.glb"
@@ -249,9 +253,6 @@ def import_model(root, source, name, textures):
             for attribute in list(primitive["attributes"]):
                 if attribute.startswith("COLOR_") or attribute in [f"TEXCOORD_{n}" for n in range(2, 8)]:
                     primitive["attributes"].pop(attribute)
-    binary = merge_weights(gltf, binary)
-    binary = compact(gltf, binary)
-    gltf["buffers"][0]["uri"] = f"{name}.bin"
     # Which kind each image is (colour, or a detail map), to shrink it right.
     kinds = {}
     for material in gltf.get("materials", []):
@@ -259,10 +260,17 @@ def import_model(root, source, name, textures):
         for key, kind in [("baseColorTexture", COLOUR_SIZE), ("metallicRoughnessTexture", DETAIL_SIZE)]:
             if key in pbr:
                 kinds[gltf["textures"][pbr[key]["index"]]["source"]] = kind
+        if "emissiveTexture" in material:
+            kinds[gltf["textures"][material["emissiveTexture"]["index"]]["source"]] = COLOUR_SIZE
         for key in ["normalTexture", "occlusionTexture"]:
             if key in material:
                 kinds[gltf["textures"][material[key]["index"]]["source"]] = DETAIL_SIZE
     for index, image in enumerate(gltf.get("images", [])):
+        # (Pictures inside a .glb are taken from the pack's Textures folder instead, by name.)
+        if "uri" not in image:
+            image["uri"] = image["name"] if image["name"].endswith(".png") else image["name"] + ".png"
+            image.pop("bufferView", None)
+            image.pop("mimeType", None)
         out_name = texture_name(image["uri"])
         if out_name not in textures:
             found = find_texture(os.path.join(root, source.split("/")[0]), os.path.dirname(os.path.join(root, source)),
@@ -272,6 +280,9 @@ def import_model(root, source, name, textures):
             shrink(found, os.path.join(OUT, out_name), kinds.get(index, DETAIL_SIZE))
             textures.add(out_name)
         image["uri"] = out_name
+    binary = merge_weights(gltf, binary)
+    binary = compact(gltf, binary)
+    gltf["buffers"][0]["uri"] = f"{name}.bin"
     open(os.path.join(OUT, f"{name}.bin"), "wb").write(binary)
     json.dump(gltf, open(os.path.join(OUT, f"{name}.gltf"), "w"), separators=(",", ":"))
 

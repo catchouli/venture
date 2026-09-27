@@ -84,7 +84,7 @@ pub struct Creature {
 impl Creature {
     /// What kind of entity it is, as clients are told.
     pub fn kind(&self) -> EntityKind {
-        EntityKind::Creature { level: self.def.level, look: self.def.look }
+        EntityKind::Creature { level: self.def.level, look: self.def.look.clone() }
     }
 }
 

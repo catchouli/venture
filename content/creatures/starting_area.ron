@@ -21,6 +21,6 @@
         aggro_radius: 9.0,
         wander_radius: 5.0,
         experience: 35,
-        look: (shape: Goblin, main: (0.42, 0.58, 0.28), trim: (0.40, 0.30, 0.20)),
+        look: (shape: Goblin, main: (0.42, 0.58, 0.28), trim: (0.40, 0.30, 0.20), model: Some("puglin")),
     ),
 ]

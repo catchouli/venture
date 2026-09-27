@@ -3,6 +3,8 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "reflect")]
+use venture_protocol::Refers;
 use venture_protocol::{BodyType, CreatureLook, EquipSlot, FEATURE_RANGE, Features, ItemLook};
 use venture_rpg::{ClassRules, Dice, Stat, Stats};
 
@@ -17,33 +19,6 @@ pub enum OutfitStyle {
     Armour,
     /// A long robe.
     Robe,
-}
-
-/// What a field names (for the editor, which offers the names that exist,
-/// and follows renames). Marked on fields with `#[reflect(@Refers::Item)]`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
-pub enum Refers {
-    /// An appearance's id.
-    Appearance,
-    /// A creature's id.
-    Creature,
-    /// An item's id.
-    Item,
-    /// An ability's id.
-    Ability,
-    /// A picture in `icons/`.
-    Icon,
-    /// A sound in `sounds/`.
-    Sound,
-    /// A script in `scripts/`.
-    Script,
-    /// An outfit part from `characters/characters.ron`.
-    Part,
-    /// A hairstyle or beard from `characters/characters.ron`.
-    Hair,
-    /// A bone of the characters' skeleton (see [`crate::characters::BONES`]).
-    Bone,
 }
 
 /// A colour as sRGB red, green and blue, each from 0 to 1.

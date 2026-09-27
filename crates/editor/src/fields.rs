@@ -607,6 +607,10 @@ fn update_choices(
     map.insert(Refers::Script, files("scripts", ".rhai"));
     map.insert(Refers::Part, models.map(|models| models.parts.keys().cloned().collect()).unwrap_or_default());
     map.insert(Refers::Hair, models.map(|models| models.hair.keys().cloned().collect()).unwrap_or_default());
+    map.insert(
+        Refers::CreatureModel,
+        models.map(|models| models.creatures.keys().cloned().collect()).unwrap_or_default(),
+    );
     map.insert(Refers::Bone, venture_content::characters::BONES.iter().map(|bone| bone.to_string()).collect());
     choices.0 = map;
 }
