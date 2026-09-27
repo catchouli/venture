@@ -1,6 +1,6 @@
 //! The time of day, as the server says ([`ServerMessage::Time`], when joining
-//! and when an admin sets it), run on by the client at the pace of the day
-//! cycle in the rules. [`crate::world::lighting`] lights the world by it.
+//! and when an admin sets it or its pace), run on by the client at the pace
+//! of the day cycle in the rules, times the server's timescale. [`crate::world::lighting`] lights the world by it.
 
 use bevy::prelude::*;
 use venture_protocol::ServerMessage;
@@ -33,10 +33,10 @@ impl Default for TimeOfDay {
     }
 }
 
-/// Whether a server has said the time (the clock only runs once one has: the
-/// editor, with no server, stays at mid-afternoon).
+/// How fast the clock runs, once a server has said (it only runs once one
+/// has: the editor, with no server, stays at mid-afternoon).
 #[derive(Default)]
-struct Told(bool);
+struct Told(Option<f32>);
 
 fn keep_time(
     time: Res<Time>,
@@ -46,13 +46,13 @@ fn keep_time(
     mut told_before: Local<Told>,
 ) {
     let told = events.read().filter_map(|FromServer(message)| match message {
-        ServerMessage::Time { hour } => Some(*hour),
+        ServerMessage::Time { hour, scale } => Some((*hour, *scale)),
         _ => None,
     });
-    if let Some(hour) = told.last() {
+    if let Some((hour, scale)) = told.last() {
         clock.0 = hour;
-        told_before.0 = true;
-    } else if told_before.0 {
-        clock.0 = rules.0.day.after(clock.0, time.delta_secs());
+        told_before.0 = Some(scale);
+    } else if let Some(scale) = told_before.0 {
+        clock.0 = rules.0.day.after(clock.0, time.delta_secs() * scale);
     }
 }

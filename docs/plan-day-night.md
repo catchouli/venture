@@ -24,7 +24,9 @@ photograph to the next.
    `sunrise`, `sunset`, `noon_height`; a two-hour day, dark from 21:00 to
    03:00 by default). It's part of the rules the client gets on joining;
    the server says the time when a player joins and when an admin sets it
-   (`/time 19:30`), and the client runs it on (`world/time_of_day.rs`).
+   (`/time 19:30`) or how fast it goes (`/timescale 10`; 0 stops it; until
+   the server restarts), and the client runs it on at that pace
+   (`world/time_of_day.rs`).
 2. **An analytic sun and moon** (`venture_simulation::DayCycle`): the sun
    rises in the east-north-east, is highest in the south at midday
    (`noon_height`, 60°), sets in the west-north-west, and carries on round
@@ -55,9 +57,12 @@ photograph to the next.
    tier could keep only the two in use). Clouds from different photographs
    cross-fade, which reads as the weather changing.
 5. **Exposure and haze by time** (`world/daylight.rs`): the sky and the
-   light it casts dim through dusk to a night level, the exposure opens
-   about two and a half stops at night, and the haze takes the horizon's
-   colour, warmed by a low sun.
+   light it casts dim through dusk to a night level, the exposure (EV100 10
+   by day, a little under Bevy's usual, so bright ground keeps its colour)
+   opens about a stop and a half at night (8.6: dark, but enough to see
+   by), and the haze takes the horizon's colour, warmed by a low sun. The
+   skies light the world at 75% of how bright they look
+   (`SKY_LIGHT_SHARE`), so shade is darker than sunlit ground.
 
 ## Phases
 
@@ -74,5 +79,7 @@ photograph to the next.
 
 ## Trying it
 
-In the game, admins set the time with `/time 19:30` (or `/time 19.5`). For
+In the game, admins set the time with `/time 19:30` (or `/time 19.5`), and
+its pace with `/timescale 20` (twenty times as fast; `/timescale 1` is
+back to normal, `/timescale 0` stops it). For
 screenshots: `VENTURE_SAY="/time 20" cargo run -p venture_client -- --local --admin`.

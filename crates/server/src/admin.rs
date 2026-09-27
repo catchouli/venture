@@ -8,6 +8,8 @@
 //!   given back to spend again.
 //! - `/setgender BODY`: change your body type (masculine, feminine or androgynous).
 //! - `/time HOUR`: set the time of day, for everyone.
+//! - `/timescale N`: set how fast the days go, for everyone (1 the usual
+//!   pace, 10 ten times faster, 0 stopped).
 
 use bevy::prelude::*;
 use venture_protocol::{AdminCommand, ServerMessage};
@@ -21,6 +23,10 @@ use crate::equipment::{Equipment, player_look};
 use crate::link::Link;
 use crate::requests::AdminRequest;
 use crate::{GameRules, ServerSystems};
+
+/// The fastest an admin can make the days go (a whole day in under ten
+/// seconds, at the usual two hours a day).
+const MOST_TIMESCALE: f32 = 1000.0;
 
 /// Carries out admin commands.
 pub struct AdminPlugin;
@@ -89,9 +95,24 @@ fn carry_out_admin_commands(
                     tell("The time is an hour from 0 to 24.".to_string());
                     continue;
                 }
-                clock.set(*hour, &rules);
+                clock.set(*hour);
                 let (hours, minutes) = (hour.floor() as u32, (hour.fract() * 60.0).round() as u32 % 60);
                 tell(format!("The time is now {hours:02}:{minutes:02}."));
+                let message = clock.message(&rules);
+                link.broadcast(everyone.iter().map(|player| player.connection), &message);
+                continue;
+            }
+            AdminCommand::SetTimescale { scale } => {
+                if !scale.is_finite() || !(0.0..=MOST_TIMESCALE).contains(scale) {
+                    tell(format!("The timescale is from 0 (stopped) to {MOST_TIMESCALE}."));
+                    continue;
+                }
+                clock.set_scale(*scale, &rules);
+                tell(if *scale == 0.0 {
+                    "The clock has stopped.".to_string()
+                } else {
+                    format!("Days now go {scale} times the usual pace.")
+                });
                 let message = clock.message(&rules);
                 link.broadcast(everyone.iter().map(|player| player.connection), &message);
                 continue;

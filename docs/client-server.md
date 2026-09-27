@@ -400,8 +400,8 @@ looks (`worn`, the placeholder shapes), and the outfit parts it puts on them
 (`outfit`).
 
 **Admins** are listed by character name in `server.ron`. Their commands
-(`Admin(SetLevel | Reset | SetClass | SetBody | SetTime)`: `/setlevel`, `/reset`,
-`/setclass`, `/setgender` and `/time`) go through the gate like any other,
+(`Admin(SetLevel | Reset | SetClass | SetBody | SetTime | SetTimescale)`: `/setlevel`, `/reset`,
+`/setclass`, `/setgender`, `/time` and `/timescale`) go through the gate like any other,
 then to `admin.rs`, which checks the player really is an admin before doing
 anything; anyone else is told only admins can use them.
 
@@ -550,7 +550,9 @@ The server keeps the world's clock (`clock.rs`): the time of day is the
 same for everyone, and runs on from the real clock at the pace of the day
 cycle in the rules (`day` in `server.ron`, sent with the other rules when a
 player joins). A player is told the time (`Time`) when they join and when
-an admin sets it (`/time 19:30`); the client runs its clock on from there
+an admin sets it (`/time 19:30`) or how fast it goes (`/timescale 10`: 1
+the usual pace, 0 stopped, until the server restarts); the client runs its
+clock on from there, at that pace
 and lights the world by it. See [plan-day-night.md](plan-day-night.md).
 
 ## Connection problems

@@ -369,6 +369,12 @@ pub enum AdminCommand {
         /// The time, from 0 to 24.
         hour: f32,
     },
+    /// Set how fast the days go for everyone (`/timescale 10`): 1 is the
+    /// usual pace, 0 stops the clock.
+    SetTimescale {
+        /// How many times the usual pace.
+        scale: f32,
+    },
 }
 
 /// Events from the server.
@@ -569,11 +575,14 @@ pub enum ServerMessage {
     /// they aren't in one.
     Party(Option<PartyInfo>),
     /// The time of day, in hours (0 to 24): sent when the player joins, and
-    /// when an admin sets it. The client runs the clock on from there (at
-    /// the pace of the day cycle in the rules).
+    /// when an admin sets it (or how fast it goes). The client runs the
+    /// clock on from there, at the pace of the day cycle in the rules times
+    /// `scale`.
     Time {
         /// The time.
         hour: f32,
+        /// How many times the usual pace the clock runs (0: stopped).
+        scale: f32,
     },
     /// The player has been invited to a party (`Some`), or the invitation
     /// has been answered or has run out (`None`).
