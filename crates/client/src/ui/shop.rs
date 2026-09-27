@@ -94,7 +94,7 @@ fn spawn_window(mut commands: Commands) {
             Interaction::default(),
             Node {
                 position_type: PositionType::Absolute,
-                top: px(50),
+                bottom: px(crate::ui::character_window::BOTTOM),
                 right: px(RIGHT),
                 // (Widths include the padding and the 1 pixel border.)
                 width: px(COLUMNS as f32 * SLOT_WIDTH + (COLUMNS - 1) as f32 * GAP + 2.0 * (PADDING + 1.0)),

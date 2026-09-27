@@ -1,6 +1,7 @@
-//! The toolbar in the top-right corner: an icon button for each tab of the
-//! character window (the icons come from the theme; the window itself
-//! handles every tab's key: see [`crate::ui::character_window`]).
+//! The toolbar along the bottom edge, left of the hotbar: an icon button for
+//! each tab of the character window, which opens just above it. (The icons
+//! come from the theme; the window itself handles every tab's key: see
+//! [`crate::ui::character_window`].)
 
 use bevy::prelude::*;
 
@@ -49,7 +50,7 @@ fn spawn_toolbar(mut commands: Commands) {
             Toolbar,
             Node {
                 position_type: PositionType::Absolute,
-                top: px(4),
+                bottom: px(10),
                 right: px(RIGHT),
                 column_gap: px(4),
                 ..default()
