@@ -55,6 +55,12 @@ that do something, more quests and places).
 - **Terrain level of detail**, so the view distance can grow (distant chunks
   meshed at lower resolution).
 
+## Next: fishing
+
+The first playable slice of the fishing skill (levels 1–20, in the
+grassland round the starting town): see [plan-fishing.md](plan-fishing.md)
+and the design in `design_docs/fishing_skill/`.
+
 ## Next: the world
 
 - Cave entrances and a first generated cave (see [world-model.md](world-model.md)).
