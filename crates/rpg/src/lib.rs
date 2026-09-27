@@ -9,6 +9,8 @@
 //! - [`combat`]: resolving an attack: hit or miss, damage, critical hits.
 //! - [`abilities`]: abilities' attacks and healing, mana regeneration and resting.
 //! - [`items`]: what using an item (eating, drinking) heals.
+//! - [`fishing`]: what bites (bait and lures against fish traits), hooks,
+//!   strikes, shadows, reels and traps.
 //!
 //! The server uses these to decide what happens; the client uses them to show
 //! the same numbers. The crate has no engine or networking code, and every
@@ -34,6 +36,7 @@ pub mod class;
 pub mod combat;
 pub mod derived;
 pub mod dice;
+pub mod fishing;
 pub mod items;
 pub mod progression;
 pub mod stats;
