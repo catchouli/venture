@@ -8,8 +8,8 @@ use bevy::asset::io::AssetSourceBuilder;
 use bevy::prelude::*;
 use venture_client::characters::{creatures, humans, model};
 use venture_client::content::{CONTENT_SOURCE, ContentStore};
-use venture_content::AppearanceDef;
 use venture_content::characters::{CharacterModels, parse_character_models};
+use venture_content::{AppearanceDef, ItemDef};
 
 use crate::document::Document;
 
@@ -63,6 +63,9 @@ fn keep_appearances(document: Res<Document>, store: Option<ResMut<ContentStore>>
     if models.is_some() && models != store.character_models {
         store.character_models = models;
         store.version = Some(format!("editor-{}", document.revision));
+    }
+    if let Some((_, items)) = document.find::<ItemDef>() {
+        store.items = items.files().iter().flat_map(|file| &file.entries).map(|i| (i.id.clone(), i.clone())).collect();
     }
     if let Some((_, appearances)) = document.find::<AppearanceDef>() {
         store.appearances =

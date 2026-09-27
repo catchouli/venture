@@ -64,8 +64,10 @@ pub enum Refers {
     Script,
     /// An outfit part from `characters/characters.ron`.
     Part,
-    /// A hairstyle or beard from `characters/characters.ron`.
-    Hair,
+    /// A hairstyle (not a beard) from `characters/characters.ron`.
+    Hairstyle,
+    /// A beard from `characters/characters.ron`.
+    Beard,
     /// A bone of the characters' skeleton (see `venture_content::characters::BONES`).
     Bone,
     /// A creature model from `characters/characters.ron`.
@@ -233,6 +235,11 @@ pub enum ClientMessage {
     },
     /// Equip the item in an inventory slot (swapping out whatever it replaces).
     Equip {
+        /// The inventory slot, from 0.
+        slot: u32,
+    },
+    /// Use the item in an inventory slot (eat it, drink it), which uses one up.
+    UseItem {
         /// The inventory slot, from 0.
         slot: u32,
     },

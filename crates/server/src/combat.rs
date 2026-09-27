@@ -77,6 +77,12 @@ impl Health {
         Self { current: max, max, since_fighting: OUT_OF_COMBAT_SECONDS, regeneration: 0.0, attacker: None }
     }
 
+    /// Some health out of a most (for tests elsewhere).
+    #[cfg(test)]
+    pub(crate) fn partly(current: u32, max: u32) -> Self {
+        Self { current: current.min(max), ..Self::full(max) }
+    }
+
     /// Health left.
     pub fn current(&self) -> u32 {
         self.current

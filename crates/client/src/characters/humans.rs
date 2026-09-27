@@ -29,8 +29,8 @@ use bevy::mesh::skinning::SkinnedMesh;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::prelude::*;
 use bevy::world_serialization::{WorldAssetRoot, WorldInstance, WorldInstanceSpawner};
-use venture_content::AppearanceDef;
 use venture_content::characters::{BodyRegion, CharacterModels, PartModel};
+use venture_content::{AppearanceDef, Equippable, ItemDef};
 use venture_protocol::{BodyType, FEATURE_RANGE, ItemLook, LookStyle, PlayerLook};
 
 use crate::characters::model::{CharacterAssets, Gait, PlaceholderPart};
@@ -123,14 +123,7 @@ impl HumanLook {
     /// what they wear.
     pub fn of_player(look: &PlayerLook) -> Self {
         let features = &look.features;
-        let shapes = look
-            .worn
-            .iter()
-            .filter(|item| {
-                matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Buckler)
-            })
-            .copied()
-            .collect();
+        let shapes = look.worn.iter().filter(|item| is_held(item)).copied().collect();
         Self {
             body: look.body,
             hair: features.hair.clone(),
@@ -159,9 +152,14 @@ impl HumanLook {
         }
     }
 
-    /// An NPC's look, from their appearance: its parts (or the ones for its
-    /// outfit style), hair, colours and sizes.
-    pub fn of_appearance(appearance: Option<&AppearanceDef>, models: Option<&CharacterModels>) -> Self {
+    /// An NPC's look, from their appearance: what its equipment puts on,
+    /// over its parts (or the ones for its outfit style), and its hair,
+    /// colours and sizes.
+    pub fn of_appearance(
+        appearance: Option<&AppearanceDef>,
+        models: Option<&CharacterModels>,
+        items: &HashMap<String, ItemDef>,
+    ) -> Self {
         let Some(appearance) = appearance else {
             return Self {
                 body: BodyType::Masculine,
@@ -175,12 +173,27 @@ impl HumanLook {
                 creature: None,
             };
         };
-        let parts = if appearance.parts.is_empty() {
+        let base = if appearance.parts.is_empty() {
             let style = format!("{:?}", appearance.outfit);
             models.and_then(|models| models.outfits.get(&style)).cloned().unwrap_or_default()
         } else {
             appearance.parts.clone()
         };
+        let equipped: Vec<&Equippable> =
+            appearance.equipment.iter().filter_map(|item| items.get(item)?.equip.as_ref()).collect();
+        // What's worn goes on first; their own parts only where it doesn't cover.
+        let mut parts: Vec<String> = Vec::new();
+        for part in equipped.iter().flat_map(|equip| &equip.parts) {
+            if !parts.contains(part) {
+                parts.push(part.clone());
+            }
+        }
+        let covers = |part: &String| -> Vec<BodyRegion> {
+            models.and_then(|models| models.parts.get(part)).map(|part| part.covers.clone()).unwrap_or_default()
+        };
+        let covered: HashSet<BodyRegion> = parts.iter().flat_map(covers).collect();
+        parts.extend(base.into_iter().filter(|part| !covers(part).iter().any(|region| covered.contains(region))));
+        let shapes = equipped.iter().map(|equip| equip.look).filter(is_held).collect();
         let features = appearance.features();
         let colour = |(r, g, b): (f32, f32, f32)| Paint::Colour(Color::srgb(r, g, b));
         Self {
@@ -191,10 +204,16 @@ impl HumanLook {
             skin: colour(appearance.skin),
             hair_colour: colour(appearance.hair),
             sizes: [features.height, features.build, features.head],
-            shapes: Vec::new(),
+            shapes,
             creature: None,
         }
     }
+}
+
+/// Whether a worn item is held in the hand (and drawn as a shape of its own
+/// where it has no model).
+fn is_held(item: &ItemLook) -> bool {
+    matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Buckler)
 }
 
 /// A person dressed in models (so their placeholder body goes).

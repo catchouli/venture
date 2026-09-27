@@ -71,6 +71,7 @@ impl TestServer {
             profiles,
             link,
             rules,
+            item_cooldown: 1.0,
             content,
             spawn_override: None,
             admins,
@@ -442,7 +443,7 @@ fn content_with_files(npcs: &str, script: &str, dialogue: Option<&str>, extra: &
 
 // (The sword uses `Weapon`, the dominant hand's old name, which still works.)
 const ITEMS: &str = r#"[
-    (id: "bread", name: "Bread", description: "A loaf.", icon: "thing.png", value: 4),
+    (id: "bread", name: "Bread", description: "A loaf.", icon: "thing.png", value: 4, on_use: Heal(Flat(5))),
     (id: "sword", name: "Sword", description: "Sharp.", icon: "thing.png", value: 10,
      equip: Some((slots: [Weapon], weapon: Some((damage: "1d6", speed: 1.0, stat: Strength)),
                   look: (style: Sword, main: (0.7, 0.7, 0.7), trim: (0.3, 0.2, 0.1))))),
@@ -767,8 +768,13 @@ fn shops_open_from_dialogue_and_trade_miasma_for_goods() {
     assert_eq!(latest_inventory(&messages), Some(vec![loaf.clone(), loaf.clone(), loaf]));
     assert_eq!(latest_miasma(&messages), Some(15));
 
-    // Selling a loaf pays half its value of 4.
+    // Bread isn't eaten at full health.
     let bread = slot_of(&messages, "bread").unwrap();
+    client.send(&ClientMessage::UseItem { slot: bread });
+    server.run(2);
+    assert_eq!(notices(&client.receive()), ["You're not hurt."]);
+
+    // Selling a loaf pays half its value of 4.
     client.send(&ClientMessage::Sell { slot: bread, count: 1 });
     client.send(&ClientMessage::Buy { index: 0, count: 5 });
     server.run(2);

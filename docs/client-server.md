@@ -355,6 +355,13 @@ nothing is lost or duplicated; an item filling several slots (a robe: body
 and legs) replaces whatever is in any of them. What's worn feeds the
 character's secondary stats (armour, the weapon's damage and speed).
 
+**Using items** (eating bread) happens only in `consumables.rs`. `UseItem {
+slot }` uses the item in an inventory slot: its `on_use` effect heals
+(through `Health::heal`, by an amount from `venture_rpg::Healing`), and one
+is taken with an inventory `Change`, only if it did something. The player
+gets a `Notice`, everyone nearby a `Healed`, and they wait `item_cooldown`
+seconds (from `server.ron`) before using another.
+
 Other players see a player's level and look in `EntityAppeared` (`Player {
 level, look }`), and `PlayerChanged` when either changes; `celebrate` marks
 a level going up, and everyone nearby sees the level-up effect. A player's

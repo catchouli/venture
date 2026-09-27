@@ -267,7 +267,7 @@ Real recordings can replace them file for file.
 [
     (id: "guard", skin: (0.84, 0.64, 0.51), hair: (0.22, 0.15, 0.09),
      tunic: (0.20, 0.25, 0.45), trousers: (0.18, 0.18, 0.20),
-     body: Masculine, outfit: Armour),
+     body: Masculine, outfit: Armour, equipment: ["training_sword", "wooden_buckler"]),
 ]
 ```
 
@@ -276,7 +276,11 @@ Colours are sRGB red, green and blue, each from 0 to 1. `body` (`Masculine`,
 `Armour` or `Robe`) the cut of the clothes; both are optional. With character
 models, `outfit` picks a set of parts from `characters.ron`; `parts: [...]`
 names parts to wear instead, `hairstyle: "long"` a hairstyle other than the
-body's usual one, and `beard: "beard"` a beard. `height`, `build` and `head`
+body's usual one (any hair that isn't a beard), and `beard: "beard"` a beard
+(one of the `beards` in `characters.ron`). `equipment: [...]` names items
+(from `items/`) they wear and carry, as players do: armour and clothes go on
+over their parts (a part is left off where the item covers the same place),
+and weapons and shields are held. It's only for show; NPCs don't fight. `height`, `build` and `head`
 (from -10 to 10, as in the character creator) set their size; any left out
 are picked from the appearance's id (between -6 and 6), so each person
 looks a little different, but always the same. On models, the skin and
@@ -361,6 +365,7 @@ kept in Git LFS.
         icon: "bread.png",              // a PNG in icons/
         stackable: false,               // optional: true for things like arrows, which share one slot
         value: 4,                       // optional: worth in Miasma; shops buy for half. 0 = unsellable
+        on_use: Heal(Flat(5)),          // optional: what using it does (clicking it in the bag)
     ),
     (
         id: "training_sword",
@@ -385,6 +390,16 @@ An item's `look` is how it shows on the character: `Plates` (chest and back),
 hand), in a main and a trim colour: the placeholder shapes, shown until the
 character models load, and for weapons with no held part. A weapon's `speed` is attacks per second before Dexterity, and its
 `stat` is the one it attacks and does damage with.
+
+`on_use` is what happens when a player uses the item (clicks it in their
+bag), which uses one up:
+- `Heal(Flat(5))` heals 5 health; `Heal(Percent(20.0))` heals a fifth of
+  the player's most health (at least 1). It never heals past full, and it
+  isn't used up at full health.
+
+Left out, the item can't be used. An item can't be both worn and used.
+After using an item, a player waits a moment (`item_cooldown` in
+`server.ron`) before using another.
 
 Money is **Miasma**, kept on the character rather than in the inventory. Icons are small PNGs
 (32 × 32 works well, at most 64 KB). The current ones are placeholders drawn

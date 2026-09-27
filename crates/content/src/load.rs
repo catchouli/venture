@@ -9,12 +9,13 @@ use crate::client::{
 };
 use crate::definitions::CreatureDef;
 use crate::definitions::{
-    AbilityDef, AbilityEffect, AppearanceDef, ClassDef, GameSounds, ItemDef, MAX_HIT_DIE, MAX_ITEM_DESCRIPTION_CHARS,
-    MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef, QuestDef, RespawnPoint,
-    ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
+    AbilityDef, AbilityEffect, AppearanceDef, ClassDef, GameSounds, ItemDef, ItemEffect, MAX_HIT_DIE,
+    MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef,
+    QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
 };
 use crate::layout::{UiNode, UiStyles, check_layout, check_styles, parse_layout, parse_styles};
 use venture_protocol::EquipSlot;
+use venture_rpg::Healing;
 use venture_rpg::MAX_LEVEL;
 
 /// The file saying what new characters start with.
@@ -502,6 +503,15 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
     if !icons.contains(&item.icon) {
         problem(format!("there's no icon called \"{}\" in icons/", item.icon));
     }
+    match item.on_use {
+        ItemEffect::Nothing => {}
+        _ if item.equip.is_some() => problem("it can't be both worn and used".to_string()),
+        ItemEffect::Heal(Healing::Flat(0)) => problem("it must heal at least 1".to_string()),
+        ItemEffect::Heal(Healing::Percent(percent)) if !(percent > 0.0 && percent <= 100.0) => {
+            problem("it must heal more than 0% and at most 100%".to_string());
+        }
+        ItemEffect::Heal(_) => {}
+    }
     if let Some(equip) = &item.equip {
         if equip.slots.is_empty() {
             problem("it must fill at least one equipment slot".to_string());
@@ -588,7 +598,7 @@ fn check_theme(theme: &ThemeDef, files: &HashSet<String>, file: &Path, errors: &
     }
 }
 
-/// Items' and appearances' outfit parts and hairstyles must exist.
+/// Items' and appearances' outfit parts, hairstyles and equipment must exist.
 fn check_model_names(pack: &ContentPack, errors: &mut Vec<ContentError>) {
     let models = pack.character_models.clone().unwrap_or_default();
     let has_part = |part: &String| models.parts.contains_key(part);
@@ -608,6 +618,16 @@ fn check_model_names(pack: &ContentPack, errors: &mut Vec<ContentError>) {
     for appearance in pack.appearances.values() {
         for part in appearance.parts.iter().filter(|part| !has_part(part)) {
             let message = format!("appearance \"{}\": there's no outfit part called \"{part}\"", appearance.id);
+            errors.push(error(Path::new("appearances"), message));
+        }
+        for item in &appearance.equipment {
+            let message = match pack.items.get(item) {
+                None => format!("appearance \"{}\": there's no item called \"{item}\"", appearance.id),
+                Some(def) if def.equip.is_none() => {
+                    format!("appearance \"{}\": \"{item}\" isn't something that can be worn", appearance.id)
+                }
+                Some(_) => continue,
+            };
             errors.push(error(Path::new("appearances"), message));
         }
         let hairs = appearance.hairstyle.iter().chain(&appearance.beard);

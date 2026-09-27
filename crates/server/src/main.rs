@@ -84,6 +84,7 @@ fn main() {
         profiles,
         link,
         rules: config.rules(),
+        item_cooldown: config.player.item_cooldown,
         content,
         spawn_override: None,
         admins,

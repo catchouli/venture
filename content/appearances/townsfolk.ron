@@ -7,6 +7,10 @@
         trousers: (0.18, 0.18, 0.20),
         body: Masculine,
         outfit: Armour,
+        equipment: [
+            "training_sword",
+            "wooden_buckler",
+        ],
     ),
     (
         id: "smith",

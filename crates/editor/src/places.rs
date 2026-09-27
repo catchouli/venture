@@ -321,7 +321,7 @@ fn sync_markers(
                 let look = appearance_look(&mut materials, appearance);
                 let person = spawn_character(&mut commands, &shapes, at, &look);
                 let models = content.character_models.as_ref();
-                commands.entity(person).insert(HumanLook::of_appearance(Some(appearance), models));
+                commands.entity(person).insert(HumanLook::of_appearance(Some(appearance), models, &content.items));
                 person
             }
             PlaceLook::Creature(Some(look)) => spawn_creature(&mut commands, &shapes, &mut materials, at, look),
