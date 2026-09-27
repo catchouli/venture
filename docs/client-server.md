@@ -400,8 +400,9 @@ looks (`worn`, the placeholder shapes), and the outfit parts it puts on them
 (`outfit`).
 
 **Admins** are listed by character name in `server.ron`. Their commands
-(`Admin(SetLevel | Reset | SetClass | SetBody | SetTime | SetTimescale)`: `/setlevel`, `/reset`,
-`/setclass`, `/setgender`, `/time` and `/timescale`) go through the gate like any other,
+(`Admin(SetLevel | Reset | SetClass | SetBody | SetTime | SetTimescale | Give | SetSkill)`:
+`/setlevel`, `/reset`, `/setclass`, `/setgender`, `/time`, `/timescale`, `/give ITEM [COUNT]`
+and `/setskill SKILL LEVEL`) go through the gate like any other,
 then to `admin.rs`, which checks the player really is an admin before doing
 anything; anyone else is told only admins can use them.
 
@@ -554,6 +555,28 @@ an admin sets it (`/time 19:30`) or how fast it goes (`/timescale 10`: 1
 the usual pace, 0 stopped, until the server restarts); the client runs its
 clock on from there, at that pace
 and lights the world by it. See [plan-day-night.md](plan-day-night.md).
+
+## Fishing
+
+A player with a fishing rod in their hand casts with
+`Fishing(Cast { x, y, tackle })`: a point in water within the rod's reach,
+and bait or a lure from their bag (the gate checks the point is in the
+world; `fishing.rs` checks the rest, and says why not). The server chooses
+then what will bite (from the fish of that water and biome, the player's
+fishing level and the bait: `venture_rpg::fishing`) and tells the player
+how it goes with `Fishing(state)`: `Waiting` (the line is in), `Nibble`s,
+`Bite`. With a ledger or float the player sends `Strike`, which must reach
+the server within the strike window plus an allowance for the network
+(`fishing.strike_allowance` in `server.ron`); a lure's fish hooks itself.
+Then the fight (`venture_simulation::fishing`) runs on the server, stepped
+each tick from whether the player is reeling (`Reel(true)` and
+`Reel(false)` when they start and stop), and the server sends its state
+(`Fight`) every tick for the client to show. It ends `Caught` (the fish in
+the bag, its experience to the fishing skill) or with the fish lost, then
+`Ended` and a notice saying why. `Stop` reels in; moving, attacking or
+dying ends fishing too. The fight is deterministic, from a seed the server
+sends with it, so the client can later run it ahead to make reeling feel
+instant. See [plan-fishing.md](plan-fishing.md).
 
 ## Connection problems
 

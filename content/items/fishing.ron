@@ -12,6 +12,7 @@
         description: "A plain rod with a weight to hold the bait on the bottom. The tip twitches when something bites.",
         icon: "ledger_rod.png",
         value: 40,
+        equip: Some((slots: [DominantHand], look: (style: Staff, main: (0.47, 0.31, 0.2), trim: (0.8, 0.8, 0.8)))),
         fishing: Some(Rod(method: Ledger, reach: 10.0, level: 1)),
     ),
     (
@@ -20,6 +21,7 @@
         description: "A long, springy ledger rod of seasoned ash. It casts much further.",
         icon: "ash_ledger_rod.png",
         value: 2000,
+        equip: Some((slots: [DominantHand], look: (style: Staff, main: (0.75, 0.6, 0.38), trim: (0.8, 0.8, 0.8)))),
         fishing: Some(Rod(method: Ledger, reach: 16.0, level: 18)),
     ),
     (
@@ -28,6 +30,7 @@
         description: "A light rod with a painted float, to hang the bait at any depth. Watch the float.",
         icon: "float_rod.png",
         value: 250,
+        equip: Some((slots: [DominantHand], look: (style: Staff, main: (0.78, 0.67, 0.47), trim: (0.8, 0.8, 0.8)))),
         fishing: Some(Rod(method: Float, reach: 12.0, level: 5)),
     ),
     (
@@ -36,6 +39,7 @@
         description: "A stiff rod for casting lures far and drawing them back through the water.",
         icon: "lure_rod.png",
         value: 750,
+        equip: Some((slots: [DominantHand], look: (style: Staff, main: (0.25, 0.25, 0.28), trim: (0.8, 0.8, 0.8)))),
         fishing: Some(Rod(method: Lure, reach: 18.0, level: 15)),
     ),
     (
@@ -57,11 +61,11 @@
     (
         id: "worm",
         name: "Worm",
-        description: "A wriggling worm on a small hook. Insect-eaters can't resist it.",
+        description: "A wriggling worm on a small hook. Insect-eaters and bottom-feeders can't resist it.",
         icon: "worm.png",
         stackable: true,
         value: 5,
-        fishing: Some(Bait((diets: [Insect], hook: Small))),
+        fishing: Some(Bait((diets: [Insect, Bottom], hook: Small))),
     ),
     (
         id: "sweetcorn",

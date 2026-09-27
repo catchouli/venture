@@ -27,6 +27,12 @@
         // How near (metres) a member must be to a defeated monster to share its experience.
         share_distance: 60.0,
     ),
+    fishing: (
+        // How much later than a strike window (seconds) a strike still counts, for network delay.
+        strike_allowance: 0.3,
+        // How long (seconds) a line waits when nothing takes the bait, before saying so.
+        patience: 20.0,
+    ),
     day: (
         // How long a whole day and night lasts, in real minutes.
         day_minutes: 120.0,

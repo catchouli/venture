@@ -98,6 +98,7 @@ impl Plugin for LocalServerPlugin {
             rules: config.rules(),
             item_cooldown,
             party,
+            fishing: config.fishing.clone(),
             content,
             spawn_override,
             admins,

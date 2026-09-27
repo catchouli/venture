@@ -176,6 +176,12 @@ impl Character {
         self.skills.get(skill).copied().unwrap_or_default()
     }
 
+    /// Sets a skill's level (for admins), with no experience towards the next.
+    pub fn set_skill_level(&mut self, skill: &str, level: u32) {
+        let level = level.clamp(1, venture_rpg::MAX_SKILL_LEVEL);
+        self.skills.insert(skill.to_string(), Progress { level, experience: 0 });
+    }
+
     /// Adds experience to a skill, going up levels if it's enough. Returns
     /// how many levels it went up.
     pub fn add_skill_experience(&mut self, skill: &str, amount: u64) -> u32 {

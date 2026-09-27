@@ -60,6 +60,11 @@ impl Equipment {
         self.slots.iter().map(|(slot, item)| (*slot, item.clone())).collect()
     }
 
+    /// The item in the dominant hand, if any.
+    pub fn in_hand(&self) -> Option<&str> {
+        self.slots.get(&EquipSlot::DominantHand).map(String::as_str)
+    }
+
     /// Each item worn, once (even if it fills several slots), in slot order.
     fn items(&self) -> Vec<&str> {
         let mut worn: Vec<&str> = Vec::new();

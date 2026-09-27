@@ -22,6 +22,8 @@ pub struct ServerConfig {
     pub player: PlayerConfig,
     /// Rules for parties.
     pub party: PartyConfig,
+    /// Rules for fishing.
+    pub fishing: FishingConfig,
     /// How the days go: the length of a day, sunrise and sunset, and how
     /// high the sun gets (see `venture_simulation::DayCycle`).
     pub day: DayCycle,
@@ -108,6 +110,25 @@ impl Default for PartyConfig {
     }
 }
 
+/// Rules for fishing (see `crate::fishing`; the rest are in `venture_rpg::fishing`
+/// and the content).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FishingConfig {
+    /// How much later than the strike window (in seconds) a strike still
+    /// counts, allowing for the time it takes to reach the server.
+    pub strike_allowance: f32,
+    /// How long (in seconds) a line waits when nothing here takes the bait,
+    /// before the player is told so.
+    pub patience: f32,
+}
+
+impl Default for FishingConfig {
+    fn default() -> Self {
+        Self { strike_allowance: 0.3, patience: 20.0 }
+    }
+}
+
 impl ServerConfig {
     /// Reads the settings from a RON file. A missing file gives the defaults.
     pub fn load(path: &Path) -> Result<Self, String> {
@@ -151,6 +172,14 @@ impl ServerConfig {
         let share = self.party.share_distance;
         if !share.is_finite() || share < 0.0 {
             return Err(format!("party.share_distance must be a number of metres, not {share}"));
+        }
+        let allowance = self.fishing.strike_allowance;
+        if !(0.0..=2.0).contains(&allowance) {
+            return Err(format!("fishing.strike_allowance must be from 0 to 2 seconds, not {allowance}"));
+        }
+        let patience = self.fishing.patience;
+        if !patience.is_finite() || patience <= 0.0 {
+            return Err(format!("fishing.patience must be a positive number of seconds, not {patience}"));
         }
         let seconds = self.party.invite_seconds;
         if !seconds.is_finite() || seconds <= 0.0 {

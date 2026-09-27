@@ -20,11 +20,11 @@ venture_worldgen ──► venture_world     (the bake tool; nothing at runtime 
 | `venture_world` | Core world data: units, coordinates, chunks, terrain cells, biomes, liquids, props, and the baked world file format. Plain data that every other part of the game shares. |
 | `venture_worldgen` | The world generation engine, and the `bake` tool that writes the world (and its map) to disk. |
 | `venture_navigation` | Where characters can walk (blocked cells per chunk) and pathfinding (A* plus line-of-sight smoothing). |
-| `venture_simulation` | Game rules both sides run: movement, speed and input validation. The client uses them to predict, and the server to decide. |
-| `venture_rpg` | The RPG rules: stats and modifiers, dice, experience and levels, points per level, health, mana, armour class, attack speed, and attack resolution. Based on the SRD 5.1 (CC BY 4.0), adapted for real time. |
+| `venture_simulation` | Game rules both sides run: movement, speed and input validation, the day cycle, and the fight with a hooked fish. The client uses them to predict, and the server to decide. |
+| `venture_rpg` | The RPG rules: stats and modifiers, dice, experience and levels, points per level, health, mana, armour class, attack speed, attack resolution, and fishing (what bites, hooks, strikes, shadows, reels, traps). Based on the SRD 5.1 (CC BY 4.0), adapted for real time. |
 | `venture_protocol` | The messages between client and server, their encoding (postcard), size limits, and shared validation rules for names, chat and tokens. |
 | `venture_content` | The content pack: class, appearance, item, shop, quest and NPC definitions, loading with every problem reported by file, script and dialogue checks (with the `scripts` feature), the client manifest, and the `check` tool. |
-| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles (with unique names), characters and admin powers, gameplay, monsters, abilities and the hotbar, combat, inventories, shops, quests, NPCs, private NPC conversations (Yarn Spinner), the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
+| `venture_server` | The authoritative game server: its config file, the gate for client messages, sessions and profiles (with unique names), characters and admin powers, gameplay, monsters, abilities and the hotbar, combat, fishing, inventories, shops, quests, NPCs, private NPC conversations (Yarn Spinner), the Rhai script sandbox, content hot reload, and the HTTP/WebSocket host. |
 | `venture_client` | The game client: a view of the server's game, with rendering, input, prediction, actions and chat commands, chat, the dialogue window and debug tools. A library (its plugins, shared with the editor) and a thin binary. |
 | `venture_editor` | The editor: the content's data files edited through the content crate's own types (by reflection), with undo, checking and saving, and the world shown with the client's rendering. See [editor.md](editor.md). |
 
@@ -109,7 +109,7 @@ src/
     level_up.rs        the level-up effect
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
-    admin_commands.rs  /setlevel, /reset, /setclass, /setgender, /time and /timescale, for admins
+    admin_commands.rs  /setlevel, /reset, /setclass, /setgender, /time, /timescale, /give and /setskill, for admins
     orders.rs          ordering the character about: run, follow, walk over to talk, attack, use abilities
     abilities.rs          using abilities (checks, predicting the run-up) and their cooldowns
     targeting.rs       what's hovered and selected (anything with a Targetable), and /target's search

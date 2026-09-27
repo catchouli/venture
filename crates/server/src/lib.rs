@@ -26,6 +26,8 @@
 //!    that damages anything).
 //! 8. [`parties`]: groups of players, and invitations to them (the only code
 //!    that changes who's in a party).
+//! 9. [`fishing`]: casting, bites, fights and catches (the only code that
+//!    changes a player's fishing).
 //!
 //! Inventories and quest logs are the exception that proves the rule: several
 //! modules may change them (shops, dialogue), but only through their own
@@ -53,6 +55,7 @@ pub mod content;
 pub mod dialogue;
 pub mod entities;
 pub mod equipment;
+pub mod fishing;
 pub mod gameplay;
 pub mod hotbar;
 #[cfg(feature = "http")]
@@ -96,6 +99,8 @@ pub struct GameServer {
     pub item_cooldown: f32,
     /// Rules for parties (from the config file).
     pub party: config::PartyConfig,
+    /// Rules for fishing (from the config file).
+    pub fishing: config::FishingConfig,
     /// The content pack.
     pub content: ContentSetup,
     /// Where new characters start, if not the world's spawn point (for development).
@@ -145,6 +150,8 @@ pub enum ServerSystems {
     Abilities,
     /// Fights: attacks, damage, death and health.
     Combat,
+    /// Fishing: casts, bites, fights with fish and catches.
+    Fishing,
     /// Conversations with NPCs.
     Dialogue,
     /// Shops.
@@ -168,6 +175,7 @@ impl GameServer {
             .insert_resource(GameRules(self.rules))
             .insert_resource(consumables::ItemCooldown(self.item_cooldown))
             .insert_resource(parties::PartyRules(self.party))
+            .insert_resource(fishing::FishingRules(self.fishing))
             .insert_resource(Admins { names: self.admins, everyone: self.everyone_is_admin })
             .insert_resource(sessions::SpawnPoint(self.spawn_override))
             .configure_sets(
@@ -180,6 +188,7 @@ impl GameServer {
                     ServerSystems::Monsters,
                     ServerSystems::Abilities,
                     ServerSystems::Combat,
+                    ServerSystems::Fishing,
                     ServerSystems::Dialogue,
                     ServerSystems::Shops,
                     ServerSystems::Updates,
@@ -200,7 +209,7 @@ impl GameServer {
                 equipment::EquipmentPlugin,
                 monsters::MonstersPlugin,
                 (abilities::AbilitiesPlugin, hotbar::HotbarPlugin, combat::CombatPlugin),
-                (consumables::ConsumablesPlugin, parties::PartiesPlugin, clock::ClockPlugin),
+                (consumables::ConsumablesPlugin, parties::PartiesPlugin, clock::ClockPlugin, fishing::FishingPlugin),
                 content::ContentPlugin,
             ));
     }

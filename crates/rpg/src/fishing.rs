@@ -313,6 +313,18 @@ pub fn run(size: Size) -> f32 {
     }
 }
 
+/// How long a fish of this size can keep running before it's spent, in
+/// seconds of running.
+pub fn stamina(size: Size) -> f32 {
+    match size {
+        Size::Tiny => 4.0,
+        Size::Small => 6.0,
+        Size::Medium => 10.0,
+        Size::Large => 16.0,
+        Size::Trophy => 25.0,
+    }
+}
+
 /// Whether a reel's line (of `strength` kilograms) and spool (of
 /// `capacity` metres) can land a fish of this size played well: the line
 /// holds its hardest pull, and the spool its longest run. (Played badly, a
@@ -462,6 +474,7 @@ mod tests {
         // Bigger fish pull harder and run further.
         let sizes = [Size::Tiny, Size::Small, Size::Medium, Size::Large, Size::Trophy];
         assert!(sizes.windows(2).all(|pair| pull(pair[0]) < pull(pair[1]) && run(pair[0]) < run(pair[1])));
+        assert!(sizes.windows(2).all(|pair| stamina(pair[0]) < stamina(pair[1])));
     }
 
     #[test]
