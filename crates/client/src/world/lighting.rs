@@ -52,6 +52,10 @@ const DEFAULT_SKY: &str = "day";
 /// How bright the sky is: its brightness scale's 1 in candelas per square
 /// metre (for both the sky and the light it casts), at a brightness of 1.
 const SKY_BRIGHTNESS: f32 = 1000.0;
+/// How strongly the skies light the world, as a share of how bright they
+/// look (less than all of it, so shade is darker than sunlit ground and the
+/// picture has some contrast; the sky itself stays as bright).
+const SKY_LIGHT_SHARE: f32 = 0.75;
 /// How bright the sun is, in lux. (About 8:1 over the day sky's light on open
 /// ground: bright enough for clear shadows.)
 const SUN_ILLUMINANCE: f32 = 14_000.0;
@@ -255,7 +259,7 @@ fn finish_skies(
     let light = EnvironmentMapLight {
         diffuse_map: images.add(cubemap(irradiance_size, 1, irradiance)),
         specular_map: images.add(cubemap(radiance_size, radiance_mips, radiance)),
-        intensity: SKY_BRIGHTNESS,
+        intensity: SKY_BRIGHTNESS * SKY_LIGHT_SHARE,
         rotation: Quat::IDENTITY,
         affects_lightmapped_mesh_diffuse: true,
     };

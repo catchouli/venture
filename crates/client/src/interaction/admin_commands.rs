@@ -1,5 +1,5 @@
 //! Admin commands typed in chat: `/setlevel 10`, `/reset`, `/setclass mage`,
-//! `/setgender feminine`, `/time 19:30`.
+//! `/setgender feminine`, `/time 19:30`, `/timescale 10`.
 //!
 //! They become [`AdminCommand`]s for the server, which carries them out only
 //! if the player really is an admin. `/help` lists them for admins, marked
@@ -8,12 +8,13 @@
 use venture_protocol::{AdminCommand, BodyType};
 
 /// Every admin command: its name, what follows it, and what it does.
-pub const ADMIN_COMMANDS: [(&str, &str, &str); 5] = [
+pub const ADMIN_COMMANDS: [(&str, &str, &str); 6] = [
     ("setlevel", "LEVEL", "set your level"),
     ("reset", "", "start your character over at level 1"),
     ("setclass", "CLASS", "change class, getting your points back"),
     ("setgender", "BODY", "masculine, feminine or androgynous"),
     ("time", "HOUR", "set the time of day for everyone (19.5, or 19:30)"),
+    ("timescale", "SPEED", "how fast the days go for everyone (1 usual, 10 ten times, 0 stopped)"),
 ];
 
 /// Reads an admin command from its name and the words after it. Returns
@@ -32,6 +33,12 @@ pub fn parse(name: &str, arguments: &[&str]) -> Option<Result<AdminCommand, Stri
             .map(|body| AdminCommand::SetBody { body })
             .ok_or_else(|| "Write it as /setgender masculine, feminine or androgynous.".to_string()),
         ("time", [time]) => parse_hour(time).map(|hour| AdminCommand::SetTime { hour }).ok_or_else(usage),
+        ("timescale", [scale]) => scale
+            .parse::<f32>()
+            .ok()
+            .filter(|scale| scale.is_finite() && *scale >= 0.0)
+            .map(|scale| AdminCommand::SetTimescale { scale })
+            .ok_or_else(usage),
         _ => Err(usage()),
     })
 }
@@ -61,6 +68,9 @@ mod tests {
         assert_eq!(parse("time", &["19:30"]), Some(Ok(AdminCommand::SetTime { hour: 19.5 })));
         assert_eq!(parse("time", &["6"]), Some(Ok(AdminCommand::SetTime { hour: 6.0 })));
         assert!(parse("time", &["25"]).unwrap().is_err());
+        assert_eq!(parse("timescale", &["1.5"]), Some(Ok(AdminCommand::SetTimescale { scale: 1.5 })));
+        assert_eq!(parse("timescale", &["0"]), Some(Ok(AdminCommand::SetTimescale { scale: 0.0 })));
+        assert!(parse("timescale", &["-2"]).unwrap().is_err());
         assert_eq!(parse("fly", &[]), None);
     }
 }

@@ -109,7 +109,7 @@ src/
     level_up.rs        the level-up effect
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
-    admin_commands.rs  /setlevel, /reset, /setclass, /setgender and /time, for admins
+    admin_commands.rs  /setlevel, /reset, /setclass, /setgender, /time and /timescale, for admins
     orders.rs          ordering the character about: run, follow, walk over to talk, attack, use abilities
     abilities.rs          using abilities (checks, predicting the run-up) and their cooldowns
     targeting.rs       what's hovered and selected (anything with a Targetable), and /target's search

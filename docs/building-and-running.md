@@ -141,7 +141,7 @@ the game:
 - `--new-character` deletes your local character first (freeing its name),
   so the game asks you to make a new one.
 - `--admin` gives every character on the local server admin powers
-  (`/setlevel`, `/reset`, `/setclass`, `/setgender`, `/time`). Only you can join a
+  (`/setlevel`, `/reset`, `/setclass`, `/setgender`, `/time`, `/timescale`). Only you can join a
   local server, and the real server can't turn this on: its admins are
   only the names in `server.ron`.
 

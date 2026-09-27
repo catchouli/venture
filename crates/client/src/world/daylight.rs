@@ -14,10 +14,12 @@ use bevy::math::Vec3;
 /// How strongly the air dims each colour of sunlight (red, green, blue),
 /// per air mass.
 const EXTINCTION: Vec3 = Vec3::new(0.05, 0.11, 0.25);
-/// Exposure (EV100) by day (Bevy's usual)...
-pub const DAY_EV100: f32 = 9.7;
-/// ...and at night, about two and a half stops more open.
-pub const NIGHT_EV100: f32 = 7.2;
+/// Exposure (EV100) by day (a little under Bevy's usual 9.7, so bright
+/// ground keeps its colour rather than washing out)...
+pub const DAY_EV100: f32 = 10.0;
+/// ...and at night, about one and a half stops more open (enough to see by,
+/// but dark).
+pub const NIGHT_EV100: f32 = 8.6;
 /// How bright the sky is at night, as a share of by day.
 const NIGHT_SKY: f32 = 0.04;
 
