@@ -1,8 +1,11 @@
 //! The inventory tab: the player's inventory, as a grid of slots. The slots scroll
 //! (with the mouse wheel) when there are more than fit, and the bottom shows
 //! how full it is and the player's Miasma. Pointing at an item shows what it
-//! is. Clicking an item equips it, if it can be equipped; while a shop is
-//! open, clicking asks to sell one instead (see [`crate::ui::shop`]).
+//! is. Clicking an item equips it, if it can be equipped, or uses it (eats
+//! it), if it can be used; while a shop is open, clicking asks to sell one
+//! instead (see [`crate::ui::shop`]). Items that can be used can be dragged
+//! onto the hotbar, which then uses the last one in the bag
+//! ([`UseItemKind`]).
 //!
 //! The inventory itself belongs to the server, which sends it whenever it
 //! changes ([`ServerMessage::Inventory`]). This is only a view of it.
@@ -10,12 +13,14 @@
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use venture_content::ItemEffect;
-use venture_protocol::{ClientMessage, ItemStack, ServerMessage};
+use venture_protocol::{ClientMessage, HotbarEntry, ItemStack, ServerMessage};
 use venture_rpg::Healing;
 
 use crate::content::ContentStore;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::character_window::{CharacterWindow, OpenTab, Pages, Tab};
+use crate::ui::chat::SystemMessage;
+use crate::ui::hotbar::{DragOnly, Draggable};
 use crate::ui::shop::OpenShop;
 use crate::ui::theme::{Piece, Themed};
 use crate::ui::tooltip::Tooltip;
@@ -44,6 +49,8 @@ const COUNT_COLOUR: Color = Color::srgb(1.0, 0.9, 0.35);
 const SLOT_COLOUR: Color = Color::srgba(1.0, 1.0, 1.0, 0.05);
 /// Colour of a slot under the mouse.
 const SLOT_HOVER_COLOUR: Color = Color::srgba(1.0, 1.0, 1.0, 0.14);
+/// How far the mouse may move between press and release for a click, in pixels.
+const CLICK_DISTANCE: f32 = 5.0;
 
 /// Shows the inventory tab.
 pub struct InventoryPlugin;
@@ -51,6 +58,7 @@ pub struct InventoryPlugin;
 impl Plugin for InventoryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PlayerInventory>()
+            .add_message::<UseItemKind>()
             .add_systems(Startup, spawn_inventory.after(super::spawn_window))
             .add_systems(
                 Update,
@@ -60,6 +68,7 @@ impl Plugin for InventoryPlugin {
                     fill_slots,
                     highlight_slots,
                     use_on_click,
+                    use_item_kinds,
                     show_footer,
                     (scroll_slots, place_scroll_thumb).chain(),
                 )
@@ -77,6 +86,17 @@ pub struct PlayerInventory {
     /// Their money.
     pub miasma: u64,
 }
+
+impl PlayerInventory {
+    /// How many of an item the player has.
+    pub fn count(&self, item: &str) -> u32 {
+        self.slots.iter().flatten().filter(|stack| stack.item == item).map(|stack| stack.count).sum()
+    }
+}
+
+/// Use one of a kind of item (from the hotbar): the last one in the bag.
+#[derive(Message, Clone, Debug)]
+pub struct UseItemKind(pub String);
 
 /// The scrolling view of the slots.
 #[derive(Component)]
@@ -299,20 +319,26 @@ fn rebuild_slots(
 /// tooltip (with what it sells for, while a shop is open). Runs when any of
 /// those change, or new slots appear.
 fn fill_slots(
+    mut commands: Commands,
     inventory: Res<PlayerInventory>,
     content: Res<ContentStore>,
     shop: Res<OpenShop>,
     new_slots: Query<(), Added<InventorySlot>>,
-    mut slots: Query<(&InventorySlot, &Children, &mut Tooltip)>,
+    mut slots: Query<(Entity, &InventorySlot, &Children, &mut Tooltip)>,
     mut icons: Query<(&mut ImageNode, &mut Visibility), With<SlotIcon>>,
     mut counts: Query<&mut Text, With<SlotCount>>,
 ) {
     if !inventory.is_changed() && !content.is_changed() && !shop.is_changed() && new_slots.is_empty() {
         return;
     }
-    for (&InventorySlot(index), children, mut tooltip) in &mut slots {
+    for (slot, &InventorySlot(index), children, mut tooltip) in &mut slots {
         let stack = inventory.slots.get(index).and_then(Option::as_ref);
         let definition = stack.and_then(|stack| content.items.get(&stack.item));
+        // Things that can be used can go on the hotbar (as a kind of item).
+        match definition.filter(|item| item.on_use != ItemEffect::Nothing) {
+            Some(item) => commands.entity(slot).insert((Draggable(HotbarEntry::Item(item.id.clone())), DragOnly)),
+            None => commands.entity(slot).remove::<(Draggable, DragOnly)>(),
+        };
         for child in children {
             if let Ok((mut image, mut visibility)) = icons.get_mut(*child) {
                 match stack.and_then(|stack| content.icon_for(&stack.item)) {
@@ -349,7 +375,7 @@ fn fill_slots(
                         Healing::Flat(amount) => format!("{amount} health"),
                         Healing::Percent(percent) => format!("{percent}% of your health"),
                     };
-                    body.push_str(&format!("\nHeals {amount}. Click to use."));
+                    body.push_str(&format!("\nHeals {amount}. Click to use, or drag it to the hotbar."));
                 }
                 Tooltip { title, body }
             }
@@ -377,30 +403,70 @@ fn highlight_slots(
 }
 
 /// Clicking an item sells one while a shop is open, and otherwise equips it
-/// (if it can be equipped) or uses it (if it can be used).
+/// (if it can be equipped) or uses it (if it can be used). A click is a
+/// press and release on the same slot without moving (moving is a drag, to
+/// the hotbar).
 fn use_on_click(
+    mouse: Res<ButtonInput<MouseButton>>,
+    window: Single<&Window>,
     shop: Res<OpenShop>,
     inventory: Res<PlayerInventory>,
     content: Res<ContentStore>,
-    slots: Query<(&Interaction, &InventorySlot), Changed<Interaction>>,
+    slots: Query<(&Interaction, &InventorySlot)>,
+    mut pressed: Local<Option<(usize, Vec2)>>,
     mut to_server: MessageWriter<ToServer>,
 ) {
-    for (interaction, &InventorySlot(index)) in &slots {
-        let Some(stack) = inventory.slots.get(index).and_then(Option::as_ref) else { continue };
-        if *interaction != Interaction::Pressed {
-            continue;
+    let cursor = window.cursor_position();
+    if mouse.just_pressed(MouseButton::Left) {
+        let slot = slots.iter().find(|(interaction, _)| **interaction == Interaction::Pressed);
+        *pressed = slot.zip(cursor).map(|((_, &InventorySlot(index)), cursor)| (index, cursor));
+    }
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    let Some((index, start)) = pressed.take() else { return };
+    let still_over = slots.iter().any(|(interaction, slot)| slot.0 == index && *interaction != Interaction::None);
+    if !still_over || cursor.is_none_or(|cursor| cursor.distance(start) > CLICK_DISTANCE) {
+        return;
+    }
+    let Some(stack) = inventory.slots.get(index).and_then(Option::as_ref) else { return };
+    let slot = index as u32;
+    if shop.0.is_some() {
+        to_server.write(ToServer(ClientMessage::Sell { slot, count: 1 }));
+    } else if let Some(item) = content.items.get(&stack.item) {
+        if item.equip.is_some() {
+            to_server.write(ToServer(ClientMessage::Equip { slot }));
+        } else if item.on_use != ItemEffect::Nothing {
+            to_server.write(ToServer(ClientMessage::UseItem { slot }));
         }
-        let slot = index as u32;
-        if shop.0.is_some() {
-            to_server.write(ToServer(ClientMessage::Sell { slot, count: 1 }));
-        } else if let Some(item) = content.items.get(&stack.item) {
-            if item.equip.is_some() {
-                to_server.write(ToServer(ClientMessage::Equip { slot }));
-            } else if item.on_use != ItemEffect::Nothing {
+    }
+}
+
+/// Uses the last one of a kind of item in the bag, or says there are none left.
+fn use_item_kinds(
+    mut requests: MessageReader<UseItemKind>,
+    inventory: Res<PlayerInventory>,
+    content: Res<ContentStore>,
+    mut to_server: MessageWriter<ToServer>,
+    mut log: MessageWriter<SystemMessage>,
+) {
+    for UseItemKind(item) in requests.read() {
+        match last_slot_of(&inventory, item) {
+            Some(slot) => {
                 to_server.write(ToServer(ClientMessage::UseItem { slot }));
+            }
+            None => {
+                let name = content.items.get(item).map_or(item.as_str(), |def| def.name.as_str());
+                log.write(SystemMessage(format!("You don't have any {name} left.")));
             }
         }
     }
+}
+
+/// The last slot holding an item, if any does.
+fn last_slot_of(inventory: &PlayerInventory, item: &str) -> Option<u32> {
+    let slot = inventory.slots.iter().rposition(|stack| stack.as_ref().is_some_and(|stack| stack.item == item))?;
+    Some(slot as u32)
 }
 
 fn forget_inventory(mut inventory: ResMut<PlayerInventory>) {
@@ -410,6 +476,19 @@ fn forget_inventory(mut inventory: ResMut<PlayerInventory>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hotbar_uses_the_last_of_a_kind() {
+        let stack = |item: &str, count| Some(ItemStack { item: item.to_string(), count });
+        let inventory = PlayerInventory {
+            slots: vec![stack("bread", 1), None, stack("pie", 2), stack("bread", 3), None],
+            miasma: 0,
+        };
+        assert_eq!(last_slot_of(&inventory, "bread"), Some(3));
+        assert_eq!(inventory.count("bread"), 4);
+        assert_eq!(last_slot_of(&inventory, "roll"), None);
+        assert_eq!(inventory.count("roll"), 0);
+    }
 
     #[test]
     fn counts_are_shortened_to_fit() {

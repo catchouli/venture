@@ -1,10 +1,11 @@
-//! The hotbar: which abilities and actions are on keys 1 to 0. It's only a
+//! The hotbar: which abilities, actions and kinds of item are on keys 1 to 0. It's only a
 //! layout (nothing on it changes the game until it's used, through the
 //! usual requests), saved with the character.
 //!
 //! New characters (and characters made before the hotbar) start with Attack,
 //! then the abilities they know. Players rearrange it by dragging; the client
-//! sends the whole bar, and only abilities they know are kept. A newly learned
+//! sends the whole bar, and only abilities they know are kept (items stay,
+//! whether or not the player has any: the bar shows when they've run out). A newly learned
 //! ability goes in the first empty slot, and abilities a character no longer knows
 //! (after an admin reset, say) come off.
 

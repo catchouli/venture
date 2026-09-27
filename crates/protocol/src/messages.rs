@@ -117,6 +117,9 @@ pub enum HotbarEntry {
     Ability(String),
     /// An action.
     Action(HotbarAction),
+    /// A kind of item (its id), such as bread: using it uses the last one
+    /// in the bag.
+    Item(String),
 }
 
 /// An action that can go on the hotbar.

@@ -1,8 +1,8 @@
-// The hotbar, down the bottom right: ten slots for abilities and actions
+// The hotbar, down the bottom right: ten slots for abilities, actions and items
 // (keys 1 to 0, from the top). The game copies the "slot" template once per slot, and fills in
-// each one's "icon", "label" (for things without an icon), "key", and
-// cooldown ("cooldown_shade" grows up from the bottom, "cooldown_text" shows
-// the seconds left). See docs/ui-layouts.md.
+// each one's "icon", "label" (for things without an icon), "key", "count" (how many of an
+// item are left), and cooldown ("cooldown_shade" grows up from the bottom, "cooldown_text"
+// shows the seconds left). See docs/ui-layouts.md.
 (
     id: "hotbar",
     position: Absolute, right: 10, bottom: 10,
@@ -25,6 +25,7 @@
                             (position: Absolute, left: 0, right: 0, top: 0, bottom: 0, justify: Center, align: Center,
                              children: [(id: "cooldown_text", style: "cooldown")]),
                             (id: "key", style: "slot_key", position: Absolute, left: 3, top: 1),
+                            (id: "count", style: "slot_key", position: Absolute, right: 3, bottom: 1),
                         ],
                     ),
                 ]),

@@ -517,7 +517,7 @@ fn judge_player_message(
             return Verdict::Ability(AbilityRequest { player, ability, target });
         }
         ClientMessage::SetHotbar { slots } => {
-            let too_long = |entry: &Option<HotbarEntry>| matches!(entry, Some(HotbarEntry::Ability(id)) if id.len() > MAX_ID_BYTES);
+            let too_long = |entry: &Option<HotbarEntry>| matches!(entry, Some(HotbarEntry::Ability(id) | HotbarEntry::Item(id)) if id.len() > MAX_ID_BYTES);
             if slots.len() > HOTBAR_SLOTS || slots.iter().any(too_long) {
                 return Verdict::Strike;
             }

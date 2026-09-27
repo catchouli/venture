@@ -143,7 +143,7 @@ restyle, add or remove):
 | Layout | Element ids the game needs |
 | --- | --- |
 | `player_frame` | `player_frame` |
-| `hotbar` | `hotbar`, `slots`, `slot`, `icon`, `label`, `cooldown_shade`, `cooldown_text`, `key` |
+| `hotbar` | `hotbar`, `slots`, `slot`, `icon`, `label`, `cooldown_shade`, `cooldown_text`, `key`, `count` |
 
 For example, the hotbar copies its `slot` template ten times into `slots`,
 and fills in each copy's `icon`, `label`, `key`, `cooldown_shade` and
