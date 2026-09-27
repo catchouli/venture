@@ -45,6 +45,7 @@ pub mod admin;
 pub mod character;
 pub mod combat;
 pub mod config;
+pub mod consumables;
 pub mod content;
 pub mod creatures;
 pub mod dialogue;
@@ -87,6 +88,8 @@ pub struct GameServer {
     pub link: Link,
     /// The game rules (from the config file).
     pub rules: Rules,
+    /// How long players wait between using items, in seconds (from the config file).
+    pub item_cooldown: f32,
     /// The content pack.
     pub content: ContentSetup,
     /// Where new characters start, if not the world's spawn point (for development).
@@ -157,6 +160,7 @@ impl GameServer {
             .insert_resource(self.profiles)
             .insert_resource(self.link)
             .insert_resource(GameRules(self.rules))
+            .insert_resource(consumables::ItemCooldown(self.item_cooldown))
             .insert_resource(Admins { names: self.admins, everyone: self.everyone_is_admin })
             .insert_resource(sessions::SpawnPoint(self.spawn_override))
             .configure_sets(
@@ -189,6 +193,7 @@ impl GameServer {
                 equipment::EquipmentPlugin,
                 creatures::CreaturesPlugin,
                 (abilities::AbilitiesPlugin, hotbar::HotbarPlugin, combat::CombatPlugin),
+                consumables::ConsumablesPlugin,
                 content::ContentPlugin,
             ));
     }

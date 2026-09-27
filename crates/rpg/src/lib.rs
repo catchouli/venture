@@ -8,6 +8,7 @@
 //!   armour class, attack bonus, attack speed).
 //! - [`combat`]: resolving an attack: hit or miss, damage, critical hits.
 //! - [`abilities`]: abilities' attacks and healing, mana regeneration and resting.
+//! - [`items`]: what using an item (eating, drinking) heals.
 //!
 //! The server uses these to decide what happens; the client uses them to show
 //! the same numbers. The crate has no engine or networking code, and every
@@ -33,6 +34,7 @@ pub mod class;
 pub mod combat;
 pub mod derived;
 pub mod dice;
+pub mod items;
 pub mod progression;
 pub mod stats;
 
@@ -41,5 +43,6 @@ pub use class::ClassRules;
 pub use combat::{AttackOutcome, hit_chance, resolve_attack};
 pub use derived::{DerivedStats, Gear, UNARMED_DAMAGE};
 pub use dice::Dice;
+pub use items::Healing;
 pub use progression::{LevelUp, MAX_LEVEL, Progress};
 pub use stats::{Stat, Stats, modifier};

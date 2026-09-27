@@ -73,11 +73,14 @@ pub struct PlayerConfig {
     /// The furthest (in a straight line, in metres) one click can send a
     /// character, and the furthest a character keeps following someone.
     pub max_move_distance: f32,
+    /// How long (in seconds) a player waits after using an item (eating
+    /// bread, say) before they can use another.
+    pub item_cooldown: f32,
 }
 
 impl Default for PlayerConfig {
     fn default() -> Self {
-        Self { max_move_distance: Rules::default().max_move_distance }
+        Self { max_move_distance: Rules::default().max_move_distance, item_cooldown: 1.0 }
     }
 }
 
@@ -104,6 +107,10 @@ impl ServerConfig {
         if !distance.is_finite() || distance <= 0.0 {
             return Err(format!("player.max_move_distance must be a positive number of metres, not {distance}"));
         }
+        let cooldown = self.player.item_cooldown;
+        if !cooldown.is_finite() || cooldown < 0.0 {
+            return Err(format!("player.item_cooldown must be a number of seconds, not {cooldown}"));
+        }
         Ok(())
     }
 }
@@ -126,7 +133,10 @@ mod tests {
 
     #[test]
     fn nonsense_values_are_rejected() {
-        let config = ServerConfig { player: PlayerConfig { max_move_distance: -5.0 }, ..Default::default() };
+        let config = ServerConfig {
+            player: PlayerConfig { max_move_distance: -5.0, ..Default::default() },
+            ..Default::default()
+        };
         assert!(config.validate().is_err());
     }
 }

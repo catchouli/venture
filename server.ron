@@ -16,6 +16,8 @@
         // The furthest (in a straight line, in metres) one click can send a character,
         // and the furthest a character keeps following someone.
         max_move_distance: 150.0,
+        // How long (seconds) after using an item (eating bread, say) a player can use another.
+        item_cooldown: 1.0,
     ),
     // Characters with admin powers (/setlevel, /reset, /setclass, /setgender), by name.
     admins: ["cat"],

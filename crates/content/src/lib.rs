@@ -51,9 +51,9 @@ pub use client::{
 };
 pub use definitions::{
     AbilityDef, AbilityEffect, AbilityVisual, AppearanceDef, ClassAbility, ClassDef, Colour, CreatureAttack,
-    CreatureDef, Equippable, GameSounds, ItemCount, ItemDef, NewCharacterDef, NpcDef, OutfitStyle, QuestDef,
-    QuestStage, RespawnPoint, ShopDef, ShopItem, SkillDef, SpawnerDef, THEME_PIECES, ThemeBorder, ThemeDef, ThemePiece,
-    WeaponDef,
+    CreatureDef, Equippable, GameSounds, ItemCount, ItemDef, ItemEffect, NewCharacterDef, NpcDef, OutfitStyle,
+    QuestDef, QuestStage, RespawnPoint, ShopDef, ShopItem, SkillDef, SpawnerDef, THEME_PIECES, ThemeBorder, ThemeDef,
+    ThemePiece, WeaponDef,
 };
 pub use load::{ContentError, ContentPack};
 pub use venture_protocol::Refers;

@@ -127,7 +127,15 @@ fn dress_holder(
     });
     let models = document.find::<CharacterModels>().and_then(|(_, all)| all.files().first()?.entries.first().cloned());
     let look = match &appearance {
-        Some(appearance) => HumanLook::of_appearance(Some(appearance), models.as_ref()),
+        Some(appearance) => {
+            let items = document
+                .find::<ItemDef>()
+                .map(|(_, items)| {
+                    items.files().iter().flat_map(|file| &file.entries).map(|i| (i.id.clone(), i.clone())).collect()
+                })
+                .unwrap_or_default();
+            HumanLook::of_appearance(Some(appearance), models.as_ref(), &items)
+        }
         None => look,
     };
     if current.is_none_or(|current| *current != look) {

@@ -9,7 +9,9 @@
 
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
+use venture_content::ItemEffect;
 use venture_protocol::{ClientMessage, ItemStack, ServerMessage};
+use venture_rpg::Healing;
 
 use crate::content::ContentStore;
 use crate::network::{ClientState, FromServer, ToServer};
@@ -342,6 +344,12 @@ fn fill_slots(
                     }
                 } else if item.equip.is_some() {
                     body.push_str("\nClick to equip.");
+                } else if let ItemEffect::Heal(healing) = item.on_use {
+                    let amount = match healing {
+                        Healing::Flat(amount) => format!("{amount} health"),
+                        Healing::Percent(percent) => format!("{percent}% of your health"),
+                    };
+                    body.push_str(&format!("\nHeals {amount}. Click to use."));
                 }
                 Tooltip { title, body }
             }
@@ -369,7 +377,7 @@ fn highlight_slots(
 }
 
 /// Clicking an item sells one while a shop is open, and otherwise equips it
-/// (if it can be equipped).
+/// (if it can be equipped) or uses it (if it can be used).
 fn use_on_click(
     shop: Res<OpenShop>,
     inventory: Res<PlayerInventory>,
@@ -385,8 +393,12 @@ fn use_on_click(
         let slot = index as u32;
         if shop.0.is_some() {
             to_server.write(ToServer(ClientMessage::Sell { slot, count: 1 }));
-        } else if content.items.get(&stack.item).is_some_and(|item| item.equip.is_some()) {
-            to_server.write(ToServer(ClientMessage::Equip { slot }));
+        } else if let Some(item) = content.items.get(&stack.item) {
+            if item.equip.is_some() {
+                to_server.write(ToServer(ClientMessage::Equip { slot }));
+            } else if item.on_use != ItemEffect::Nothing {
+                to_server.write(ToServer(ClientMessage::UseItem { slot }));
+            }
         }
     }
 }

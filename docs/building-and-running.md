@@ -63,6 +63,7 @@ file, and it takes its default. Misspelt settings are reported as errors.
     ),
     player: (
         max_move_distance: 150.0,   // metres one click can send a character
+        item_cooldown: 1.0,         // seconds after using an item (eating bread) before using another
     ),
     admins: ["cat"],    // characters with admin powers (/setlevel, /reset, /setclass), by name
 )

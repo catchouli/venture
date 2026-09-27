@@ -109,6 +109,7 @@ fn follow_server_events(
                         commands.entity(entity).insert(HumanLook::of_appearance(
                             content.appearances.get(appearance),
                             content.character_models.as_ref(),
+                            &content.items,
                         ));
                         (entity, TargetKind::Npc, Some(appearance.clone()))
                     }
@@ -208,7 +209,8 @@ fn restyle_npcs_when_content_changes(
         let Some(appearance) = &npc.appearance else { continue };
         let look = npc_look(appearance, &content, &mut looks, &mut materials, &assets);
         rebuild_body(&mut commands, entity, &assets, &look);
-        let human = HumanLook::of_appearance(content.appearances.get(appearance), content.character_models.as_ref());
+        let models = content.character_models.as_ref();
+        let human = HumanLook::of_appearance(content.appearances.get(appearance), models, &content.items);
         commands.entity(entity).insert(human);
     }
 }

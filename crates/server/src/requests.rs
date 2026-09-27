@@ -12,7 +12,8 @@
 //! a [`PlayerRequest`] (for [`crate::gameplay`]), a [`DialogueRequest`] (for
 //! [`crate::dialogue`]), a [`ShopRequest`] (for [`crate::shops`]), a
 //! [`CharacterRequest`] (for [`crate::character`]), an [`EquipmentRequest`]
-//! (for [`crate::equipment`]), a [`AbilityRequest`] (for [`crate::abilities`]), a
+//! (for [`crate::equipment`]), an [`ItemUseRequest`] (for
+//! [`crate::consumables`]), a [`AbilityRequest`] (for [`crate::abilities`]), a
 //! [`HotbarRequest`] (for [`crate::hotbar`]) or an [`AdminRequest`] (for
 //! [`crate::admin`]). Too many strikes and the connection is closed.
 
@@ -59,6 +60,7 @@ impl Plugin for RequestsPlugin {
             .add_message::<AdminRequest>()
             .add_message::<CharacterRequest>()
             .add_message::<EquipmentRequest>()
+            .add_message::<ItemUseRequest>()
             .add_message::<AbilityRequest>()
             .add_message::<HotbarRequest>()
             .add_systems(FixedUpdate, receive_messages.in_set(ServerSystems::Requests));
@@ -190,6 +192,15 @@ pub struct EquipmentRequest {
     pub action: EquipmentAction,
 }
 
+/// A player using the item in an inventory slot, for [`crate::consumables`].
+#[derive(Message)]
+pub struct ItemUseRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// The inventory slot (not yet checked against their bag).
+    pub slot: u32,
+}
+
 /// What a player wants to put on or take off. Checked against their bag and equipment.
 pub enum EquipmentAction {
     /// Equip the item in this inventory slot.
@@ -281,6 +292,7 @@ fn receive_messages(
     mut admin: MessageWriter<AdminRequest>,
     mut characters: MessageWriter<CharacterRequest>,
     mut equipment: MessageWriter<EquipmentRequest>,
+    mut item_uses: MessageWriter<ItemUseRequest>,
     mut abilities: MessageWriter<AbilityRequest>,
     mut hotbars: MessageWriter<HotbarRequest>,
 ) {
@@ -324,6 +336,9 @@ fn receive_messages(
                     Verdict::Equipment(request) => {
                         equipment.write(request);
                     }
+                    Verdict::UseItem(request) => {
+                        item_uses.write(request);
+                    }
                     Verdict::Ability(request) => {
                         abilities.write(request);
                     }
@@ -358,6 +373,7 @@ enum Verdict {
     Admin(AdminRequest),
     Character(CharacterRequest),
     Equipment(EquipmentRequest),
+    UseItem(ItemUseRequest),
     Ability(AbilityRequest),
     Hotbar(HotbarRequest),
     /// Answer the client directly, without changing anything.
@@ -492,6 +508,7 @@ fn judge_player_message(
         ClientMessage::Equip { slot } => {
             return Verdict::Equipment(EquipmentRequest { player, action: EquipmentAction::Equip(slot) });
         }
+        ClientMessage::UseItem { slot } => return Verdict::UseItem(ItemUseRequest { player, slot }),
         ClientMessage::Unequip { slot } => {
             return Verdict::Equipment(EquipmentRequest { player, action: EquipmentAction::Unequip(slot) });
         }

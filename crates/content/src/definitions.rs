@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "reflect")]
 use venture_protocol::Refers;
 use venture_protocol::{BodyType, CreatureLook, EquipSlot, FEATURE_RANGE, Features, ItemLook};
-use venture_rpg::{ClassRules, Dice, Stat, Stats};
+use venture_rpg::{ClassRules, Dice, Healing, Stat, Stats};
 
 /// The cut of an NPC's clothes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,16 +81,21 @@ pub struct AppearanceDef {
     pub outfit: OutfitStyle,
     /// Their hairstyle (from `characters/characters.ron`), if not their body's usual one.
     #[serde(default, skip_serializing_if = "is_default")]
-    #[cfg_attr(feature = "reflect", reflect(@Refers::Hair))]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Hairstyle))]
     pub hairstyle: Option<String>,
     /// The outfit parts they wear (from `characters/characters.ron`), if not
     /// the ones for their outfit style.
     #[serde(default, skip_serializing_if = "is_default")]
     #[cfg_attr(feature = "reflect", reflect(@Refers::Part))]
     pub parts: Vec<String>,
+    /// Items they wear and carry (ids from `items/`): armour and clothes go
+    /// on over their parts, and weapons and shields are held. Only for show.
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Item))]
+    pub equipment: Vec<String>,
     /// Their beard (from `characters/characters.ron`), if they have one.
     #[serde(default, skip_serializing_if = "is_default")]
-    #[cfg_attr(feature = "reflect", reflect(@Refers::Hair))]
+    #[cfg_attr(feature = "reflect", reflect(@Refers::Beard))]
     pub beard: Option<String>,
     /// Their height, build and head size (from -10 to 10, as in the character
     /// creator). Any left out are picked from the appearance's id, so each
@@ -212,9 +217,29 @@ pub struct ItemDef {
     /// If it can be worn or wielded: where, what it does, and how it looks.
     #[serde(default, skip_serializing_if = "is_default")]
     pub equip: Option<Equippable>,
+    /// What happens when a player uses it (clicking it in their bag), which
+    /// uses one up: eating bread heals, say.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub on_use: ItemEffect,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
+}
+
+/// What using an item does.
+///
+/// ```ron
+/// on_use: Heal(Flat(5))        // 5 health
+/// on_use: Heal(Percent(20.0))  // a fifth of the most health
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+pub enum ItemEffect {
+    /// It can't be used.
+    #[default]
+    Nothing,
+    /// It heals (never past the most health).
+    Heal(Healing),
 }
 
 /// What an equippable item does when worn.
@@ -816,6 +841,7 @@ mod tests {
             outfit: OutfitStyle::default(),
             hairstyle: None,
             parts: Vec::new(),
+            equipment: Vec::new(),
             beard: None,
             height: Some(9),
             build: None,

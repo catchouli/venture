@@ -5,6 +5,7 @@
         description: "A crusty loaf from Elsie's ovens, still a little warm.",
         icon: "bread.png",
         value: 4,
+        on_use: Heal(Flat(5)),
     ),
     (
         id: "sweet_roll",
@@ -12,6 +13,7 @@
         description: "A sticky cinnamon swirl. Elsie's favourite.",
         icon: "sweet_roll.png",
         value: 6,
+        on_use: Heal(Percent(10.0)),
     ),
     (
         id: "meat_pie",
@@ -19,6 +21,7 @@
         description: "Rich, heavy and enough to feed a traveller for a day.",
         icon: "meat_pie.png",
         value: 12,
+        on_use: Heal(Flat(8)),
     ),
     (
         id: "old_pipe",

@@ -235,6 +235,7 @@ mod tests {
             stackable,
             value: 1,
             equip: None,
+            on_use: Default::default(),
             notes: String::new(),
         };
         BTreeMap::from([("arrows".to_string(), item("arrows", true)), ("bread".to_string(), item("bread", false))])

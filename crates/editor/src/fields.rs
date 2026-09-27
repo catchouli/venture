@@ -606,7 +606,12 @@ fn update_choices(
     map.insert(Refers::Sound, files("sounds", ".wav"));
     map.insert(Refers::Script, files("scripts", ".rhai"));
     map.insert(Refers::Part, models.map(|models| models.parts.keys().cloned().collect()).unwrap_or_default());
-    map.insert(Refers::Hair, models.map(|models| models.hair.keys().cloned().collect()).unwrap_or_default());
+    // (Hairstyles are all the hair that isn't a beard, so NPCs can have
+    // styles players can't choose.)
+    let beards = models.map(|models| models.beards.clone()).unwrap_or_default();
+    let hairstyles = models.map(|models| models.hair.keys().filter(|hair| !beards.contains(hair)).cloned().collect());
+    map.insert(Refers::Hairstyle, hairstyles.unwrap_or_default());
+    map.insert(Refers::Beard, beards);
     map.insert(
         Refers::CreatureModel,
         models.map(|models| models.creatures.keys().cloned().collect()).unwrap_or_default(),
@@ -618,6 +623,20 @@ fn update_choices(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn choosing_heal_starts_with_a_sensible_amount() {
+        use venture_content::{ItemDef, ItemEffect};
+        let mut registry = TypeRegistry::default();
+        registry.register::<ItemDef>();
+        let Some(TypeInfo::Enum(effects)) = registry.get_type_info(std::any::TypeId::of::<ItemEffect>()) else {
+            panic!("item effects are an enum");
+        };
+        let heal = default_variant(effects.variant("Heal").unwrap(), &registry).unwrap();
+        let mut effect = ItemEffect::Nothing;
+        effect.apply(&heal);
+        assert_eq!(effect, ItemEffect::Heal(venture_rpg::Healing::Flat(5)));
+    }
 
     #[test]
     fn renames_follow_every_reference_and_undo_together() {
