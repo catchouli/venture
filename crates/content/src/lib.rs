@@ -51,10 +51,10 @@ pub use client::{
     parse_game_sounds, parse_items, parse_skills, parse_theme,
 };
 pub use definitions::{
-    AbilityDef, AbilityEffect, AbilityVisual, AppearanceDef, ClassAbility, ClassDef, Colour, Equippable, GameSounds,
-    ItemCount, ItemDef, ItemEffect, MonsterAttack, MonsterDef, NewCharacterDef, NpcDef, OutfitStyle, QuestDef,
-    QuestStage, RespawnPoint, ShopDef, ShopItem, SkillDef, SpawnerDef, THEME_PIECES, ThemeBorder, ThemeDef, ThemePiece,
-    WeaponDef,
+    AbilityDef, AbilityEffect, AbilityVisual, AppearanceDef, ClassAbility, ClassDef, Colour, Equippable, FishDef,
+    FishingPart, GameSounds, ItemCount, ItemDef, ItemEffect, MonsterAttack, MonsterDef, NewCharacterDef, NpcDef,
+    OutfitStyle, QuestDef, QuestStage, RespawnPoint, ShopDef, ShopItem, SkillDef, SpawnerDef, THEME_PIECES,
+    ThemeBorder, ThemeDef, ThemePiece, WeaponDef,
 };
 pub use load::{ContentError, ContentPack};
 pub use venture_protocol::Refers;

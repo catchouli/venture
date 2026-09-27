@@ -411,6 +411,204 @@ ICONS = {
 }
 
 
+# Fishing: fish drawn from a few numbers, so each species gets its own icon
+# (until they're painted), and the gear.
+
+def fish(body, back, deep=1.0, stripes=None, spots=None, red_fins=False):
+    """A fish facing left: `deep` makes it taller (bream) or slimmer (dace)."""
+    fins = (200, 80, 60) if red_fins else back
+    height = 5.5 * deep
+    layers = [
+        (polygon([(23, 16), (29, 16 - 5.5 * deep), (28, 16), (29, 16 + 5.5 * deep)]), fins),  # the tail
+        (polygon([(12, 16 - height + 1), (17, 16 - height - 2.5), (20, 16 - height + 2)]), fins),  # the back fin
+        (ellipse(15, 16, 10, height), body),
+        (detail(ellipse(15, 16 - height * 0.45, 8.5, height * 0.45)), back),  # its darker back
+    ]
+    for x in stripes or []:
+        layers.append((detail(capsule(x, 16 - height * 0.8, x - 1, 16 + height * 0.5, 0.8)), back))
+    for (x, y) in spots or []:
+        layers.append((detail(circle(x, y, 0.9)), back))
+    layers += [
+        (detail(circle(9, 15, 1.3)), (30, 30, 40)),  # the eye
+        (detail(capsule(12, 14, 12.5, 18.5, 0.5)), back),  # the gill line
+    ]
+    return lambda: layers
+
+
+def crayfish(shell):
+    dark = tuple(c * 3 // 4 for c in shell)
+    return lambda: [
+        (capsule(8, 9, 5, 4, 1.4), shell),  # the claws
+        (capsule(20, 9, 23, 4, 1.4), shell),
+        (ellipse(5, 4, 2.4, 1.8), dark),
+        (ellipse(23, 4, 2.4, 1.8), dark),
+        (ellipse(14, 13, 4.5, 5), shell),  # the head
+        (rounded_box(14, 22, 3.6, 5, 2), shell),  # the tail
+        (polygon([(10, 28), (18, 28), (14, 31)]), dark),  # its fan
+        (detail(capsule(11, 20, 17, 20, 0.5)), dark),
+        (detail(capsule(11, 23, 17, 23, 0.5)), dark),
+    ]
+
+
+def crab(shell):
+    dark = tuple(c * 3 // 4 for c in shell)
+    legs = [(capsule(x0, 18, x1, 25, 1.0), dark) for x0, x1 in [(9, 4), (11, 7), (21, 25), (23, 28)]]
+    return lambda: legs + [
+        (capsule(9, 13, 5, 7, 1.5), shell),  # the claws
+        (capsule(23, 13, 27, 7, 1.5), shell),
+        (ellipse(16, 17, 10, 7), shell),
+        (detail(circle(13, 12, 1.1)), (30, 30, 30)),
+        (detail(circle(19, 12, 1.1)), (30, 30, 30)),
+    ]
+
+
+def shell(colour, spiral):
+    dark = tuple(c * 2 // 3 for c in colour)
+    return lambda: [
+        (polygon([(6, 24), (14, 6), (26, 22), (20, 27)]) if not spiral else circle(16, 17, 10), colour),
+        (detail(ring(16, 17, 5.5, 1.3) if spiral else capsule(10, 22, 16, 9, 0.8)), dark),
+        (detail(ring(16, 17, 2.2, 1.2) if spiral else capsule(15, 25, 20, 12, 0.8)), dark),
+    ]
+
+
+def mussel():
+    return [
+        (polygon([(5, 22), (9, 10), (18, 5), (27, 9), (24, 20), (12, 27)]), (46, 52, 70)),
+        (detail(capsule(9, 20, 22, 10, 0.7)), (90, 100, 130)),
+    ]
+
+
+def shrimp(colour):
+    dark = tuple(c * 3 // 4 for c in colour)
+    return lambda: [
+        (capsule(8, 12, 3, 5, 0.6), dark),  # the feelers
+        (ring(17, 14, 8, 5), colour),
+        (polygon([(6, 17), (12, 14), (12, 20)]), colour),  # the head
+        (polygon([(23, 22), (29, 28), (22, 29)]), dark),  # the tail
+        (detail(circle(9, 15, 1.0)), (30, 30, 30)),
+    ]
+
+
+def rod(handle):
+    return lambda: [
+        (capsule(5, 28, 28, 4, 0.9), (120, 90, 60)),  # the rod
+        (capsule(5, 28, 11, 22, 2.0), handle),  # the handle
+        (detail(capsule(28, 4, 29, 18, 0.35)), (220, 220, 220)),  # the line
+        (circle(12, 21, 2.4), (120, 124, 130)),  # the reel
+    ]
+
+
+def reel(colour):
+    dark = tuple(c * 2 // 3 for c in colour)
+    return lambda: [
+        (capsule(16, 5, 16, 9, 1.5), dark),  # the foot
+        (circle(16, 18, 10), colour),
+        (detail(ring(16, 18, 6, 2.5)), (220, 216, 200)),  # the line on the spool
+        (detail(circle(16, 18, 2)), dark),
+        (capsule(24, 22, 28, 27, 1.3), dark),  # the handle
+    ]
+
+
+def worm():
+    pink = (206, 120, 120)
+    return [
+        (capsule(6, 22, 12, 14, 2.2), pink),
+        (capsule(12, 14, 19, 20, 2.2), pink),
+        (capsule(19, 20, 26, 12, 2.2), pink),
+        (detail(capsule(11, 16, 13, 17, 0.6)), (160, 80, 84)),
+    ]
+
+
+def sweetcorn():
+    return [(circle(x, y, 2.6), (240, 200, 70)) for x, y in [(10, 12), (16, 10), (22, 12), (8, 18), (14, 17), (20, 17), (25, 19), (12, 23), (18, 24)]]
+
+
+def paste_ball():
+    return [
+        (circle(16, 17, 10), (206, 184, 140)),
+        (detail(circle(12, 13, 1.2)), (150, 128, 90)),
+        (detail(circle(19, 20, 1.2)), (150, 128, 90)),
+        (detail(circle(18, 12, 1.0)), (150, 128, 90)),
+    ]
+
+
+def shrimp_bits():
+    pink = (230, 150, 130)
+    return [
+        (rounded_box(10, 12, 4, 3, 1.5), pink),
+        (rounded_box(21, 14, 4, 3, 1.5), pink),
+        (rounded_box(14, 22, 4, 3, 1.5), pink),
+        (rounded_box(24, 24, 3, 2.5, 1.2), pink),
+    ]
+
+
+def spinner():
+    return [
+        (capsule(16, 4, 16, 27, 0.6), (140, 140, 150)),  # the wire
+        (ellipse(16, 13, 5, 7.5), (230, 206, 110)),  # the blade
+        (detail(ellipse(15, 11, 2, 3.5)), (255, 244, 190)),
+        (capsule(16, 21, 16, 25, 2.0), (200, 60, 50)),  # the body
+        (detail(capsule(13, 29, 19, 29, 0.6)), (140, 140, 150)),  # the hook
+    ]
+
+
+def plug():
+    return [
+        (ellipse(15, 16, 11, 5), (110, 130, 90)),
+        (detail(ellipse(15, 14, 9, 2.4)), (70, 90, 60)),
+        (polygon([(3, 17), (7, 14), (7, 20)]), (200, 200, 190)),  # the lip
+        (detail(circle(8, 15, 1.2)), (240, 200, 60)),
+        (detail(capsule(13, 22, 13, 26, 0.6)), (140, 140, 150)),  # the hooks
+        (detail(capsule(21, 21, 21, 25, 0.6)), (140, 140, 150)),
+    ]
+
+
+def cage_trap():
+    wire = (150, 150, 140)
+    bars = [(detail(capsule(x, 9, x, 25, 0.6)), wire) for x in (10, 14, 18, 22)]
+    return [(rounded_box(16, 17, 11, 9, 2), (60, 54, 44))] + bars + [
+        (detail(capsule(6, 17, 26, 17, 0.6)), wire),
+        (detail(ring(16, 17, 3, 1.2)), (180, 170, 150)),  # the funnel
+    ]
+
+
+FISHING_ICONS = {
+    "dace.png": fish((200, 206, 210), (100, 116, 128), deep=0.8),
+    "gudgeon.png": fish((180, 170, 140), (110, 100, 80), deep=0.75, spots=[(13, 17), (17, 17), (21, 16)]),
+    "roach.png": fish((200, 204, 210), (80, 100, 110), deep=1.1, red_fins=True),
+    "chub.png": fish((190, 186, 170), (80, 86, 80), deep=0.95),
+    "perch.png": fish((170, 180, 90), (70, 90, 50), deep=1.15, stripes=[12, 16, 20], red_fins=True),
+    "bream.png": fish((170, 150, 100), (100, 86, 60), deep=1.5),
+    "crucian_carp.png": fish((200, 160, 70), (130, 100, 40), deep=1.3),
+    "rainbow_trout.png": fish((190, 190, 200), (80, 110, 90), deep=0.95, spots=[(12, 13), (16, 12), (20, 13), (18, 15)]),
+    "grey_mullet.png": fish((170, 176, 184), (90, 100, 110), deep=0.9, stripes=[13, 17, 21]),
+    "white_clawed_crayfish.png": crayfish((140, 120, 90)),
+    "signal_crayfish.png": crayfish((130, 90, 60)),
+    "red_swamp_crayfish.png": crayfish((170, 50, 40)),
+    "noble_crayfish.png": crayfish((100, 70, 60)),
+    "shore_crab.png": crab((90, 110, 60)),
+    "brown_shrimp.png": shrimp((170, 150, 120)),
+    "river_snail.png": shell((120, 100, 70), spiral=True),
+    "common_whelk.png": shell((210, 190, 160), spiral=False),
+    "freshwater_mussel.png": mussel,
+    "ledger_rod.png": rod((120, 80, 50)),
+    "ash_ledger_rod.png": rod((190, 150, 90)),
+    "float_rod.png": rod((200, 170, 120)),
+    "lure_rod.png": rod((60, 60, 70)),
+    "wooden_reel.png": reel((150, 104, 62)),
+    "brass_reel.png": reel((200, 160, 70)),
+    "worm.png": worm,
+    "sweetcorn.png": sweetcorn,
+    "paste_ball.png": paste_ball,
+    "shrimp_bits.png": shrimp_bits,
+    "live_shrimp.png": shrimp((220, 140, 120)),
+    "spinner.png": spinner,
+    "plug.png": plug,
+    "cage_trap.png": cage_trap,
+}
+ICONS.update(FISHING_ICONS)
+
+
 # Drawing --------------------------------------------------------------------
 
 def render(layers):

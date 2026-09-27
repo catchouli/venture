@@ -408,6 +408,32 @@ Left out, the item can't be used. An item can't be both worn and used.
 After using an item, a player waits a moment (`item_cooldown` in
 `server.ron`) before using another.
 
+### Fishing items
+
+`fishing` says what an item is to fishing (see [plan-fishing.md](plan-fishing.md)
+and `venture_rpg::fishing` for the rules). Fish are items too, so they go in
+the bag and sell (give a fish a `value` equal to its experience, so shops pay
+half of it).
+
+```ron
+fishing: Some(Rod(method: Ledger, reach: 10.0, level: 1))          // Ledger, Float or Lure; metres
+fishing: Some(Reel(strength: 3.0, capacity: 30.0, level: 1))       // kilograms of pull; metres of line
+fishing: Some(Bait((diets: [Insect], hook: Small)))                 // one used a cast
+fishing: Some(Lure((diets: [Fish], temperament: Aggressive, depth: Midwater, finish: Flashy, hook: Small)))
+fishing: Some(Trap(capacity: 3, soak: 1200.0, level: 1))           // catches; seconds to fill
+fishing: Some(Fish((level: 1, experience: 110, waters: [River], biomes: [Grassland],
+    traits: (diet: Insect, temperament: Skittish, depth: Midwater, size: Small, finish: Some(Natural)))))
+```
+
+What bites is worked out from traits, never lists of fish: a bait draws the
+diets it names (as far as its method reaches the fish's depth), a lure draws
+by temperament, diet, depth and finish, and a hook suits fish of about its
+own size. Fish have `rods: false` if only traps catch them, a `trap` weight
+(how often traps catch them next to the others in their water) and
+`bycatch: true` for critters that fill a quarter of a trap's catches. The
+content check makes sure every fish rods catch has a bait or lure that draws
+and hooks it and a reel that can land it. Levels go to 99.
+
 Money is **Miasma**, kept on the character rather than in the inventory. Icons are small PNGs
 (32 × 32 works well, at most 64 KB). The current ones are placeholders drawn
 by `tools/placeholder_icons.py`; replace them with painted icons of the same

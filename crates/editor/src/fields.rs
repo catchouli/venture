@@ -646,11 +646,15 @@ mod tests {
         crate::document::copy_folder(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content"), &folder).unwrap();
         let mut document = crate::document::Document::load(&folder).unwrap();
         let items = document.collections.iter().position(|kind| kind.title() == "Items").unwrap();
-        let bread = document.collections[items].keys(0).iter().position(|key| key == "bread").unwrap();
+        let (file, bread) = (0..document.collections[items].paths().len())
+            .find_map(|file| {
+                Some((file, document.collections[items].keys(file).iter().position(|key| key == "bread")?))
+            })
+            .unwrap();
         let before = users(&mut document, Refers::Item, "bread").len();
         assert!(before >= 2, "bread is sold and given to new characters");
 
-        rename_everywhere(&mut document, (items, 0, bread), "loaf", 5.0);
+        rename_everywhere(&mut document, (items, file, bread), "loaf", 5.0);
         assert_eq!(users(&mut document, Refers::Item, "loaf").len(), before);
         assert!(users(&mut document, Refers::Item, "bread").is_empty());
         let mirror = folder.with_extension("mirror");
@@ -659,7 +663,7 @@ mod tests {
 
         document.undo();
         assert_eq!(users(&mut document, Refers::Item, "bread").len(), before);
-        assert_eq!(document.collections[items].keys(0)[bread], "bread");
+        assert_eq!(document.collections[items].keys(file)[bread], "bread");
         let _ = std::fs::remove_dir_all(&folder);
         let _ = std::fs::remove_dir_all(&mirror);
     }
