@@ -7,6 +7,19 @@ pub async fn fetch(url: String) -> Result<Vec<u8>, String> {
     start_fetch(url).await
 }
 
+/// Downloads a file, trying up to `attempts` times (at least once) if it
+/// fails. Returns the last error if every try does.
+pub async fn fetch_retrying(url: String, attempts: u32) -> Result<Vec<u8>, String> {
+    let mut result = fetch(url.clone()).await;
+    for _ in 1..attempts {
+        if result.is_ok() {
+            break;
+        }
+        result = fetch(url.clone()).await;
+    }
+    result
+}
+
 /// Starts downloading a file straight away (not when the result is first
 /// awaited, as [`fetch`] does), so several can be under way at once: start
 /// them all, then await each.
