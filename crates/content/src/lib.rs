@@ -44,6 +44,7 @@ pub mod layout;
 mod load;
 #[cfg(feature = "scripts")]
 pub mod script_hooks;
+pub mod sky;
 
 pub use client::{
     CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_abilities, parse_appearances,
