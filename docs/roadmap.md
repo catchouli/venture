@@ -14,6 +14,8 @@ like the finished game, with a character walking around it.
 - A 1.8 m placeholder character with a procedural run animation; click-to-move
   with A* pathfinding around water, cliffs, trees and rocks; a glowing move
   marker; follow camera; custom cursors.
+- A minimap and a full map (M) of baked tiles with place names; the
+  window tabs moved to the bottom edge (see [plan-map.md](plan-map.md)).
 - Parties: `/party`, invitations that run out, a party tab and frames for
   the other members; `/target` by name, or the nearest monster within 5 m.
 

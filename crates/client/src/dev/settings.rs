@@ -25,6 +25,8 @@
 //!   can be separated with `|`).
 //! - `VENTURE_SAY_DELAY=seconds`: wait this long in the game before saying
 //!   them (to answer something another client does first).
+//! - `VENTURE_MAP_ZOOM=3.0`: how zoomed in the map (`VENTURE_OPEN=map`)
+//!   opens, in metres a pixel.
 //! - `VENTURE_USE=air_blast`: use these abilities (ids, separated with `|`) once
 //!   in the game, on the selected target (after `VENTURE_SELECT_NEAREST` has
 //!   picked one, if set).
@@ -57,6 +59,8 @@ pub struct DevSettings {
     pub say: Vec<String>,
     /// How long to wait (in seconds, once in the game) before saying them.
     pub say_delay: f32,
+    /// How zoomed in the map opens (metres a pixel), if not the usual.
+    pub map_zoom: Option<f32>,
     /// Abilities to use once in the game.
     pub use_abilities: Vec<String>,
     /// Whether to select the character (player or NPC) nearest yours once one is in sight.
@@ -93,6 +97,7 @@ impl DevSettings {
                 .map(|say| say.split('|').map(str::to_string).collect())
                 .unwrap_or_default(),
             say_delay: std::env::var("VENTURE_SAY_DELAY").ok().and_then(|delay| delay.parse().ok()).unwrap_or(0.0),
+            map_zoom: std::env::var("VENTURE_MAP_ZOOM").ok().and_then(|zoom| zoom.parse().ok()),
             use_abilities: std::env::var("VENTURE_USE")
                 .map(|abilities| abilities.split('|').map(str::to_string).collect())
                 .unwrap_or_default(),

@@ -13,6 +13,7 @@ mod biome;
 mod chunk;
 mod coords;
 mod ground;
+mod map;
 mod prop;
 
 pub use baked::{
@@ -23,6 +24,7 @@ pub use biome::Biome;
 pub use chunk::Chunk;
 pub use coords::{CellPos, ChunkPos};
 pub use ground::{Fluid, FluidKind, Ground, TerrainCell};
+pub use map::{LabelKind, MAP_LABELS_FILE, MapInfo, MapLabel, MapLabels, map_tile_path};
 pub use prop::{Prop, PropKind};
 
 /// Width of one terrain cell, in metres.

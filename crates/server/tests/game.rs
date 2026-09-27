@@ -27,6 +27,7 @@ fn flat_world() -> ServerWorld {
         seed: 0,
         spawn_point: (100.0, 100.0),
         settlements: Vec::new(),
+        map: None,
     };
     let chunks: Vec<Chunk> = (0..16).map(|i| Chunk::new(ChunkPos::new(i % 4, i / 4))).collect();
     ServerWorld::from_chunks(manifest, &chunks)

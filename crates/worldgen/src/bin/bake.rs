@@ -1,5 +1,7 @@
-//! Bakes a world to disk: generates every chunk and writes the world folder
-//! the server loads (see `venture_world::WorldManifest`).
+//! Bakes a world to disk: generates every chunk, draws the world map from
+//! them, and writes the world folder the server loads (see
+//! `venture_world::WorldManifest`). (`bake_map` draws the map again for a
+//! world already baked.)
 //!
 //! ```text
 //! cargo run --release -p venture_worldgen --bin bake -- [output folder] [seed]
@@ -15,6 +17,7 @@ use venture_world::{
     CHUNK_FORMAT_VERSION, CHUNK_SIZE, ChunkPos, MANIFEST_FILE, SettlementInfo, WorldManifest, chunk_file_path,
     encode_chunk,
 };
+use venture_worldgen::map_render::bake_map;
 use venture_worldgen::{GENERATOR_VERSION, WorldGenConfig, WorldGenerator};
 
 fn main() -> std::io::Result<()> {
@@ -42,12 +45,19 @@ fn main() -> std::io::Result<()> {
             .iter()
             .map(|settlement| SettlementInfo { position: settlement.position, biome: settlement.biome })
             .collect(),
+        map: None,
     };
     std::fs::create_dir_all(output.join("chunks"))?;
 
     let started = Instant::now();
     bake_chunks(&world, &manifest, &output)?;
     println!("{} chunks baked in {:.2?}.", manifest.chunks_per_side().pow(2), started.elapsed());
+
+    // The map is drawn from the chunks just written.
+    let started = Instant::now();
+    let mut manifest = manifest;
+    manifest.map = Some(bake_map(&output, &manifest)?);
+    println!("Map drawn in {:.2?}.", started.elapsed());
 
     // The manifest is written last, so a half-finished bake is never mistaken for a complete one.
     std::fs::write(output.join(MANIFEST_FILE), manifest.to_ron())?;

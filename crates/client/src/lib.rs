@@ -17,6 +17,7 @@ pub mod common;
 pub mod content;
 pub mod dev;
 pub mod interaction;
+pub mod map;
 pub mod network;
 pub mod sound;
 pub mod ui;
@@ -48,6 +49,7 @@ pub fn run() {
         camera::CameraPlugin,
         interaction::InteractionPlugin,
         ui::UiPlugin,
+        map::MapPlugin,
         sound::SoundPlugin,
         dev::DevPlugin,
     ))
