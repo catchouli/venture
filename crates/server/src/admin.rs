@@ -121,7 +121,7 @@ fn carry_out_admin_commands(
                 };
                 let count = (*count).clamp(1, MOST_GIVEN);
                 match inventory.apply(&Change::give(&def.id, count), &pack.items) {
-                    Ok(()) => tell(format!("You now have {} more.", describe_items(&def.id, count, &pack.items))),
+                    Ok(()) => tell(format!("Added to your bag: {}.", describe_items(&def.id, count, &pack.items))),
                     Err(_) => tell("There isn't room in your bag.".to_string()),
                 }
                 continue;

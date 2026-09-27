@@ -1610,4 +1610,3 @@ fn a_player_catches_a_fish_with_rod_reel_and_worm() {
     }
     panic!("no fish landed in two minutes (caught: {caught:?})");
 }
-

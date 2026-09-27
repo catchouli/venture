@@ -180,7 +180,12 @@ fn jump_with_space(
     focus: Res<KeyboardFocus>,
     mut to_server: MessageWriter<ToServer>,
     mut gait: Single<&mut Gait, With<LocalPlayer>>,
+    angling: Res<crate::fishing::Angling>,
 ) {
+    // (While a fish bites or is hooked, Space strikes and reels instead.)
+    if angling.busy() {
+        return;
+    }
     if keys.just_pressed(KeyCode::Space) && *mode == CameraMode::Follow && !focus.is_typing() && gait.jump() {
         to_server.write(ToServer(ClientMessage::Jump));
     }

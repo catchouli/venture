@@ -2,8 +2,11 @@
 //!
 //! - on a character: select it; or, if it's selected already, follow them
 //!   (a player) or walk over and talk to them (an NPC);
+//! - on water, with a fishing rod in hand: cast there (see [`crate::fishing`]);
 //! - on the ground: run there (at most the server's move distance away),
 //!   with a move marker at the destination.
+//!
+//! While a fish bites or is hooked, clicks strike and reel instead.
 //!
 //! Following and talking are [actions](crate::interaction::actions), the same
 //! as typing `/follow` or `/talk`.
@@ -11,13 +14,16 @@
 use bevy::prelude::*;
 
 use crate::common::coords::from_bevy;
+use crate::content::ContentStore;
 use crate::dev::settings::DevSettings;
+use crate::fishing::{Angling, CastAt, rod_in_hand};
 use crate::interaction::actions::{Action, PerformAction};
 use crate::interaction::orders::Orders;
 use crate::interaction::targeting::{Hovered, Target, TargetKind, Targetable};
 use crate::network::ClientState;
+use crate::ui::character_window::Sheet;
 use crate::ui::text_input::KeyboardFocus;
-use crate::world::query::raycast_ground;
+use crate::world::query::{raycast_ground, raycast_surface, water_level};
 use crate::world::streaming::StreamingProgress;
 
 /// Handles left clicks on the world.
@@ -41,8 +47,12 @@ fn handle_click(
     mut focus: ResMut<KeyboardFocus>,
     mut actions: MessageWriter<PerformAction>,
     mut orders: Orders,
+    angling: Res<Angling>,
+    sheet: Res<Sheet>,
+    content: Res<ContentStore>,
+    mut casts: MessageWriter<CastAt>,
 ) {
-    if !buttons.just_pressed(MouseButton::Left) {
+    if !buttons.just_pressed(MouseButton::Left) || angling.busy() {
         return;
     }
     // Clicks on the interface (such as the chat box) aren't clicks on the world.
@@ -72,6 +82,15 @@ fn handle_click(
     let Some(cursor) = window.cursor_position() else { return };
     let (camera, camera_transform) = *camera;
     let Ok(ray) = camera.viewport_to_world(camera_transform, cursor) else { return };
+    if rod_in_hand(&sheet, &content).is_some()
+        && let Some(point) = raycast_surface(&orders.store, ray)
+    {
+        let (x, y) = from_bevy(point);
+        if water_level(&orders.store, x, y).is_some() {
+            casts.write(CastAt((x, y)));
+            return;
+        }
+    }
     let Some(point) = raycast_ground(&orders.store, ray) else { return };
     orders.move_to(&mut commands, from_bevy(point));
 }

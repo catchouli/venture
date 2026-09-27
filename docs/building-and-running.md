@@ -198,6 +198,8 @@ runs start with it hidden.
 | `VENTURE_MAP_ZOOM=3.0` | How zoomed in the map opens (with `VENTURE_OPEN=map`), in metres a pixel. |
 | `VENTURE_USE=air_blast` | Use these abilities (ids, separated with `\|`) once in the game, on the selected target (after `VENTURE_SELECT_NEAREST` has picked one). Automated runs are silent. |
 | `VENTURE_SELECT_NEAREST=1` | Select the character (player or NPC) nearest yours once one is in sight (to check the target frame, or with `VENTURE_SAY=/talk`). |
+| `VENTURE_FISH=x,y` | Once loaded, take the first fishing rod in the bag in hand (if none is) and cast at `(x, y)`. Give the gear first: `VENTURE_SAY="/give ledger_rod\|/give wooden_reel\|/give worm 20"` (with `--admin`). |
+| `VENTURE_FISH_AUTO=1` | With `VENTURE_FISH`: strike at the bite, and reel while the fish rests, to see a fight. |
 | `VENTURE_OPEN=stats` | Open the character window on a tab once in the game (`party`, `stats`, `skills`, `abilities`, `inventory`, `gear`, `quests` or `emotes`), or the map (`map`). |
 | `VENTURE_NAME=name`, `VENTURE_CLASS=mage`, `VENTURE_BODY=feminine` | The name, class and body type automated runs make new characters with. `VENTURE_NAME=cat` makes an admin (with the default `server.ron`), to try admin commands with `VENTURE_SAY=/setlevel 5`. |
 | `VENTURE_LOOK=height=5,build=-3,head=2,hair=long,beard=beard,hair_colour=3,skin=5` | The looks automated runs make new characters with, and the character creation screen starts with (any left out are the usual). |
