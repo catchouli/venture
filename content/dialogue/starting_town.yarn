@@ -93,3 +93,25 @@ Elsie: Mind the flour! Oh, it's you, {player_name()}.
 -> Goodbye.
     Elsie: Come back hungry!
 ===
+
+title: Angler
+---
+Wendel: Ho there, {player_name()}. Come to wet a line?
+-> Show me your tackle.
+    // Opening the shop ends the conversation at once.
+    <<open_shop wendels_tackle>>
+-> How do I fish?
+    Wendel: Hold a rod in your hand, and click the water to cast.
+    Wendel: With a ledger rod, watch the tip. Something nibbles first: leave it. When a fish bites, strike, quick!
+    Wendel: Then hold to reel it in. When it runs, let it go, or your line snaps. When it tires, bring it home.
+    -> What bites on what?
+        Wendel: Worms for the river fish: dace, gudgeon, roach and chub. Paste for bream, once you've the reel for them.
+        Wendel: Predators like perch take live shrimp, or chase a spinner. Every fish has its tastes.
+    -> Thanks, Wendel.
+        Wendel: Tight lines!
+-> I've caught some fish.
+    Wendel: Let's see them. I'll buy anything you pull out of the water.
+    <<open_shop wendels_tackle>>
+-> Goodbye.
+    Wendel: Tight lines!
+===

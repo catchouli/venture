@@ -98,7 +98,10 @@ Each step ends playable or testable, and is committed.
    animation, sounds, icons for each fish (the placeholder icon tool).
 6. **Traps.** Placing, soaking (saved), harvesting, bycatch.
 7. **Content and vendor.** The slice's fish, bait and gear; the starter kit;
-   the tackle vendor in town; the lure static profiles.
+   the tackle vendor in town; the lure static profiles. (Done for rods:
+   new characters start with a ledger rod, a reel and worms, and Wendel,
+   by the town square, sells the slice's tackle, buys fish and explains
+   how to fish. The cage trap and shrimp bits join the kit with traps.)
 8. **Playtest tools.** Logging catches per hour, XP per hour and losses by
    cause; admin commands (set a skill's level, give gear); every number in
    content, so it can be tuned without code.

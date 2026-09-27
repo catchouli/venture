@@ -39,4 +39,16 @@
         body: Feminine,
         outfit: Robe,
     ),
+    (
+        id: "angler",
+        skin: (0.80, 0.60, 0.46),
+        hair: (0.40, 0.32, 0.22),
+        tunic: (0.30, 0.36, 0.24),
+        trousers: (0.28, 0.24, 0.18),
+        body: Masculine,
+        outfit: Tunic,
+        equipment: [
+            "ledger_rod",
+        ],
+    ),
 ]
