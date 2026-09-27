@@ -71,6 +71,7 @@ move, **Shift** to go faster).
 | [Plan: client/server](docs/plan-client-server.md) | Milestones 1 to 3, step by step |
 | [Plan: characters](docs/plan-characters.md) | Real character models with free animations, then a character creator for players and NPCs |
 | [Plan: combat](docs/plan-combat.md) | Milestone 4: classes, levels, stats, abilities, equipment and fighting |
+| [Ground textures](docs/textures.md) | Importing PBR textures, how the terrain wears them, and the plan for fidelity tiers |
 | [Content authoring](docs/content-authoring.md) | Writing classes, NPCs, items, shops, quests, scripts and dialogue |
 | [Building and running](docs/building-and-running.md) | Desktop, web and dev tools in detail |
 | [Code style](docs/code-style.md) | Conventions that keep the code clean and maintainable |

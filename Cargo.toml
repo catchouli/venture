@@ -11,6 +11,7 @@ members = [
     "crates/server",
     "crates/client",
     "crates/editor",
+    "crates/tools",
 ]
 
 [workspace.package]

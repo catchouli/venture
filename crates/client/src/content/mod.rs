@@ -261,6 +261,8 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
             FileData::CharacterModels(Box::new(parse_character_models(&text())?))
         }
         Some("characters") => FileData::Model(bytes.to_vec()),
+        // (Loaded by the asset server, like models: `content://textures/grass/colour.jpg`.)
+        Some("textures") => FileData::Model(bytes.to_vec()),
         Some("sounds.ron") => FileData::GameSounds(parse_game_sounds(&text())?),
         Some("skills") => FileData::Skills(parse_skills(&text())?),
         Some("ui") if path.starts_with("ui/layouts/") => FileData::Layout(Box::new(parse_layout(&text())?)),
