@@ -4,6 +4,8 @@
 >
 > Entries marked ✱ are already used in the fishing.md fish table. Region tags: **[EU]** Europe/UK · **[NA]** North America · **[SA]** South America · **[AF]** Africa · **[AS]** Asia · **[OC]** Oceania/Australasia · **[AR]** Arctic/subarctic · **[W]** worldwide oceans.
 >
+> **In the game** (revised after review): this is a real-world research pool, so it keeps real names and regions. Venture is a fantasy world, so when species go into the game they keep generic names (trout, pike, crayfish) but lose real places and peoples, and the regions become the game's biomes: **[EU]** → grassland waters (the humans' lands), **[AR]** / cold **[NA]** → highland waters (the dwarves' mountains), **[SA] / [AF] / [AS]** warm waters → volcanic rivers and warm shores, **[OC]** → meadow waters (the elves' meadows), **[W]** → the open sea. See "Decisions from review" in `fishing.md`.
+>
 > Size classes: **Tiny** <15 cm · **Small** 15–30 cm · **Med** 30–60 cm · **Large** 60–100 cm · **Trophy** 100 cm+
 >
 > Sources: Wikipedia freshwater/marine game fish lists · Canal & River Trust · FishBase · British Record Fish Committee · WWF Amazon fish guide · IGFA game fish database · NSW DPI species list.

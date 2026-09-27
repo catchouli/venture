@@ -1,6 +1,8 @@
 # Fishing Skill — Design Document
 
 > Runescape-style gathering skill. Max level 99; this document designs **levels 1–70**, with 71–99 reserved for future growth on the same curve.
+>
+> **Revised after review** (see the end, "Decisions from review"): species and regions renamed to fit Venture's fantasy setting and mapped onto its biomes (a full naming pass comes with the world), skills get their own level cap of 99 (characters stay at 60), and the rod gear is simplified (the reel carries its line, bait sets the hook size, no separate floats or weights). The implementation plan is `docs/plan-fishing.md`.
 
 ## Design Pillars
 
@@ -109,24 +111,22 @@ A fresh level-1 character therefore always sees their biome's starter fish (lv 1
 | Component | What it affects |
 |---|---|
 | Rod | How far you can cast |
-| Bait | Which fish are attracted — **consumable, one per cast**; bait maps to diet groups (worms → insect-eaters, live fish → fish-eaters, sweetcorn → herbivores) |
-| Hook size | Max bait size that fits + what size fish can be hooked — small hook: mostly small fish, rare chance of larger; big hook: only larger fish |
-| Line strength | Biggest fish that can be pulled in — too weak and a hooked fish snaps the line before landing (5 tiers — see Gear Tiers) |
-| Reel size | How much line is stored — more line = a running fish can go further before the spool runs out (5 tiers — see Gear Tiers) |
-| Float | Lets you set the depth of the hook — one universal float, no tiers |
-| Weight | Sinks the bait for ledgering — one universal weight, no tiers |
+| Bait | Which fish are attracted — **consumable, one per cast**; bait maps to diet groups (worms → insect-eaters, live fish → fish-eaters, sweetcorn → herbivores). Each bait comes on its own **hook size**, which sets what size of fish can be hooked: small baits on small hooks (mostly small fish, a rare larger one), big baits on big hooks (only larger fish) |
+| Reel | Comes spooled with line, so it sets both ways a fight can be lost: its **line strength** (the biggest fish that can be pulled in before the line snaps) and its **capacity** (how far a running fish can go before the spool runs out) — 5 tiers, see Gear Tiers |
 | Lure type | What is attracted, and how the lure is used — **lures and flies never wear out**; each is a unique randomly-rolled craft (see Lures & Flies) |
 
 ### Loadouts
 
-- **Ledgering:** rod, line, reel, hooks, weights, bait
-- **Float fishing:** rod, line, reel, hooks, float, bait
-- **Lure fishing:** rod, line, reel, lure — no hooks, no bait
-- **Fly fishing:** fly rod, line, reel, flies — no hooks, no bait. Line strength and reel capacity apply exactly like the other rod methods: a running surface fish can spool you out.
+- **Ledgering:** ledger rod, reel, bait (the rod carries its own weight)
+- **Float fishing:** float rod, reel, bait (the rod carries its own float; the float sets the bait's depth)
+- **Lure fishing:** lure rod, reel, lure — no bait
+- **Fly fishing:** fly rod, reel, flies — no bait. Line strength and capacity apply exactly like the other rod methods: a running surface fish can spool you out.
+
+Three items for any method, and only the bait (or lure) changes between casts.
 
 ### Gear Tiers
 
-Rods, lines and reels each have **5 tiers** (placeholder names Tier 1–5), gated on Fishing level, evenly spaced to 70.
+Rods and reels each have **5 tiers** (placeholder names Tier 1–5), gated on Fishing level, evenly spaced to 70.
 
 **Rods** — one ladder per method. Tier 1 requires the method's unlock level. Tiers improve **cast distance only** — pacing comes from fish choice, not gear speed.
 
@@ -137,9 +137,9 @@ Rods, lines and reels each have **5 tiers** (placeholder names Tier 1–5), gate
 | Lure rod | 15 | 29 | 43 | 56 | 70 |
 | Fly rod | 45 | 51 | 58 | 64 | 70 |
 
-**Line & reel** — shared ladders across all rod methods (not per-method). They gate the same goal from two angles, and you need **both** at tier X to reliably land size-X fish:
+**Reels** — one ladder shared across all rod methods (not per-method). A reel's line strength and capacity gate the same goal from two angles, and come together, so a tier-X reel reliably lands size-X fish:
 
-| Tier | Level | Line strength lands… | Reel capacity survives… |
+| Tier | Level | Line strength lands… | Capacity survives… |
 |---:|---:|---|---|
 | T1 | 1 | Tiny & Small fish | short runs |
 | T2 | 18 | Med fish | medium runs |
@@ -148,13 +148,13 @@ Rods, lines and reels each have **5 tiers** (placeholder names Tier 1–5), gate
 | T5 | 70 | **Legend fish** (the 2,000+ XP Trophies) | everything |
 
 - Too-weak **line**: the fish can be hooked but snaps you before landing — a *tension* failure.
-- Too-small **reel**: the fish runs past your spool and escapes even on strong line — a *spool-out* failure.
+- Too-little **capacity**: the fish runs past your spool and escapes — a *spool-out* failure. (The two stay separate in the fight, with separate skills to learn — reeling in against tension, and not letting a runner go too far — even though one item carries both.)
 - **Nets, traps and pots have no line** — they bypass these tiers entirely; their gate is the method level (net/pot tiers reserved for 71–99).
-- **Hooks, floats and weights are not level-gated.** Hooks come in sizes (tiny → big) — pick the size that fits your bait and the fish you're after. There is exactly **one float** and **one weight** — universal utility items with no tiers and no choices to make.
+- **No separate hooks, floats or weights.** Hook size comes with the bait (choose the bait for the fish you're after); the float and the weight come with the float and ledger rods. (They were universal items with no tiers and no choices to make: only inventory to manage.)
 
 ### Gear & Economy
 
-All fishing gear — rods, lines, reels, hooks, floats, weights, lures, flies, nets, traps, pots and boats — is **player-crafted** through other skills (woodworking, smithing, etc.). Recipes and tier costs live with those skills, not in this document. Lures and flies never wear out; they're simply priced as premium items to balance their permanence.
+All fishing gear — rods, reels, lures, flies, nets, traps, pots and boats — is **player-crafted** through other skills (woodworking, smithing, etc.). Recipes and tier costs live with those skills, not in this document. Lures and flies never wear out; they're simply priced as premium items to balance their permanence.
 
 ### Bite Indicators & Hooking
 
@@ -248,7 +248,7 @@ Target: a focused player reaches **level 70 in ~30 hours** (1,669,239 XP, ~55k X
 
 ## Fish & Biomes
 
-> Every value here is placeholder-tunable. **Size** drives hook size (what can be hooked) and — for rod-caught fish — the minimum line & reel tier (see Gear Tiers). Every fish also carries the trait tags from **Fish Traits & Attraction** (diet, temperament, depth, shape, schooling, activity, color). Water types are simple: **freshwater** = rivers & lakes, **saltwater** = sea — nothing lives in both. The full species pool lives in `fish_reference.md`.
+> Every value here is placeholder-tunable. **Size** drives hook size (what can be hooked: see Bait) and — for rod-caught fish — the minimum reel tier (see Gear Tiers). Every fish also carries the trait tags from **Fish Traits & Attraction** (diet, temperament, depth, shape, schooling, activity, color). Water types are simple: **freshwater** = rivers & lakes, **saltwater** = sea — nothing lives in both. The full species pool lives in `fish_reference.md`.
 
 ### Fish Traits & Attraction
 
@@ -281,7 +281,7 @@ Codes follow the Groups column above: Insect · Fish · Bottom · Crust · Plank
 
 | Fish | Diet | Temp. | Depth | Shape | School | Activity | Color |
 |---|---|---|---|---|---|---|---|
-| **Temperate rivers** | | | | | | | |
+| **Grassland rivers** | | | | | | | |
 | Dace | Insect | Skitt | Mid | Torp | Shoal | Day | Nat |
 | Gudgeon | Bottom | Opp | Bot | Torp | Loose | Day | Nat |
 | River snail | Scav | Opp | Bot | — | Loose | Night | — |
@@ -295,7 +295,7 @@ Codes follow the Groups column above: Insect · Fish · Bottom · Crust · Plank
 | Noble crayfish | Scav | Opp | Bot | — | Sol | Night | — |
 | Bream | Bottom | Opp | Bot | Deep | Shoal | Night | Nat |
 | Eel | Scav | Opp | Bot | Eel | Sol | Night | — |
-| Chinese mitten crab | Scav | Opp | Bot | — | Shoal | Night | — |
+| Mitten crab | Scav | Opp | Bot | — | Shoal | Night | — |
 | Zander | Fish | Aggr | Mid | Torp | Loose | Night | Nat |
 | Barbel | Bottom | Opp | Bot | Torp | Loose | Day | Nat |
 | Pike | Fish | Aggr | Mid | Torp | Sol | Day | Flash |
@@ -303,14 +303,14 @@ Codes follow the Groups column above: Insect · Fish · Bottom · Crust · Plank
 | Grayling | Insect | Skitt | Mid | Torp | Loose | Day | Nat |
 | Sea trout | Fish | Skitt | Mid | Torp | Loose | Night | Nat |
 | Salmon | Fish | Aggr | Mid | Torp | Sol | Day | Flash |
-| **Temperate lakes** | | | | | | | |
+| **Grassland lakes** | | | | | | | |
 | Crucian carp | Bottom | Skitt | Bot | Deep | Shoal | Dawn/Dusk | Nat |
 | Rainbow trout | Insect | Aggr | Mid | Torp | Loose | Day | Flash |
 | Tench | Bottom | Skitt | Bot | Deep | Loose | Night | Nat |
 | Common carp | Bottom | Skitt | Bot | Deep | Loose | Dawn/Dusk | Nat |
-| Arctic charr | Insect | Opp | Mid | Torp | Loose | Day | Flash |
+| Deep charr | Insect | Opp | Mid | Torp | Loose | Day | Flash |
 | Wels catfish | Fish | Aggr | Bot | Eel | Sol | Night | — |
-| **Temperate coast & shallows** | | | | | | | |
+| **Grassland coast & shallows** | | | | | | | |
 | Grey mullet | Herb | Skitt | Surf | Deep | Shoal | Day | Nat |
 | Mackerel | Plank | Aggr | Mid | Torp | Shoal | Day | Flash |
 | Flounder | Scav | Opp | Bot | Flat | Sol | Day | Nat |
@@ -336,46 +336,46 @@ Codes follow the Groups column above: Insect · Fish · Bottom · Crust · Plank
 | Velvet crab | Scav | Aggr | Bot | — | Sol | Night | — |
 | Edible crab | Scav | Opp | Bot | — | Sol | Night | — |
 | Common lobster | Scav | Opp | Bot | — | Sol | Night | — |
-| **Northern rivers & lakes** | | | | | | | |
+| **Highland rivers & lakes** | | | | | | | |
 | Rusty crayfish | Scav | Opp | Bot | — | Sol | Night | — |
 | Burbot | Scav | Opp | Bot | Eel | Sol | Night | — |
-| Arctic grayling | Insect | Skitt | Mid | Torp | Loose | Day | Nat |
-| Arctic char | Insect | Opp | Mid | Torp | Loose | Day | Flash |
+| Frost grayling | Insect | Skitt | Mid | Torp | Loose | Day | Nat |
+| Frost char | Insect | Opp | Mid | Torp | Loose | Day | Flash |
 | Lake trout | Fish | Aggr | Bot | Torp | Sol | Day | Nat |
 | Inconnu | Fish | Aggr | Mid | Torp | Shoal | Day | Flash |
-| Northern pike (giant) | Fish | Aggr | Mid | Torp | Sol | Day | Flash |
+| Giant pike | Fish | Aggr | Mid | Torp | Sol | Day | Flash |
 | Taimen | Fish | Aggr | Mid | Torp | Sol | Dawn/Dusk | Flash |
-| **Northern seas** | | | | | | | |
+| **Cold seas** | | | | | | | |
 | Capelin | Plank | Opp | Mid | Torp | Shoal | Night | — |
-| Sea-run arctic char | Fish | Aggr | Mid | Torp | Shoal | Day | Flash |
-| Pacific salmon | Fish | Aggr | Mid | Torp | Shoal | Day | Flash |
-| Northern shrimp | Plank | Opp | Bot | — | Shoal | Night | — |
+| Sea char | Fish | Aggr | Mid | Torp | Shoal | Day | Flash |
+| Run salmon | Fish | Aggr | Mid | Torp | Shoal | Day | Flash |
+| Cold-water shrimp | Plank | Opp | Bot | — | Shoal | Night | — |
 | Lumpfish | Scav | Opp | Bot | Deep | Loose | Day | — |
 | Redfish | Plank | Opp | Mid | Deep | Shoal | Day | — |
 | Wolffish | Crust | Aggr | Bot | Eel | Sol | Day | Nat |
-| Greenland halibut | Scav | Opp | Bot | Flat | Sol | Day | — |
-| Atlantic halibut | Fish | Aggr | Bot | Flat | Sol | Day | Nat |
+| Grey halibut | Scav | Opp | Bot | Flat | Sol | Day | — |
+| Great halibut | Fish | Aggr | Bot | Flat | Sol | Day | Nat |
 | Snow crab | Scav | Opp | Bot | — | Shoal | Night | — |
 | King crab | Scav | Opp | Bot | — | Loose | Night | — |
-| **Tropical rivers** | | | | | | | |
-| Rice-paddy crab | Scav | Opp | Bot | — | Loose | Night | — |
+| **Volcanic rivers** | | | | | | | |
+| Paddy crab | Scav | Opp | Bot | — | Loose | Night | — |
 | Piranha | Fish | Aggr | Mid | Deep | Shoal | Day | Flash |
-| African tigerfish | Fish | Aggr | Mid | Torp | Shoal | Day | Flash |
+| Tigerfish | Fish | Aggr | Mid | Torp | Shoal | Day | Flash |
 | Redtail catfish | Scav | Opp | Bot | Eel | Sol | Night | — |
 | Arowana | Fish | Aggr | Surf | Torp | Sol | Day | Flash |
-| Amazon river prawn | Scav | Opp | Bot | — | Shoal | Night | — |
+| River prawn | Scav | Opp | Bot | — | Shoal | Night | — |
 | Peacock bass | Fish | Aggr | Mid | Deep | Loose | Day | Flash |
 | Giant snakehead | Fish | Aggr | Mid | Torp | Sol | Day | Flash |
 | Golden dorado | Fish | Aggr | Mid | Torp | Loose | Day | Flash |
-| Nile perch | Fish | Aggr | Mid | Torp | Sol | Day | Nat |
+| Great perch | Fish | Aggr | Mid | Torp | Sol | Day | Nat |
 | Mahseer | Herb | Opp | Mid | Torp | Loose | Day | Flash |
 | Giant river prawn | Scav | Opp | Bot | — | Sol | Night | — |
 | Electric eel | Fish | Aggr | Mid | Eel | Sol | Night | — |
 | Goonch catfish | Fish | Aggr | Bot | Eel | Sol | Night | — |
 | Goliath tigerfish | Fish | Aggr | Mid | Torp | Sol | Day | Flash |
 | Arapaima | Fish | Aggr | Surf | Torp | Sol | Day | Nat |
-| Mekong giant catfish | Plank | Opp | Bot | Eel | Sol | Day | Nat |
-| **Tropical coast & reef** | | | | | | | |
+| Giant catfish | Plank | Opp | Bot | Eel | Sol | Day | Nat |
+| **Warm coast & reef** | | | | | | | |
 | Anchovy | Plank | Opp | Mid | Torp | Shoal | Night | — |
 | Sergeant major | Herb | Aggr | Mid | Deep | Shoal | Day | Flash |
 | Mangrove snapper | Fish | Opp | Bot | Torp | Loose | Night | Nat |
@@ -386,27 +386,27 @@ Codes follow the Groups column above: Insect · Fish · Bottom · Crust · Plank
 | Giant trevally | Fish | Aggr | Mid | Deep | Loose | Day | Flash |
 | Mud crab | Scav | Aggr | Bot | — | Sol | Night | — |
 | Spiny lobster | Scav | Opp | Bot | — | Loose | Night | — |
-| **Australasia** | | | | | | | |
-| Australian bream | Crust | Opp | Bot | Deep | Loose | Dawn/Dusk | Nat |
-| Australian bass | Fish | Aggr | Mid | Torp | Loose | Night | Flash |
+| **Meadow waters & coast** | | | | | | | |
+| Silver bream | Crust | Opp | Bot | Deep | Loose | Dawn/Dusk | Nat |
+| Rock bass | Fish | Aggr | Mid | Torp | Loose | Night | Flash |
 | Golden perch | Fish | Opp | Mid | Deep | Loose | Night | Flash |
 | Flathead | Fish | Aggr | Bot | Flat | Sol | Day | Nat |
 | Barramundi | Fish | Aggr | Mid | Torp | Sol | Night | Nat |
 | Mangrove jack | Fish | Aggr | Bot | Deep | Sol | Day | Flash |
 | Snapper | Crust | Opp | Bot | Deep | Shoal | Dawn/Dusk | Nat |
-| Murray cod | Fish | Aggr | Bot | Deep | Sol | Night | Nat |
+| Giant cod | Fish | Aggr | Bot | Deep | Sol | Night | Nat |
 | Mulloway | Fish | Opp | Bot | Torp | Loose | Night | Nat |
 | Yellowtail kingfish | Fish | Aggr | Mid | Torp | Shoal | Day | Flash |
-| NZ whitebait | Plank | Opp | Mid | Torp | Shoal | Day | — |
+| Spring whitebait | Plank | Opp | Mid | Torp | Shoal | Day | — |
 | Yabby | Scav | Opp | Bot | — | Loose | Night | — |
 | Redclaw crayfish | Scav | Opp | Bot | — | Sol | Night | — |
-| Spiny (Murray) crayfish | Scav | Opp | Bot | — | Sol | Night | — |
+| Spiny crayfish | Scav | Opp | Bot | — | Sol | Night | — |
 | Marron | Scav | Opp | Bot | — | Sol | Night | — |
-| Southern rock lobster | Scav | Opp | Bot | — | Loose | Night | — |
-| **Open ocean** | | | | | | | |
+| Rock lobster | Scav | Opp | Bot | — | Loose | Night | — |
+| **Open sea** | | | | | | | |
 | Dab | Scav | Opp | Bot | Flat | Loose | Day | Nat |
 | Haddock | Crust | Opp | Bot | Torp | Shoal | Day | Nat |
-| Dover sole | Scav | Opp | Bot | Flat | Sol | Night | Nat |
+| Sole | Scav | Opp | Bot | Flat | Sol | Night | Nat |
 | Turbot | Fish | Aggr | Bot | Flat | Sol | Day | Nat |
 | Hake | Fish | Aggr | Mid | Torp | Shoal | Night | Nat |
 | Ling | Crust | Opp | Bot | Eel | Sol | Day | Nat |
@@ -415,8 +415,8 @@ Codes follow the Groups column above: Insect · Fish · Bottom · Crust · Plank
 
 One row per species — fish caught by two methods (plaice, cod) or two life phases (arctic char) list once. Trap content skips shape & color. Night dominates the catfish, cod family and snappers — this pass makes the game's **night-fishing** content visible for the first time.
 
-### Temperate rivers
-*The classic leveling river — European flavor.*
+### Grassland rivers
+*The classic leveling river, in the humans' grasslands.*
 
 | Fish | Size | Method | lv | XP |
 |---|---|---|---:|---:|
@@ -433,7 +433,7 @@ One row per species — fish caught by two methods (plaice, cod) or two life pha
 | Noble crayfish | Small–Med | Cage | 18 | 250 |
 | Bream | Med | Float | 18 | 330 |
 | Eel | Med | Ledger / Float — night only | 28 | 380 |
-| Chinese mitten crab | Small–Med | Cage — autumn run | 32 | 500 |
+| Mitten crab | Small–Med | Cage — autumn run | 32 | 500 |
 | Zander | Large | Lure — night | 36 | 550 |
 | Barbel | Large | Ledger | 38 | 450 |
 | Pike | Large–Trophy | Lure | 38 | 700 |
@@ -444,8 +444,8 @@ One row per species — fish caught by two methods (plaice, cod) or two life pha
 
 *Sea trout and salmon appear during seasonal river runs — see Events.*
 
-### Temperate lakes
-*Stillwater fishing — European flavor with NA sportfish.*
+### Grassland lakes
+*Stillwater fishing in the grasslands.*
 
 | Fish | Size | Method | lv | XP |
 |---|---|---|---:|---:|
@@ -453,11 +453,11 @@ One row per species — fish caught by two methods (plaice, cod) or two life pha
 | Rainbow trout (stocked) | Med | Lure | 20 | 400 |
 | Tench | Med | Float / Ledger | 22 | 350 |
 | Common carp | Large | Ledger — slow bites | 40 | 750 |
-| Arctic charr | Small–Med | Lure — deep water | 50 | 800 |
+| Deep charr | Small–Med | Lure — deep water | 50 | 800 |
 | Wels catfish | Trophy | Ledger — live bait | 55 | 1,500 |
 
-### Temperate coast & shallows
-*Shore, piers and rock marks — European flavor.*
+### Grassland coast & shallows
+*Shore, piers and rock marks along the grassland coasts.*
 
 | Fish | Size | Method | lv | XP |
 |---|---|---|---:|---:|
@@ -487,62 +487,62 @@ One row per species — fish caught by two methods (plaice, cod) or two life pha
 | Edible crab | Med–Large | Cage / Pot | 45 | 450 |
 | Common lobster | Large | Pot | 70 | 750 |
 
-### Northern rivers & lakes
-*Subarctic fresh water — North American / Siberian flavor.*
+### Highland rivers & lakes
+*Cold, fast mountain rivers and deep glacial lakes in the dwarves' highlands.*
 
 | Fish | Size | Method | lv | XP |
 |---|---|---|---:|---:|
 | Rusty crayfish | Small | Cage | 22 | 220 |
 | Burbot | Med | Ledger — night, winter | 45 | 600 |
-| Arctic grayling | Med | Fly | 50 | 700 |
-| Arctic char | Med–Large | Fly / Lure | 50 | 800 |
+| Frost grayling | Med | Fly | 50 | 700 |
+| Frost char | Med–Large | Fly / Lure | 50 | 800 |
 | Lake trout | Large | Lure | 55 | 1,000 |
 | Inconnu (sheefish) | Large | Lure | 58 | 1,200 |
-| Northern pike (giant strain) | Trophy | Lure | 58 | 1,400 |
+| Giant pike | Trophy | Lure | 58 | 1,400 |
 | Taimen | Trophy | Lure | 62 | 1,800 |
 
-### Northern seas
-*Cold open water — North Atlantic / North Pacific flavor.*
+### Cold seas
+*Cold open water off the highland coasts.*
 
 | Fish | Size | Method | lv | XP |
 |---|---|---|---:|---:|
 | Capelin | Tiny | Cast net | 30 | 130 |
-| Sea-run arctic char | Med | Fly — river mouths | 52 | 900 |
-| Pacific salmon (5 species) | Med–Large | Fly — rivers, seasonal runs | 55–65 | 900–1,800 |
-| Northern shrimp | Tiny | Cage | 65 | 100 |
+| Sea char | Med | Fly — river mouths | 52 | 900 |
+| Run salmon (5 kinds) | Med–Large | Fly — rivers, seasonal runs | 55–65 | 900–1,800 |
+| Cold-water shrimp | Tiny | Cage | 65 | 100 |
 | Lumpfish | Small | Cage — bycatch | 65 | 150 |
 | Redfish | Small–Med | Trawl | 62 | 500 |
 | Wolffish | Large | Trawl / Ledger | 64 | 900 |
-| Greenland halibut | Large | Trawl | 66 | 700 |
-| Atlantic halibut | Trophy | Trawl | 69 | 2,500 |
+| Grey halibut | Large | Trawl | 66 | 700 |
+| Great halibut | Trophy | Trawl | 69 | 2,500 |
 | Snow crab | Med | Pot | 70 | 500 |
 | King crab | Large–Trophy | Pot | 70 | 900 |
 
-### Tropical rivers
-*Jungle rivers — Amazon, Congo and Mekong flavor.*
+### Volcanic rivers
+*Warm, spring-fed rivers through the volcanic lands: the game's "tropical" fresh water.*
 
 | Fish | Size | Method | lv | XP |
 |---|---|---|---:|---:|
-| Rice-paddy crab | Tiny | Cage | 10 | 120 |
+| Paddy crab | Tiny | Cage | 10 | 120 |
 | Piranha | Small | Lure | 15 | 220 |
-| African tigerfish | Med | Lure | 30 | 550 |
+| Tigerfish | Med | Lure | 30 | 550 |
 | Redtail catfish | Large | Ledger | 36 | 550 |
 | Arowana | Med | Lure — surface | 34 | 600 |
-| Amazon river prawn | Small | Cage | 35 | 300 |
+| River prawn | Small | Cage | 35 | 300 |
 | Peacock bass | Med–Large | Lure | 36 | 800 |
 | Giant snakehead | Large | Lure | 40 | 850 |
 | Golden dorado | Large | Lure | 44 | 1,000 |
-| Nile perch | Trophy | Lure | 54 | 1,100 |
+| Great perch | Trophy | Lure | 54 | 1,100 |
 | Mahseer | Large | Ledger / Lure | 50 | 1,200 |
 | Giant river prawn | Large | Cage | 45 | 400 |
 | Electric eel | Large | Ledger — shock hazard | 55 | 300 |
 | Goonch catfish | Trophy | Ledger — live bait | 58 | 1,600 |
 | Goliath tigerfish | Large–Trophy | Lure | 70 | 2,000 |
 | Arapaima | Trophy | Ledger — live bait | 70 | 2,600 |
-| Mekong giant catfish | Trophy | Ledger | 70 | 3,000 |
+| Giant catfish | Trophy | Ledger | 70 | 3,000 |
 
-### Tropical coast & reef
-*Warm shallows and coral — worldwide flavor.*
+### Warm coast & reef
+*Warm shallows and reefs along the volcanic shores.*
 
 | Fish | Size | Method | lv | XP |
 |---|---|---|---:|---:|
@@ -557,37 +557,37 @@ One row per species — fish caught by two methods (plaice, cod) or two life pha
 | Mud crab | Large | Pot | 70 | 600 |
 | Spiny lobster (crawfish) | Large | Pot | 70 | 700 |
 
-### Australasia
-*Rivers, coasts and reefs down under.*
+### Meadow waters & coast
+*The elves' enchanted meadows: clear streams, ponds and bright shores.*
 
 | Fish | Size | Method | lv | XP |
 |---|---|---|---:|---:|
-| Australian bream | Small–Med | Float / Ledger | 28 | 400 |
-| Australian bass | Med | Lure | 30 | 500 |
+| Silver bream | Small–Med | Float / Ledger | 28 | 400 |
+| Rock bass | Med | Lure | 30 | 500 |
 | Golden perch | Med | Lure | 35 | 650 |
 | Flathead | Med–Large | Lure | 38 | 600 |
 | Barramundi | Large | Lure | 45 | 1,000 |
 | Mangrove jack | Med | Lure | 48 | 800 |
 | Snapper | Med–Large | Ledger — boat | 50 | 750 |
-| Murray cod | Trophy | Ledger / Lure | 58 | 1,500 |
+| Giant cod | Trophy | Ledger / Lure | 58 | 1,500 |
 | Mulloway | Large–Trophy | Ledger — surf | 60 | 1,400 |
 | Yellowtail kingfish | Large | Lure — boat | 62 | 1,600 |
-| NZ whitebait | Tiny | Cast net — seasonal run | 35 | 250 |
+| Spring whitebait | Tiny | Cast net — seasonal run | 35 | 250 |
 | Yabby | Small | Cage | 15 | 180 |
 | Redclaw crayfish | Med | Cage | 25 | 200 |
-| Spiny (Murray) crayfish | Med | Cage | 40 | 350 |
+| Spiny crayfish | Med | Cage | 40 | 350 |
 | Marron | Med–Large | Cage | 52 | 700 |
-| Southern rock lobster | Large | Pot | 70 | 800 |
+| Rock lobster | Large | Pot | 70 | 800 |
 
-### Open ocean
-*Offshore boat fishing — trawling grounds and deep ledger marks.*
+### Open sea
+*Offshore boat fishing: trawling grounds and deep ledger marks.*
 
 | Fish | Size | Method | lv | XP |
 |---|---|---|---:|---:|
 | Dab | Small | Trawl | 55 | 300 |
 | Plaice | Small–Med | Trawl | 55 | 400 |
 | Haddock | Med | Trawl | 58 | 400 |
-| Dover sole | Med | Trawl | 60 | 450 |
+| Sole | Med | Trawl | 60 | 450 |
 | Cod | Large | Trawl / Ledger — boat | 63 | 700 |
 | Turbot | Large | Trawl | 66 | 800 |
 | Hake | Med–Large | Trawl | 67 | 650 |
@@ -600,18 +600,31 @@ One row per species — fish caught by two methods (plaice, cod) or two life pha
 
 - **Deep trawl:** orange roughy, black scabbardfish, roundnose grenadier, blue ling, alfonsino
 - **Big-game trolling** (future method): blue/striped/black marlin, sailfish, swordfish, yellowfin & bluefin tuna, wahoo, mahi-mahi
-- **Quest & no-catch:** coelacanth, oarfish (sighting event), giant squid, Greenland shark, great white shark, whale shark, manta ray, sawfish, beluga sturgeon
+- **Quest & no-catch:** coelacanth, oarfish (sighting event), giant squid, sleeper shark, great white shark, whale shark, manta ray, sawfish, beluga sturgeon
 
 ### Events (migratory & seasonal)
 
-- **Salmon & sea trout runs** — temperate rivers, autumn
-- **Pacific salmon runs** — northern rivers, seasonal
-- **Whitebait runs** — NZ river mouths, spring
-- **Eel nights** — temperate rivers & lakes, after dark
-- **Mitten crab runs** — temperate rivers, autumn; river traps only
-- **Catch-and-release quest fish** — beluga sturgeon, European sea sturgeon, giant barb
+- **Salmon & sea trout runs** — grassland rivers, autumn
+- **Run salmon runs** — highland rivers, seasonal
+- **Whitebait runs** — meadow river mouths, spring
+- **Eel nights** — grassland rivers & lakes, after dark
+- **Mitten crab runs** — grassland rivers, autumn; river traps only
+- **Catch-and-release quest fish** — beluga sturgeon, sea sturgeon, giant barb
 
 ---
+
+## Decisions from review
+
+Made when the design was reviewed against the game as it is (see `docs/plan-fishing.md` for how it's built):
+
+- **Setting.** Venture is a fantasy world: species keep generic real names (trout, pike, crayfish) but lose real places and peoples (no Nile, Murray, Pacific…), and the regions are the game's biomes rather than Earth's: **grassland** waters (the humans' lands: the old "temperate" tables, and the slice), **highland** waters (the dwarves' mountains: the old "northern" tables), **volcanic** rivers and warm shores (the old "tropical" tables), **meadow** waters (the elves' meadows: the old Australasian table) and the **open sea**. Names get a full pass with the world's.
+- **Level cap.** Skills level to 99 on the same curve; characters stay capped at 60. (The game already counts skill experience with the character curve.)
+- **Gear.** Three items a method (rod, reel, bait or lure): the reel carries its line, bait carries its hook size, rods carry their float or weight (see Gear Components).
+- **Shadows are each player's own.** What swims at a spot is decided by the server per player, so players never fight over one shadow, and anyone can fish anywhere. Shared, contested fish (a legendary that surfaces once an hour for everyone) can come later, as events.
+- **Traps** are placed in the world by their owner and visible to everyone, but only their owner can check or take them. They keep soaking while their owner is away (saved with the character), one per player in the slice.
+- **The server decides everything.** Bites are scheduled by the server; hook presses are judged against when the bite happened, with room for network delay (hook windows no tighter than about a third of a second); the fight is a small simulation in shared code that the client runs ahead for responsiveness and the server confirms (as movement already works). This is also the defence against bots, the bane of fishing in every MMO.
+- **Day and night** now exist in the game (a two-hour day), so the activity trait can work from the start: night fish are night fish.
+- **Economy.** Fish sell to vendors, and will also be cooked into food (which already heals), so catches have a use besides money.
 
 ## Open Questions
 

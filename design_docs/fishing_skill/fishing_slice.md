@@ -1,6 +1,8 @@
 # Fishing — Vertical Slice (levels 1–20)
 
 > Implementation spec for the first playable prototype. Companion to `fishing.md` (the full design) — this document copies in everything needed to build and playtest **levels 1–20**, and points at `fishing.md` for anything deferred. Numbers are placeholder-tunable.
+>
+> **Revised after review:** the slice is set in the grassland around the starting town (Oakwengate); the gear is simplified (rod, reel, bait or lure: the reel carries its line, bait carries its hook size, no separate floats or weights); money is Miasma; shadows are each player's own; traps keep soaking while their owner is away. See "Decisions from review" in `fishing.md`, and `docs/plan-fishing.md` for how it's built.
 
 ## Purpose
 
@@ -14,11 +16,11 @@ A self-contained fishing loop a playtester can pick up cold: create character �
 |---|---|
 | Methods | Ledgering (lv 1), Cage traps (lv 1), Float fishing (lv 5), Lure fishing (lv 15) |
 | Mechanics | Full rod loop: cast → shadows → indicator → hook → fight → land |
-| Gear | T1–T2 rods, line & reel T1–T2, hooks, one float, one weight, bait, 2 static lures, cage trap |
-| Fish | ~26 species across 3 biomes (temperate river, temperate lake, temperate coast) |
+| Gear | T1–T2 rods, reels T1–T2, bait (each on its own hook size), 2 static lures, cage trap |
+| Fish | ~20 species across 3 waters of the grassland (river, lake, coast) |
 | Economy | Starter kit + vendor (sells gear & bait, buys fish) |
 
-**Deferred** (see `fishing.md`): cast nets (25), fly fishing (45), trawling (55), deep-sea pots (70), random lure rolls (static lures instead), day/night cycle (all fish always active), events & seasonal runs, gear crafting (vendor instead), line/reel T3+, all 70+ content.
+**Deferred** (see `fishing.md`): cast nets (25), fly fishing (45), trawling (55), deep-sea pots (70), random lure rolls (static lures instead), activity windows (all fish always active at first — the game now has day and night, so they're an easy addition once the core loop is proven), events & seasonal runs, gear crafting (vendor instead), reels T3+, all 70+ content.
 
 ## Playtest Goals
 
@@ -58,14 +60,14 @@ Same curve as the main design — XP to go from `level` to next: `round(100 × l
 
 ## The Map
 
-One temperate river valley, walkable end to end in ~1 minute:
+The grassland around the starting town (Oakwengate, on the coast), with a river, a lake and the shore within about a minute's walk:
 
 | Spot | Water | Methods | Notes |
 |---|---|---|---|
 | **River stretch** | River (fresh) | Ledger, Float, Lure, river Cages | The classic leveling water; starts at the vendor, runs upstream |
 | **Lake** | Lake (fresh) | Ledger, Float, Lure | A short walk from the river; stillwater species |
 | **Shore** | Sea (salt) | Ledger, Float, coast Cages | Downstream end; pier + beach; cast-net shoals NOT in slice |
-| **Vendor stall** | — | — | Spawn point. Sells gear/bait, buys fish |
+| **Vendor stall** | — | — | In the starting town. Sells gear/bait, buys fish |
 
 ---
 
@@ -104,13 +106,13 @@ After hooking, the fish fights:
 - The fish **tires** in bursts (tension demand drops between runs) — the landing window.
 - Landed fish → inventory + its XP.
 
-Two failure axes, two gear counters: **line strength** (tension), **reel size** (spool). Fish size class gates both (below).
+Two failure axes, both countered by the reel: its **line strength** (tension) and its **capacity** (spool). Fish size class gates both (below).
 
 ### Attraction (bait & lures)
 
 What bites depends on trait matching:
 
-- **Bait** maps to **diet** — worms → insect-eaters, sweetcorn → herbivores, shrimp bits → crustacean/crayfish traps.
+- **Bait** maps to **diet** — worms → insect-eaters, sweetcorn → herbivores, shrimp bits → crustacean/crayfish traps — and each bait comes on a hook of its own size, which sets the size of fish it can hook.
 - **Lures** carry a fixed trait profile (slice uses static items; random rolls come later):
 
 | Static lure | Profile | Effect |
@@ -146,31 +148,32 @@ Traps earn less XP/hour than active fishing (by design) but run while the player
 
 Higher tier = visibly longer cast — reach better shadows. No speed or catch-rate bonus.
 
-### Line & Reel (shared across methods)
+### Reels (shared across methods; spooled with their line)
 
-Both T1 at level 1; T2 at level 18. **Both** must be T2 to reliably land Med fish.
+T1 at level 1; T2 at level 18. A T2 reel reliably lands Med fish.
 
-| Tier | Level | Line lands… | Reel survives… |
+| Tier | Level | Line lands… | Capacity survives… |
 |---:|---:|---|---|
 | T1 | 1 | Tiny & Small fish | short runs |
 | T2 | 18 | Med fish | medium runs |
 
-Failure rules: too-weak **line** = hooked fish snaps you (tension); too-small **reel** = fish spools you (runs past capacity) even on strong line. Cast-net/trap content has no line — traps bypass tiers.
+Failure rules: too-weak **line** = hooked fish snaps you (tension); too little **capacity** = fish spools you (runs past it). Trap content has no line — traps bypass tiers.
 
-### Hooks, Float, Weight
+### Hooks, floats and weights
 
-- **Hooks**: small and medium sizes in slice. Size gates bait size and hookable fish size (small hook = small fish mostly, rare larger; medium hook = mostly Med, small rarely). No level gate.
-- **Float**: one universal float (float fishing).
-- **Weight**: one universal weight (ledgering).
+Not separate items: each bait comes on its own hook size (see Bait), the float rod carries its float and the ledger rod its weight.
 
 ### Bait (consumable, one per cast)
 
-| Bait | Diet match | Used for |
-|---|---|---|
-| Worm | Insect-eater | Ledger & float — river fish |
-| Sweetcorn | Herbivore | Ledger & float — mullet, carp-adjacent |
-| Shrimp bits | Crustacean-eater | Trap bait — crayfish & crabs |
-| Live shrimp | Fish-eater | Trap bait — predators (higher tier, vendor) |
+| Bait | Diet match | Hook | Used for |
+|---|---|---|---|
+| Worm | Insect-eater | Small | Ledger & float — river fish |
+| Sweetcorn | Herbivore | Small | Ledger & float — mullet, carp-adjacent |
+| Paste ball | Bottom-feeder | Medium | Ledger & float — bream, tench, crucians |
+| Shrimp bits | Crustacean-eater | — | Trap bait — crayfish & crabs |
+| Live shrimp | Fish-eater | Medium | Ledger & float — perch and other predators (vendor) |
+
+(Small hooks hook mostly Tiny and Small fish, and rarely a larger one; medium hooks mostly Med fish, and rarely a small one. Bream needs a medium-hook bait.)
 
 ### Traps
 
@@ -181,7 +184,7 @@ Failure rules: too-weak **line** = hooked fish snaps you (tension); too-small **
 
 ### Acquisition
 
-Starter kit (given at spawn): ledger rod T1, line T1, reel T1, small hooks ×20, weight ×1, worm ×20, cage trap ×1, shrimp bits ×10. Everything else from the **vendor** (see Economy).
+Starter kit (given to new characters): ledger rod T1, reel T1, worm ×20, cage trap ×1, shrimp bits ×10. Everything else from the **vendor** (see Economy).
 
 ---
 
@@ -189,7 +192,7 @@ Starter kit (given at spawn): ledger rod T1, line T1, reel T1, small hooks ×20,
 
 Traits per fish: **Diet** (Insect/Fish/Bottom/Crust/Plank/Herb/Scav) · **Temp** (Aggr/Opp/Skitt) · **Depth** (Bot/Mid/Surf) · **Size** — sizes drive hook size and the line/reel tier needed. Night/activity: deferred, all fish active always. XP placeholder-tunable.
 
-### Temperate river (fresh)
+### Grassland river (fresh)
 
 | Fish | Size | Method | lv | XP | Diet | Temp | Depth |
 |---|---|---|---:|---:|---|---|---|
@@ -208,14 +211,14 @@ Traits per fish: **Diet** (Insect/Fish/Bottom/Crust/Plank/Herb/Scav) · **Temp**
 
 River trap table draws (weighted): signal crayfish 30% · white-clawed 20% · red swamp 20% · snail 15% · mussel 15% (weights shift with bait; shrimp-bits bait zeroes snail/mussel).
 
-### Temperate lake (fresh)
+### Grassland lake (fresh)
 
 | Fish | Size | Method | lv | XP | Diet | Temp | Depth |
 |---|---|---|---:|---:|---|---|---|
 | Crucian carp | Small | Float | 10 | 210 | Bottom | Skitt | Bot |
 | Rainbow trout (stocked) | Med | **Lure** | 20 | 400 | Insect | Aggr | Mid |
 
-### Temperate shore (salt)
+### Grassland shore (salt)
 
 | Fish | Size | Method | lv | XP | Diet | Temp | Depth |
 |---|---|---|---:|---:|---|---|---|
@@ -245,12 +248,12 @@ Coast trap table draws: brown shrimp 55% · shore crab 30% · whelk 15%.
 
 ## Economy (stub)
 
-Vendor stall at spawn. Placeholder prices ≈ XP/2 per fish (tune freely):
+Vendor stall in the starting town. Placeholder prices in Miasma ≈ XP/2 per fish (tune freely):
 
-- **Sells**: worm 5 / sweetcorn 5 / shrimp-bits 10 / live-shrimp 25 · hooks small 5, medium 10 · float 100 · weight 50 · float rod 250 · lure rod 750 · spinner lure 400 · plug lure 400 · line T2 1,500 · reel T2 1,500 · ledger rod T2 2,000 · cage trap 300
+- **Sells**: worm 5 / sweetcorn 5 / paste ball 8 / shrimp-bits 10 / live-shrimp 25 · float rod 250 · lure rod 750 · spinner lure 400 · plug lure 400 · reel T2 3,000 · ledger rod T2 2,000 · cage trap 300
 - **Buys**: all caught fish (price = XP/2, e.g. dace 55, perch 130, bream 165)
 
-Coins have no other sink in the slice — watch the inflation speed during playtest (note for tuning).
+Miasma has no other sink in the slice — watch the inflation speed during playtest (note for tuning). (Cooking fish into food is the planned use besides selling.)
 
 ---
 
@@ -262,11 +265,11 @@ Coins have no other sink in the slice — watch the inflation speed during playt
 | Fly fishing (lv 45) | Bite Indicators & Hooking | Above level cap |
 | Trawling, deep-sea pots | Method Notes | Above level cap |
 | Random lure rolls & market | Lures & Flies | Slice uses 2 static lures; generation layer untested |
-| Day/night cycle | Fish Traits (Activity) | All fish always active; trait data still recorded |
+| Activity windows (night fish) | Fish Traits (Activity) | All fish always active at first; trait data still recorded; the game's day/night is ready for them |
 | Events, seasonal runs | Events | No run species in slice |
 | Gear crafting | Gear & Economy | Vendor stands in for player-crafted gear |
-| Line/reel T3–T5, Med+ fish beyond bream/mullet | Gear Tiers | Above level cap |
-| Estuary/other biomes, 70+ content | Fish & Biomes | Above level cap |
+| Reels T3–T5, Med+ fish beyond bream/mullet | Gear Tiers | Above level cap |
+| Other waters and biomes, 70+ content | Fish & Biomes | Above level cap |
 
 ---
 
