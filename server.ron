@@ -24,6 +24,8 @@
         max_members: 8,
         // How long (seconds) an invited player has to /accept or /decline.
         invite_seconds: 15.0,
+        // How near (metres) a member must be to a defeated monster to share its experience.
+        share_distance: 60.0,
     ),
     // Characters with admin powers (/setlevel, /reset, /setclass, /setgender), by name.
     admins: ["cat"],

@@ -18,6 +18,9 @@
 //! an invited player is sent the invitation ([`ServerMessage::PartyInvite`])
 //! and told when it's over. The client's party window and frames are only
 //! a view of these, and its buttons send the same commands as the chat.
+//!
+//! Members near a kill share its experience equally (see
+//! [`crate::combat`], which asks [`Parties::members_of`]).
 
 use std::collections::HashMap;
 
@@ -95,6 +98,13 @@ impl Parties {
     /// The party a player is in, if any.
     fn party_of(&self, player: Entity) -> Option<u32> {
         self.parties.iter().find(|(_, party)| party.members.contains(&player)).map(|(&id, _)| id)
+    }
+
+    /// Everyone in `player`'s party, in the order they joined (just
+    /// `player`, if they aren't in one). Only for reading: who's in a party
+    /// only changes here.
+    pub fn members_of(&self, player: Entity) -> Vec<Entity> {
+        self.party_of(player).map_or_else(|| vec![player], |id| self.parties[&id].members.clone())
     }
 
     /// Starts a party called `name` (already a valid name), with `player` in it.
@@ -445,6 +455,7 @@ mod tests {
 
         let tells = parties.accept(bram, &rules, &name);
         assert_eq!(notices(&tells, bram), ["You have joined Wanderers."]);
+        assert_eq!(parties.members_of(bram), [ada, bram]);
         assert_eq!(notices(&tells, ada), ["Bram accepted the party invite."]);
         assert_eq!(notices(&parties.accept(bram, &rules, &name), bram), ["You don't have a party invitation."]);
         assert_eq!(notices(&parties.invite(ada, bram, &rules, 0.0, &name), ada), ["Bram is already in your party."]);
@@ -454,6 +465,8 @@ mod tests {
         assert_eq!(notices(&tells, bram), ["You have left Wanderers."]);
         assert_eq!(notices(&tells, ada), ["Bram has left the party."]);
         assert!(tells.contains(&Tell::NoParty(bram)));
+        assert_eq!(parties.members_of(ada), [ada]);
+        assert_eq!(parties.members_of(bram), [bram], "someone in no party is on their own");
         assert_eq!(notices(&parties.leave(bram, &name), bram), ["You aren't in a party."]);
     }
 

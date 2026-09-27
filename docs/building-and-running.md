@@ -68,6 +68,7 @@ file, and it takes its default. Misspelt settings are reported as errors.
     party: (
         max_members: 8,             // the most players in a party
         invite_seconds: 15.0,       // how long an invited player has to /accept or /decline
+        share_distance: 60.0,       // metres from a kill within which members share its experience
     ),
     admins: ["cat"],    // characters with admin powers (/setlevel, /reset, /setclass), by name
 )

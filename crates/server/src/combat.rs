@@ -9,8 +9,9 @@
 //! levelling up, respawning) and when a monster gives up a fight and goes
 //! home ([`crate::monsters`]).
 //!
-//! A monster that dies gives its killer experience, and is removed shortly
-//! after. A player who dies wakes up at the nearest respawn point (see
+//! A monster that dies gives its killer experience (split equally with the
+//! members of their party nearby, using `venture_rpg::split_experience`), and
+//! is removed shortly after. A player who dies wakes up at the nearest respawn point (see
 //! `respawn_points.ron` in the content), with full health.
 //!
 //! Players also have [`Mana`], which abilities spend (see [`crate::abilities`]) and
@@ -25,7 +26,7 @@ use venture_navigation::Point;
 use venture_protocol::{AttackResult, ServerMessage};
 use venture_rpg::abilities::{REST_REGENERATION_SECONDS, mana_regeneration};
 use venture_rpg::derived::{OUT_OF_COMBAT_SECONDS, REGENERATION_SECONDS, health_regeneration};
-use venture_rpg::{AttackOutcome, Dice, Power, resolve_attack};
+use venture_rpg::{AttackOutcome, Dice, Power, resolve_attack, split_experience};
 use venture_simulation::{MELEE_RANGE, Movement};
 
 use crate::ServerSystems;
@@ -36,6 +37,7 @@ use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteracti
 use crate::equipment::{Equipment, player_look};
 use crate::link::Link;
 use crate::monsters::{Dead, Monster};
+use crate::parties::{Parties, PartyRules};
 use crate::world::ServerWorld;
 
 /// Players within this distance (in metres) see a fight: attacks and deaths.
@@ -325,6 +327,8 @@ struct Fights<'w, 's> {
     viewers: Query<'w, 's, (&'static Player, &'static Position)>,
     characters: Query<'w, 's, (&'static mut Character, &'static Equipment, &'static Player)>,
     knocked_out: MessageWriter<'w, KnockedOut>,
+    parties: Res<'w, Parties>,
+    party_rules: Res<'w, PartyRules>,
 }
 
 /// Rolls each attack, applies it, and deals with deaths.
@@ -402,36 +406,71 @@ impl Fights<'_, '_> {
     }
 
     /// A monster died: it's removed shortly (see [`crate::monsters`]), and
-    /// its killer, if a player, gets its experience.
+    /// its killer, if a player, gets its experience, shared equally with
+    /// the members of their party near it (see [`sharers`]).
     fn monster_died(&mut self, monster: Entity, killer: Entity) {
         self.commands.entity(monster).insert(Dead::new());
         let Ok(def) = self.monsters.get(monster).map(|monster| monster.def.clone()) else { return };
-        let Ok((mut character, equipment, player)) = self.characters.get_mut(killer) else { return };
-        let connection = player.connection;
-        let gained = character.add_experience(def.experience);
-        self.link.send(
-            connection,
-            &ServerMessage::Notice { text: format!("You defeat the {}. (+{} experience)", def.name, def.experience) },
-        );
+        if !self.characters.contains(killer) {
+            return;
+        }
+        let (Ok((_, _, &Position(at))), Ok((_, killer_name, _))) =
+            (self.identities.get(monster), self.identities.get(killer))
+        else {
+            return;
+        };
+        let killer_name = killer_name.0.clone();
+        let sharers = self.sharers(killer, at);
+        for (member, amount) in sharers.iter().copied().zip(split_experience(def.experience, sharers.len())) {
+            let text = if member == killer {
+                format!("You defeat the {}. (+{amount} experience)", def.name)
+            } else {
+                format!("{killer_name} defeats the {}. (+{amount} experience)", def.name)
+            };
+            self.award_experience(member, amount, text);
+        }
+    }
+
+    /// Who shares the experience for a kill at `at`: the killer first, then
+    /// the other members of their party who are within the party's
+    /// `share_distance` of it and still standing.
+    fn sharers(&self, killer: Entity, at: Point) -> Vec<Entity> {
+        let near = |member: Entity| {
+            self.identities
+                .get(member)
+                .is_ok_and(|(_, _, &Position(where_))| distance(where_, at) <= self.party_rules.0.share_distance)
+                && self.healths.get(member).is_ok_and(|health| health.current > 0)
+                && self.characters.contains(member)
+        };
+        let others = self.parties.members_of(killer).into_iter().filter(|&member| member != killer && near(member));
+        std::iter::once(killer).chain(others).collect()
+    }
+
+    /// Gives a player experience (telling them `text`), and if it takes
+    /// them up a level, full health and mana and a celebration everyone sees.
+    fn award_experience(&mut self, player: Entity, amount: u64, text: String) {
+        let Ok((mut character, equipment, owner)) = self.characters.get_mut(player) else { return };
+        let connection = owner.connection;
+        let gained = character.add_experience(amount);
+        self.link.send(connection, &ServerMessage::Notice { text });
         if gained.levels == 0 {
             return;
         }
-        // A new level: full health and mana, and everyone sees the celebration.
         let level = character.level();
         let pack = &self.content.pack;
         let max = max_health(&character, equipment, pack);
         let most_mana = max_mana(&character, equipment, pack);
         let look = player_look(&character, equipment, &pack.items);
-        if let Ok(mut health) = self.healths.get_mut(killer) {
+        if let Ok(mut health) = self.healths.get_mut(player) {
             health.set_max(max);
             health.current = max;
         }
-        if let Ok(mut mana) = self.manas.get_mut(killer) {
+        if let Ok(mut mana) = self.manas.get_mut(player) {
             mana.set_max(most_mana);
             mana.current = most_mana;
         }
         self.link.send(connection, &ServerMessage::Notice { text: format!("You reached level {level}!") });
-        let Ok((&NetworkId(id), ..)) = self.identities.get(killer) else { return };
+        let Ok((&NetworkId(id), ..)) = self.identities.get(player) else { return };
         let everyone: Vec<_> = self.viewers.iter().map(|(player, _)| player.connection).collect();
         self.link.broadcast(everyone, &ServerMessage::PlayerChanged { id, level, look, celebrate: true });
     }

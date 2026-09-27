@@ -94,11 +94,14 @@ pub struct PartyConfig {
     pub max_members: u32,
     /// How long (in seconds) an invited player has to accept or decline.
     pub invite_seconds: f32,
+    /// How near (in metres) a member must be to a monster when a party
+    /// member defeats it to share its experience.
+    pub share_distance: f32,
 }
 
 impl Default for PartyConfig {
     fn default() -> Self {
-        Self { max_members: 8, invite_seconds: 15.0 }
+        Self { max_members: 8, invite_seconds: 15.0, share_distance: 60.0 }
     }
 }
 
@@ -131,6 +134,10 @@ impl ServerConfig {
         }
         if self.party.max_members < 2 {
             return Err(format!("party.max_members must be at least 2, not {}", self.party.max_members));
+        }
+        let share = self.party.share_distance;
+        if !share.is_finite() || share < 0.0 {
+            return Err(format!("party.share_distance must be a number of metres, not {share}"));
         }
         let seconds = self.party.invite_seconds;
         if !seconds.is_finite() || seconds <= 0.0 {
