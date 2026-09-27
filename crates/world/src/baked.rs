@@ -12,10 +12,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Biome, CHUNK_CORNERS, CHUNK_SIZE, Chunk, ChunkPos, Fluid, FluidKind, Ground, Prop, TerrainCell};
+use crate::{
+    Biome, CHUNK_CORNERS, CHUNK_SIZE, Chunk, ChunkPos, Fluid, FluidBody, FluidKind, Ground, Prop, TerrainCell,
+};
 
 /// The version of the chunk file layout. Increase it whenever the layout changes.
-pub const CHUNK_FORMAT_VERSION: u16 = 1;
+pub const CHUNK_FORMAT_VERSION: u16 = 2;
 
 /// Name of the manifest file in a baked world folder.
 pub const MANIFEST_FILE: &str = "manifest.ron";
@@ -132,7 +134,7 @@ struct ChunkFile {
 struct CellRecord {
     ground: Ground,
     biome: Biome,
-    fluid: Option<(FluidKind, i16)>,
+    fluid: Option<(FluidKind, FluidBody, i16)>,
 }
 
 /// Metres to whole centimetres, clamped to what an `i16` can hold.
@@ -156,7 +158,7 @@ pub fn encode_chunk(chunk: &Chunk) -> Vec<u8> {
             CellRecord {
                 ground: cell.ground,
                 biome: cell.biome,
-                fluid: cell.fluid.map(|fluid| (fluid.kind, to_centimetres(fluid.level))),
+                fluid: cell.fluid.map(|fluid| (fluid.kind, fluid.body, to_centimetres(fluid.level))),
             }
         })
         .collect();
@@ -182,7 +184,7 @@ pub fn decode_chunk(bytes: &[u8]) -> Result<Chunk, BakedWorldError> {
         *chunk.cell_mut(i % size, i / size) = TerrainCell {
             ground: record.ground,
             biome: record.biome,
-            fluid: record.fluid.map(|(kind, level)| Fluid { kind, level: to_metres(level) }),
+            fluid: record.fluid.map(|(kind, body, level)| Fluid { kind, body, level: to_metres(level) }),
         };
     }
     chunk.props = file.props;
@@ -198,7 +200,7 @@ mod tests {
     fn chunks_survive_a_round_trip_to_the_centimetre() {
         let mut chunk = Chunk::new(ChunkPos::new(3, -2));
         chunk.set_corner_height(5, 7, 12.3456);
-        chunk.cell_mut(1, 2).fluid = Some(Fluid { kind: FluidKind::Lava, level: 40.004 });
+        chunk.cell_mut(1, 2).fluid = Some(Fluid { kind: FluidKind::Lava, body: FluidBody::Lake, level: 40.004 });
         chunk.cell_mut(1, 2).ground = Ground::Basalt;
         chunk.props.push(Prop { kind: PropKind::Oak, x: 1.5, y: 2.5, ground_height: 3.0, scale: 1.1, rotation: 0.4 });
 
@@ -207,6 +209,7 @@ mod tests {
         assert!((decoded.corner_height(5, 7) - 12.3456).abs() <= 0.005);
         assert_eq!(decoded.cell(1, 2).ground, Ground::Basalt);
         assert!((decoded.cell(1, 2).fluid.unwrap().level - 40.004).abs() <= 0.005);
+        assert_eq!(decoded.cell(1, 2).fluid.unwrap().body, FluidBody::Lake);
         assert_eq!(decoded.props, chunk.props);
     }
 

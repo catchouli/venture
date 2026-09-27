@@ -50,7 +50,8 @@ fish sell, and will cook into food.
 - **The world**: fishable water is what the baked cells say. The bake gains
   each water cell's **kind** (river, lake or sea: the generator already
   tells them apart), which says fresh or salt and which fish live there
-  (with the biome). Chunk format version up; bake again.
+  (with the biome). Chunk format version up; bake again. (Done:
+  `Fluid::body`, chunk format 2.)
 - **Server** (`fishing.rs`, the only code that changes fishing state, as
   `combat.rs` is for fights): a player's fishing goes through stages: cast
   (checked: reach, water, gear, level) → waiting (bites scheduled from a

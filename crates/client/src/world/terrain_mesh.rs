@@ -243,7 +243,7 @@ pub fn fluid_mesh(area: &Neighbourhood, kind: FluidKind) -> Option<Mesh> {
 #[cfg(test)]
 mod tests {
     use bevy::mesh::VertexAttributeValues;
-    use venture_world::Fluid;
+    use venture_world::{Fluid, FluidBody};
 
     use super::*;
 
@@ -253,7 +253,7 @@ mod tests {
         let mut chunk = Chunk::new(ChunkPos::new(0, 0));
         for y in 0..CHUNK_SIZE as usize {
             for x in 10..=12 {
-                chunk.cell_mut(x, y).fluid = Some(Fluid { kind: FluidKind::Water, level: 1.0 });
+                chunk.cell_mut(x, y).fluid = Some(Fluid { kind: FluidKind::Water, body: FluidBody::River, level: 1.0 });
             }
         }
         for y in 0..=CHUNK_SIZE as usize {

@@ -37,11 +37,25 @@ pub enum FluidKind {
     Lava,
 }
 
+/// The body of liquid a cell is part of: what lives in it (fish, for one)
+/// depends on it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FluidBody {
+    /// A river or stream (fresh water, flowing).
+    River,
+    /// A lake or pond (fresh water, still), or a lava lake.
+    Lake,
+    /// The sea (salt water).
+    Sea,
+}
+
 /// A liquid surface over a cell.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fluid {
     /// What the liquid is.
     pub kind: FluidKind,
+    /// The body of it the cell is part of.
+    pub body: FluidBody,
     /// Height of the surface, in metres.
     pub level: f32,
 }
