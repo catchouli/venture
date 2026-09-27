@@ -1,0 +1,35 @@
+// The party frame, top left under the player frame: a small box for each other member of the
+// player's party, with their level (in its own little box), name, class, health and mana. The
+// game copies the "member" template once per member, each copy showing that member's data. The
+// game shows it while the player is in a party with anyone else. See docs/ui-layouts.md.
+(
+    id: "party_frame",
+    position: Absolute, left: 10, top: 98, width: 190,
+    layer: 5, hidden: true,
+    children: [
+        (id: "members", direction: Column, gap: 4, width: "100%", children: [
+            (
+                id: "member", template: true,
+                direction: Column, gap: 3, padding: (5, 8),
+                piece: "panel", colour: "window", border: 1, border_colour: "border", corners: 4,
+                children: [
+                    (direction: Row, align: Center, gap: 6, children: [
+                        (width: 22, height: 22, justify: Center, align: Center,
+                         piece: "slot", colour: "slot", corners: 3, tooltip: "Level {member_level}",
+                         children: [(text: "{member_level}", style: "member_level")]),
+                        (direction: Column, children: [
+                            (text: "{member_name}", style: "member_name"),
+                            (text: "{member_class}", style: "member_class"),
+                        ]),
+                    ]),
+                    (bar: "member_health", bar_style: "health", height: 10, children: [
+                        (position: Absolute, left: 0, right: 0, top: 0, bottom: 0, justify: Center, align: Center,
+                         children: [(text: "{member_health} / {member_health_max}", style: "bar_numbers_small")]),
+                    ]),
+                    (bar: "member_mana", bar_style: "mana", height: 6,
+                     tooltip: "Mana: {member_mana} / {member_mana_max}"),
+                ],
+            ),
+        ]),
+    ],
+)

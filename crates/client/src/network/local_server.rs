@@ -90,12 +90,14 @@ impl Plugin for LocalServerPlugin {
         let admins = config.admins.clone();
         let everyone_is_admin = admin;
         let item_cooldown = config.player.item_cooldown;
+        let party = config.party.clone();
         GameServer {
             world,
             profiles,
             link,
             rules: config.rules(),
             item_cooldown,
+            party,
             content,
             spawn_override,
             admins,

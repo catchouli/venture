@@ -15,13 +15,18 @@ use serde::{Deserialize, Serialize};
 
 /// The layouts the game knows, and the element ids it looks for in each
 /// (the content check reports any that are missing).
-pub const LAYOUTS: [(&str, &[&str]); 2] = [
+pub const LAYOUTS: [(&str, &[&str]); 4] = [
     ("player_frame", &["player_frame"]),
     ("hotbar", &["hotbar", "slots", "slot", "icon", "label", "cooldown_shade", "cooldown_text", "key"]),
+    ("party_frame", &["party_frame", "member"]),
+    ("party_invite", &["party_invite", "invite_accept", "invite_decline"]),
 ];
 
 /// The data the game publishes for layouts to show, with what each is.
-pub const UI_DATA: [(&str, &str); 8] = [
+///
+/// The `member_` data is only shown inside the party frame's `member`
+/// template: each copy shows its own member's.
+pub const UI_DATA: [(&str, &str); 20] = [
     ("name", "the player's character's name"),
     ("level", "the player's level"),
     ("health", "the player's health"),
@@ -30,6 +35,18 @@ pub const UI_DATA: [(&str, &str); 8] = [
     ("mana_max", "the player's most mana"),
     ("experience", "the player's experience towards the next level"),
     ("experience_max", "the experience the next level takes"),
+    ("invite_from", "who invited the player to a party"),
+    ("invite_party", "the name of the party the player's invited to"),
+    ("invite_seconds", "whole seconds left to answer the party invitation"),
+    ("invite_time", "time left to answer the party invitation (for a bar)"),
+    ("invite_time_max", "the time the party invitation was open for"),
+    ("member_name", "a party member's name"),
+    ("member_class", "a party member's class"),
+    ("member_level", "a party member's level"),
+    ("member_health", "a party member's health"),
+    ("member_health_max", "a party member's most health"),
+    ("member_mana", "a party member's mana"),
+    ("member_mana_max", "a party member's most mana"),
 ];
 
 /// One element of a layout: a box, placed and sized like a CSS flexbox

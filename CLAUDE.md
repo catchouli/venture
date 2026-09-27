@@ -10,7 +10,7 @@
   created/removed in `sessions.rs` and changed in `gameplay.rs`; profiles only touched in `profiles.rs`.
   Inventories only change through `Inventory::apply` (`inventory.rs`), which is checked and all-or-nothing;
   quest logs only through `QuestLog::advance` (`quests.rs`), which only moves forward; characters (class, level,
-  stats, points, abilities) only through `Character`'s methods (`character.rs`); equipment only in `equipment.rs`; items are only used (eaten, drunk) in `consumables.rs`. Admin powers live only in `admin.rs`, which
+  stats, points, abilities) only through `Character`'s methods (`character.rs`); equipment only in `equipment.rs`; items are only used (eaten, drunk) in `consumables.rs`; who's in a party (and party invitations) only changes in `parties.rs`. Admin powers live only in `admin.rs`, which
   checks the player is an admin every time. Monsters are only created, moved and removed in `monsters.rs`;
   health only changes through `Health`'s methods, and hits, deaths and experience only happen in `combat.rs`; abilities are only used in `abilities.rs`.
   Keep it that way.

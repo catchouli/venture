@@ -13,6 +13,9 @@
 //!   elements by id (or listens for [`LayoutBuilt`]) and adds its own
 //!   components to them, to fill them in and react to clicks. Elements marked
 //!   `template` aren't shown; code makes copies of them with [`Ui::copy`].
+//!   Copies made with [`Ui::copy_scoped`] each show their own data: in a
+//!   copy with the scope `"7"`, `{member_name}` shows `member_name@7` (see
+//!   [`scoped_name`]), so a list shows each entry's values.
 //!
 //! A window's root element has a [`UiRoot`] naming its layout; code shows and
 //! hides the window by setting the root's [`Visibility`].
@@ -31,9 +34,11 @@ use crate::ui::tooltip::Tooltip;
 
 /// The layouts built into the game, used until the content's arrive (and for
 /// any the content doesn't have): the same files as in the content pack.
-const BUILT_IN_LAYOUTS: [(&str, &str); 2] = [
+const BUILT_IN_LAYOUTS: [(&str, &str); 4] = [
     ("player_frame", include_str!("../../../../content/ui/layouts/player_frame.ron")),
     ("hotbar", include_str!("../../../../content/ui/layouts/hotbar.ron")),
+    ("party_frame", include_str!("../../../../content/ui/layouts/party_frame.ron")),
+    ("party_invite", include_str!("../../../../content/ui/layouts/party_invite.ron")),
 ];
 /// The styles built into the game.
 const BUILT_IN_STYLES: &str = include_str!("../../../../content/ui/styles.ron");
@@ -185,7 +190,8 @@ fn build_layouts(
     }
     templates.0.clear();
     for (name, root_node) in &layouts.roots {
-        let mut builder = Builder { layouts: &layouts, data: &data, ids: HashMap::new(), templates: Vec::new() };
+        let mut builder =
+            Builder { layouts: &layouts, data: &data, ids: HashMap::new(), templates: Vec::new(), scope: None };
         let root = builder.spawn(&mut commands, root_node, None);
         let Builder { ids, templates: found, .. } = builder;
         commands.entity(root).insert(UiRoot(name.clone()));
@@ -236,7 +242,12 @@ fn fill_bars(data: Res<UiData>, mut fills: Query<(&UiBarFill, &mut Node)>) {
 /// How full a bar showing `name` is, from 0 to 1.
 fn bar_fraction(data: &UiData, name: &str) -> f32 {
     let number = |name: &str| data.get(name).and_then(|value| value.parse::<f32>().ok());
-    match (number(name), number(&format!("{name}_max"))) {
+    // (In a scoped copy, `member_health@7` is out of `member_health_max@7`.)
+    let max = match name.split_once('@') {
+        Some((base, scope)) => scoped_name(&format!("{base}_max"), scope),
+        None => format!("{name}_max"),
+    };
+    match (number(name), number(&max)) {
         (Some(value), Some(max)) if max > 0.0 => (value / max).clamp(0.0, 1.0),
         _ => 0.0,
     }
@@ -262,14 +273,31 @@ impl<'w, 's> Ui<'w, 's> {
     /// element the template is in, and returns them. None if the layout has
     /// no such template.
     pub fn copy(&mut self, layout: &str, template: &str, count: usize) -> Vec<UiCopy> {
+        self.copies(layout, template, vec![None; count])
+    }
+
+    /// Makes a copy of a layout's template for each scope, each showing its
+    /// own data: in the copy for `"7"`, `{member_name}` shows the data
+    /// called `member_name@7` (see [`scoped_name`]).
+    pub fn copy_scoped(&mut self, layout: &str, template: &str, scopes: &[String]) -> Vec<UiCopy> {
+        self.copies(layout, template, scopes.iter().map(|scope| Some(scope.as_str())).collect())
+    }
+
+    fn copies(&mut self, layout: &str, template: &str, scopes: Vec<Option<&str>>) -> Vec<UiCopy> {
         let Some((node, parent)) = self.templates.0.get(&(layout.to_string(), template.to_string())).cloned() else {
             return Vec::new();
         };
         let node = UiNode { template: false, ..node };
-        (0..count)
-            .map(|_| {
-                let mut builder =
-                    Builder { layouts: &self.layouts, data: &self.data, ids: HashMap::new(), templates: Vec::new() };
+        scopes
+            .into_iter()
+            .map(|scope| {
+                let mut builder = Builder {
+                    layouts: &self.layouts,
+                    data: &self.data,
+                    ids: HashMap::new(),
+                    templates: Vec::new(),
+                    scope,
+                };
                 let root = builder.spawn(&mut self.commands, &node, Some(parent));
                 UiCopy { root, ids: builder.ids }
             })
@@ -285,6 +313,8 @@ struct Builder<'a> {
     ids: HashMap<String, Entity>,
     /// The templates met: their id, the template, and where copies go.
     templates: Vec<(String, UiNode, Entity)>,
+    /// The copy's scope, whose data it shows (see [`Ui::copy_scoped`]).
+    scope: Option<&'a str>,
 }
 
 impl Builder<'_> {
@@ -308,19 +338,21 @@ impl Builder<'_> {
         }
         if node.text.is_some() || node.style.is_some() {
             let style = node.style.as_ref().and_then(|name| styles.text.get(name)).cloned().unwrap_or_default();
-            let shown = node.text.as_ref().map(|text| fill_in(text, |name| self.data.get(name).map(str::to_string)));
+            let text = node.text.as_ref().map(|text| self.scoped(text));
+            let shown = text.as_ref().map(|text| fill_in(text, |name| self.data.get(name).map(str::to_string)));
             element.insert(self.text_of(&style, shown.unwrap_or_default()));
-            if let Some(text) = &node.text {
-                element.insert(UiText(text.clone()));
+            if let Some(text) = text {
+                element.insert(UiText(text));
             }
         }
         if node.button {
             element.insert(Button);
         }
         if let Some(tooltip) = &node.tooltip {
-            let shown = fill_in(tooltip, |name| self.data.get(name).map(str::to_string));
+            let tooltip = self.scoped(tooltip);
+            let shown = fill_in(&tooltip, |name| self.data.get(name).map(str::to_string));
             // (Tooltips show while the mouse is over something that notices the mouse.)
-            element.insert((tooltip_of(&shown), UiTooltip(tooltip.clone()), Interaction::default()));
+            element.insert((tooltip_of(&shown), UiTooltip(tooltip), Interaction::default()));
         }
         if let Some(layer) = node.layer {
             element.insert(GlobalZIndex(layer));
@@ -341,7 +373,8 @@ impl Builder<'_> {
             commands.spawn((ImageNode::new(image), fill_parent(), ChildOf(entity)));
         }
         if let Some(bar) = &node.bar {
-            self.spawn_bar(commands, entity, bar, node.bar_style.as_deref().unwrap_or(bar));
+            let data = self.scope.map_or_else(|| bar.clone(), |scope| scoped_name(bar, scope));
+            self.spawn_bar(commands, entity, &data, node.bar_style.as_deref().unwrap_or(bar));
         }
         for child in &node.children {
             if child.template {
@@ -353,6 +386,13 @@ impl Builder<'_> {
             self.spawn(commands, child, Some(entity));
         }
         entity
+    }
+
+    /// Text (or a tooltip) as this copy shows it: its `{names}` in its scope.
+    fn scoped(&self, text: &str) -> String {
+        let Some(scope) = self.scope else { return text.to_string() };
+        // (Each name becomes `{name@scope}`, which is then filled in as usual.)
+        fill_in(text, |name| Some(format!("{{{}}}", scoped_name(name, scope))))
     }
 
     /// A bar's look: its empty part (the element itself), its fill, and the
@@ -454,6 +494,13 @@ fn align_items(align: UiAlign) -> AlignItems {
     }
 }
 
+/// The name data called `name` goes by in a copy with this scope (see
+/// [`Ui::copy_scoped`]): `member_name@7`. Code sets it with [`UiData::set`].
+/// (A bar's most, `health_max`, is `health_max@7`.)
+pub fn scoped_name(name: &str, scope: &str) -> String {
+    format!("{name}@{scope}")
+}
+
 /// A node filling its parent (placed over it).
 fn fill_parent() -> Node {
     Node { position_type: PositionType::Absolute, left: px(0), right: px(0), top: px(0), bottom: px(0), ..default() }
@@ -490,6 +537,10 @@ mod tests {
         data.0.insert("health_max".to_string(), "12".to_string());
         assert_eq!(bar_fraction(&data, "health"), 0.25);
         assert_eq!(bar_fraction(&data, "mana"), 0.0, "no data, an empty bar");
+        // A scoped copy's bar shows its own data.
+        data.0.insert(scoped_name("member_health", "7"), "5".to_string());
+        data.0.insert(scoped_name("member_health_max", "7"), "10".to_string());
+        assert_eq!(bar_fraction(&data, &scoped_name("member_health", "7")), 0.5);
     }
 
     #[test]

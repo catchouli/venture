@@ -23,6 +23,8 @@
 //!   automated run (and take the screenshot there).
 //! - `VENTURE_SAY=text`: say this in chat once in the game (several messages
 //!   can be separated with `|`).
+//! - `VENTURE_SAY_DELAY=seconds`: wait this long in the game before saying
+//!   them (to answer something another client does first).
 //! - `VENTURE_USE=air_blast`: use these abilities (ids, separated with `|`) once
 //!   in the game, on the selected target (after `VENTURE_SELECT_NEAREST` has
 //!   picked one, if set).
@@ -53,6 +55,8 @@ pub struct DevSettings {
     pub automated: bool,
     /// Messages to say in chat once in the game.
     pub say: Vec<String>,
+    /// How long to wait (in seconds, once in the game) before saying them.
+    pub say_delay: f32,
     /// Abilities to use once in the game.
     pub use_abilities: Vec<String>,
     /// Whether to select the character (player or NPC) nearest yours once one is in sight.
@@ -88,6 +92,7 @@ impl DevSettings {
             say: std::env::var("VENTURE_SAY")
                 .map(|say| say.split('|').map(str::to_string).collect())
                 .unwrap_or_default(),
+            say_delay: std::env::var("VENTURE_SAY_DELAY").ok().and_then(|delay| delay.parse().ok()).unwrap_or(0.0),
             use_abilities: std::env::var("VENTURE_USE")
                 .map(|abilities| abilities.split('|').map(str::to_string).collect())
                 .unwrap_or_default(),

@@ -249,7 +249,7 @@ The pieces (the placeholders are made by `python3 tools/placeholder_ui.py`):
 | `toolbar_button_open` | the toolbar button for the tab that's open | 40×40 | 8 |
 
 `tab_icons` are the toolbar's icons, one for each
-tab: `stats`, `skills`, `abilities`, `inventory`, `gear`, `quests` and `emotes`
+tab: `party`, `stats`, `skills`, `abilities`, `inventory`, `gear`, `quests` and `emotes`
 (about 32×32, drawn at 26×26).
 
 ### Sounds

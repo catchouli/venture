@@ -19,6 +19,12 @@
         // How long (seconds) after using an item (eating bread, say) a player can use another.
         item_cooldown: 1.0,
     ),
+    party: (
+        // The most players a party can have.
+        max_members: 8,
+        // How long (seconds) an invited player has to /accept or /decline.
+        invite_seconds: 15.0,
+    ),
     // Characters with admin powers (/setlevel, /reset, /setclass, /setgender), by name.
     admins: ["cat"],
 )

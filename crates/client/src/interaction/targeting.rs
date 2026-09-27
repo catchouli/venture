@@ -1,6 +1,11 @@
-//! Selecting a target: players now, and later NPCs and monsters.
+//! Selecting a target: a player, an NPC or a monster. Anything that can be
+//! selected has a [`Targetable`] (with its kind); new kinds of things to
+//! select (chests, say) get one too.
 //!
 //! - Clicking a character selects it (see [`crate::interaction::clicks`]).
+//! - `/target NAME` selects the nearest NPC or monster with that name, and
+//!   `/target` (or its hotbar button) the nearest monster within
+//!   [`NEARBY_TARGET_RANGE`] (see [`crate::interaction::actions`]).
 //! - The selected character's name gets an orb on each side, and the target
 //!   frame at the top of the screen shows it (see [`crate::ui::target_frame`]).
 //! - The frame's ✕ or Escape deselects.
@@ -21,6 +26,9 @@ use crate::world::streaming::ChunkStore;
 const PICK_HEIGHT: f32 = 1.9;
 /// ...and this wide in radius.
 const PICK_RADIUS: f32 = 0.45;
+
+/// How near a monster must be for `/target` (without a name) to select it, in metres.
+pub const NEARBY_TARGET_RANGE: f32 = 5.0;
 
 /// Keeps track of what's hovered and selected.
 pub struct TargetingPlugin;
@@ -172,9 +180,25 @@ fn select_nearest_if_requested(
     }
 }
 
+/// The nearest of `candidates` (entities and where they are) to `from`,
+/// and how far away it is, measured across the ground (ignoring height).
+pub fn nearest(from: Vec3, candidates: impl Iterator<Item = (Entity, Vec3)>) -> Option<(Entity, f32)> {
+    candidates.map(|(entity, at)| (entity, from.xz().distance(at.xz()))).min_by(|a, b| a.1.total_cmp(&b.1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_nearest_is_found_across_the_ground() {
+        let mut world = World::new();
+        let (near, far) = (world.spawn_empty().id(), world.spawn_empty().id());
+        // Height doesn't count: the far one is only above.
+        let candidates = [(far, Vec3::new(6.0, 0.0, 0.0)), (near, Vec3::new(0.0, 30.0, 4.0))];
+        assert_eq!(nearest(Vec3::ZERO, candidates.into_iter()), Some((near, 4.0)));
+        assert_eq!(nearest(Vec3::ZERO, std::iter::empty()), None);
+    }
 
     #[test]
     fn rays_pick_upright_cylinders() {

@@ -157,6 +157,11 @@ impl Mana {
         self.current
     }
 
+    /// The most mana.
+    pub fn max(&self) -> u32 {
+        self.max
+    }
+
     /// Spends mana, if there's enough. Returns whether there was.
     pub fn spend(&mut self, amount: u32) -> bool {
         let enough = self.current >= amount;

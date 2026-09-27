@@ -20,6 +20,8 @@ pub struct ServerConfig {
     pub paths: PathsConfig,
     /// Rules for players.
     pub player: PlayerConfig,
+    /// Rules for parties.
+    pub party: PartyConfig,
     /// The names of characters with admin powers (ignoring case). Names are
     /// unique, and each belongs to one login token.
     pub admins: Vec<String>,
@@ -84,6 +86,22 @@ impl Default for PlayerConfig {
     }
 }
 
+/// Rules for parties (groups of players; see `crate::parties`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PartyConfig {
+    /// The most players a party can have.
+    pub max_members: u32,
+    /// How long (in seconds) an invited player has to accept or decline.
+    pub invite_seconds: f32,
+}
+
+impl Default for PartyConfig {
+    fn default() -> Self {
+        Self { max_members: 8, invite_seconds: 15.0 }
+    }
+}
+
 impl ServerConfig {
     /// Reads the settings from a RON file. A missing file gives the defaults.
     pub fn load(path: &Path) -> Result<Self, String> {
@@ -110,6 +128,13 @@ impl ServerConfig {
         let cooldown = self.player.item_cooldown;
         if !cooldown.is_finite() || cooldown < 0.0 {
             return Err(format!("player.item_cooldown must be a number of seconds, not {cooldown}"));
+        }
+        if self.party.max_members < 2 {
+            return Err(format!("party.max_members must be at least 2, not {}", self.party.max_members));
+        }
+        let seconds = self.party.invite_seconds;
+        if !seconds.is_finite() || seconds <= 0.0 {
+            return Err(format!("party.invite_seconds must be a positive number of seconds, not {seconds}"));
         }
         Ok(())
     }

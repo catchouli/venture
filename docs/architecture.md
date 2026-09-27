@@ -105,11 +105,11 @@ src/
     admin_commands.rs  /setlevel, /reset, /setclass and /setgender, for admins
     orders.rs          ordering the character about: run, follow, walk over to talk, attack, use abilities
     abilities.rs          using abilities (checks, predicting the run-up) and their cooldowns
-    targeting.rs       what's hovered and selected
+    targeting.rs       what's hovered and selected (anything with a Targetable), and /target's search
     clicks.rs          left clicks: select, follow, talk, attack, or run there
     move_marker.rs     the glowing move marker
   ui/                the interface
-    character_window/  the character window: mod.rs (the tabs), stats.rs, skills.rs,
+    character_window/  the character window: mod.rs (the tabs), party.rs, stats.rs, skills.rs,
                        abilities.rs, inventory.rs, equipment.rs, quests.rs, emotes.rs
     layout.rs          builds windows from the content's layout files (docs/ui-layouts.md)
     theme.rs           the interface's look: each frame, button, slot and bar drawn
@@ -117,6 +117,7 @@ src/
     toolbar.rs (an icon button for each of the window's tabs), chat.rs, dialogue_window.rs,
     shop.rs, character_creation.rs,
     vitals.rs (your name, level, health and mana, top left),
+    party.rs (your party and invitation, and the frames for the other members under yours),
     hotbar.rs (abilities and actions on keys 1 to 0, dragged there from the character window),
     target_frame.rs, loading_screen.rs, cursor.rs, text_input.rs,
     tooltip.rs, widgets.rs (shared pieces such as the close button)
