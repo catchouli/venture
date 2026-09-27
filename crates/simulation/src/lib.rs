@@ -5,6 +5,7 @@
 //! (see `docs/client-server.md`). Keeping one copy of the rules means the
 //! prediction and the server agree.
 
+mod day;
 mod following;
 mod movement;
 mod rules;
@@ -16,5 +17,6 @@ pub use following::{FOLLOW_DISTANCE, Follow, FollowOutcome, INTERACT_DISTANCE, M
 /// can't jump over anything (jumping onto things is planned, but the game
 /// will never require it). A new jump can't start until the last has landed.
 pub const JUMP_SECONDS: f32 = 0.6;
+pub use day::{DayCycle, SkyPosition};
 pub use movement::{Movement, RUN_SPEED, TICK_RATE, clamp_move_goal, plan_route, steering_direction, step};
 pub use rules::Rules;

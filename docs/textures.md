@@ -157,10 +157,10 @@ skybox clips there, and the light clips its sun out at 4 (the game's sun is
 a directional light, and a second sun in the sky light would double the
 highlight).
 
-In the game (`world/lighting.rs`) the sky is turned so its sun is in the
-game's south-west, the directional light goes where the sky's sun is (so
-its height and the shadows match the picture), the flat ambient light gives
-way to the sky's light, and distant haze takes the sky's horizon colour.
+In the game (`world/lighting.rs`) the sun moves with the time of day (see
+[plan-day-night.md](plan-day-night.md)), and the sky is turned so its sun's
+glow stays on the sun's bearing; the flat ambient light gives way to the
+sky's light, and distant haze takes the sky's horizon colour.
 `SKY_BRIGHTNESS` sets how bright the sky's 1 is (1000 cd/m², so with
 Bevy's default exposure a bright sky shows at about 1).
 
@@ -171,7 +171,9 @@ scene goes to an `Rgba16Float` target, then Bevy's default tonemapper
 (TonyMcMapface) and deband dithering, with 4× MSAA. All of that works on
 WebGL2. Settings that set the look (`camera.rs`, `world/lighting.rs`):
 
-- **Sun:** 14 000 lux (`SUN_ILLUMINANCE`). The day sky's light on open
+- **Sun:** 14 000 lux at its highest (`SUN_ILLUMINANCE`), less and redder
+  as it sinks (the day and night: see [plan-day-night.md](plan-day-night.md)).
+  The figures here are for mid-afternoon. The day sky's light on open
   ground is about 900 lux (its irradiance looking up is about 0.29 on its
   scale, × 1000 cd/m² × π), and the sun at its 31° height gives about
   7 300, so about 8:1: clear shadows, while shade still reads.

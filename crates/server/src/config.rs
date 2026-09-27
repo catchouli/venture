@@ -8,7 +8,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use venture_simulation::Rules;
+use venture_simulation::{DayCycle, Rules};
 
 /// All the server's settings.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -22,6 +22,9 @@ pub struct ServerConfig {
     pub player: PlayerConfig,
     /// Rules for parties.
     pub party: PartyConfig,
+    /// How the days go: the length of a day, sunrise and sunset, and how
+    /// high the sun gets (see `venture_simulation::DayCycle`).
+    pub day: DayCycle,
     /// The names of characters with admin powers (ignoring case). Names are
     /// unique, and each belongs to one login token.
     pub admins: Vec<String>,
@@ -120,7 +123,7 @@ impl ServerConfig {
 
     /// The game rules these settings describe, as shared with clients.
     pub fn rules(&self) -> Rules {
-        Rules { max_move_distance: self.player.max_move_distance }
+        Rules { max_move_distance: self.player.max_move_distance, day: self.day }
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -131,6 +134,16 @@ impl ServerConfig {
         let cooldown = self.player.item_cooldown;
         if !cooldown.is_finite() || cooldown < 0.0 {
             return Err(format!("player.item_cooldown must be a number of seconds, not {cooldown}"));
+        }
+        let day = self.day;
+        if !day.day_minutes.is_finite() || day.day_minutes < 1.0 {
+            return Err(format!("day.day_minutes must be at least 1, not {}", day.day_minutes));
+        }
+        if !(0.0..24.0).contains(&day.sunrise) || !(day.sunrise + 1.0..=day.sunrise + 23.0).contains(&day.sunset) {
+            return Err("day.sunrise must be an hour from 0 to 24, and day.sunset 1 to 23 hours after it".to_string());
+        }
+        if !(5.0..=89.0).contains(&day.noon_height) {
+            return Err(format!("day.noon_height must be from 5 to 89 degrees, not {}", day.noon_height));
         }
         if self.party.max_members < 2 {
             return Err(format!("party.max_members must be at least 2, not {}", self.party.max_members));

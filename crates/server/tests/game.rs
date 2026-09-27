@@ -64,7 +64,7 @@ impl TestServer {
         app.add_plugins(MinimalPlugins)
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(1.0 / TICK_RATE)));
         let profiles = ProfileStore::new(&profile_folder).unwrap();
-        let rules = Rules { max_move_distance: 30.0 };
+        let rules = Rules { max_move_distance: 30.0, ..Rules::default() };
         let content = ContentSetup { folder: profile_folder.clone(), pack, client: Default::default(), watch: false };
         let admins = vec!["Boss".to_string()];
         GameServer {

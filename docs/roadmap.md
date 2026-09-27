@@ -49,7 +49,9 @@ that do something, more quests and places).
 - **Better trees and rocks:** more varied, more detailed models; wind sway.
 - **Water:** waves and sky reflections are done; shoreline foam and
   depth-based colour next.
-- **Sky:** an HDR sky with image-based lighting is done; time of day next.
+- **Sky:** an HDR sky with image-based lighting is done; the day/night
+  cycle has its clock, moving sun and moon and night lighting, and blended
+  skies for dawn, dusk and night are next ([plan-day-night.md](plan-day-night.md)).
 - **Terrain level of detail**, so the view distance can grow (distant chunks
   meshed at lower resolution).
 

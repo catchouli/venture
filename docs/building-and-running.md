@@ -71,6 +71,12 @@ file, and it takes its default. Misspelt settings are reported as errors.
         max_move_distance: 150.0,   // metres one click can send a character
         item_cooldown: 1.0,         // seconds after using an item (eating bread) before using another
     ),
+    day: (
+        day_minutes: 120.0,         // how long a day and night lasts, in real minutes
+        sunrise: 3.0,               // when the sun rises and sets, in game hours (0 to 24)
+        sunset: 21.0,
+        noon_height: 60.0,          // how high the sun gets at midday, in degrees
+    ),
     party: (
         max_members: 8,             // the most players in a party
         invite_seconds: 15.0,       // how long an invited player has to /accept or /decline
@@ -135,7 +141,7 @@ the game:
 - `--new-character` deletes your local character first (freeing its name),
   so the game asks you to make a new one.
 - `--admin` gives every character on the local server admin powers
-  (`/setlevel`, `/reset`, `/setclass`, `/setgender`). Only you can join a
+  (`/setlevel`, `/reset`, `/setclass`, `/setgender`, `/time`). Only you can join a
   local server, and the real server can't turn this on: its admins are
   only the names in `server.ron`.
 

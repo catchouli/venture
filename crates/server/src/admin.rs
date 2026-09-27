@@ -7,18 +7,20 @@
 //! - `/setclass CLASS`: change class, with every point your level has earned
 //!   given back to spend again.
 //! - `/setgender BODY`: change your body type (masculine, feminine or androgynous).
+//! - `/time HOUR`: set the time of day, for everyone.
 
 use bevy::prelude::*;
 use venture_protocol::{AdminCommand, ServerMessage};
 use venture_rpg::MAX_LEVEL;
 
-use crate::ServerSystems;
 use crate::character::{Admin, Character, class_or_default, find_class};
+use crate::clock::WorldClock;
 use crate::content::LoadedContent;
 use crate::entities::{NetworkId, Player};
 use crate::equipment::{Equipment, player_look};
 use crate::link::Link;
 use crate::requests::AdminRequest;
+use crate::{GameRules, ServerSystems};
 
 /// Carries out admin commands.
 pub struct AdminPlugin;
@@ -35,6 +37,8 @@ fn carry_out_admin_commands(
     mut link: ResMut<Link>,
     mut players: Query<(&Player, &NetworkId, &mut Character, &Equipment, Has<Admin>)>,
     everyone: Query<&Player>,
+    mut clock: ResMut<WorldClock>,
+    rules: Res<GameRules>,
 ) {
     let pack = &content.pack;
     for request in requests.read() {
@@ -79,6 +83,18 @@ fn carry_out_admin_commands(
             AdminCommand::SetBody { body } => {
                 character.body = *body;
                 tell(format!("Your character is now {}.", body.name().to_lowercase()));
+            }
+            AdminCommand::SetTime { hour } => {
+                if !(0.0..24.0).contains(hour) {
+                    tell("The time is an hour from 0 to 24.".to_string());
+                    continue;
+                }
+                clock.set(*hour, &rules);
+                let (hours, minutes) = (hour.floor() as u32, (hour.fract() * 60.0).round() as u32 % 60);
+                tell(format!("The time is now {hours:02}:{minutes:02}."));
+                let message = clock.message(&rules);
+                link.broadcast(everyone.iter().map(|player| player.connection), &message);
+                continue;
             }
         }
         // Everyone sees the new level and look (and a level-up celebrates).
