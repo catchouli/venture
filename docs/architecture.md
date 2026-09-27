@@ -117,7 +117,7 @@ src/
     shop.rs, character_creation.rs,
     vitals.rs (your name, level, health and mana, top left),
     hotbar.rs (abilities and actions on keys 1 to 0, dragged there from the character window),
-    target_frame.rs, connection_overlay.rs, cursor.rs, text_input.rs,
+    target_frame.rs, loading_screen.rs, cursor.rs, text_input.rs,
     tooltip.rs, widgets.rs (shared pieces such as the close button)
   sound/             playing the content's sounds for what happens nearby
   dev/               development tools

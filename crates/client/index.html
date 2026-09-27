@@ -6,10 +6,79 @@
     <title>Venture</title>
     <link data-trunk rel="rust" data-bin="venture_client" data-wasm-opt="s" />
     <style>
-      html, body { margin: 0; height: 100%; background: #9ec7eb; overflow: hidden; }
+      html, body { margin: 0; height: 100%; background: #1b1a17; overflow: hidden; }
       /* Bevy creates the canvas; fill the page with it. */
       canvas { display: block; width: 100%; height: 100%; outline: none; }
+      /* Shown while the game itself downloads, until the game's own loading
+         screen takes over (it removes this). */
+      #loading {
+        position: fixed; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 14px;
+        background: #1b1a17; color: #e8dcc0; z-index: 10;
+        font: 16px/1.4 "Fira Mono", ui-monospace, Menlo, Consolas, monospace;
+      }
+      #loading h1 { margin: 0 0 6px; font-size: 30px; font-weight: normal; letter-spacing: 0.08em; }
+      #loading .track { width: min(420px, 80vw); height: 10px; border: 1px solid #6b5a3a; background: #2a2723; }
+      #loading .fill { width: 0; height: 100%; background: #c9a55a; transition: width 0.15s; }
+      #loading .detail { color: #a89c86; font-size: 14px; min-height: 1.4em; }
     </style>
+    <script>
+      // Counts the game's WebAssembly as it downloads, to fill the bar.
+      // (The server says the file's real size in `x-uncompressed-length`:
+      // `content-length` is the compressed size, and what arrives is not.)
+      // Once a version has downloaded, the browser keeps it, so later visits
+      // skip the counting: handing the browser its own cached response lets
+      // it reuse its compiled code too, which starts the game faster.
+      (function () {
+        var original = window.fetch;
+        window.fetch = function (input, init) {
+          var url = typeof input === "string" ? input : input.url;
+          var promise = original.call(this, input, init);
+          if (!/\.wasm(\?|$)/.test(url)) return promise;
+          var remembered = null;
+          try { remembered = localStorage.getItem("venture-wasm"); } catch (e) {}
+          if (remembered === url) {
+            venture_loading(1, "Starting...");
+            return promise;
+          }
+          return promise.then(function (response) {
+            var total = Number(response.headers.get("x-uncompressed-length")) || 0;
+            if (!response.body || !total) return response;
+            var loaded = 0;
+            var reader = response.body.getReader();
+            var stream = new ReadableStream({
+              pull: function (controller) {
+                return reader.read().then(function (part) {
+                  if (part.done) {
+                    try { localStorage.setItem("venture-wasm", url); } catch (e) {}
+                    venture_loading(1, "Starting...");
+                    controller.close();
+                    return;
+                  }
+                  loaded += part.value.byteLength;
+                  var megabytes = function (bytes) { return (bytes / 1048576).toFixed(1); };
+                  venture_loading(loaded / total, "Downloading the game... " + megabytes(loaded) + " / " + megabytes(total) + " MB");
+                  controller.enqueue(part.value);
+                });
+              },
+            });
+            return new Response(stream, { headers: response.headers, status: response.status });
+          });
+        };
+        window.venture_loading = function (fraction, text) {
+          var fill = document.querySelector("#loading .fill");
+          var detail = document.querySelector("#loading .detail");
+          if (fill) fill.style.width = Math.round(Math.min(1, fraction) * 100) + "%";
+          if (detail) detail.textContent = text;
+        };
+      })();
+    </script>
   </head>
-  <body oncontextmenu="return false"></body>
+  <body oncontextmenu="return false">
+    <div id="loading">
+      <h1>Venture</h1>
+      <div class="track"><div class="fill"></div></div>
+      <div class="detail">Downloading the game...</div>
+    </div>
+  </body>
 </html>

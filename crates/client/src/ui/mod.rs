@@ -7,11 +7,11 @@
 pub mod character_creation;
 pub mod character_window;
 pub mod chat;
-pub mod connection_overlay;
 pub mod cursor;
 pub mod dialogue_window;
 pub mod hotbar;
 pub mod layout;
+pub mod loading_screen;
 pub mod shop;
 pub mod target_frame;
 pub mod text_input;
@@ -42,7 +42,7 @@ impl Plugin for UiPlugin {
             vitals::VitalsPlugin,
             character_creation::CharacterCreationPlugin,
             target_frame::TargetFramePlugin,
-            connection_overlay::ConnectionOverlayPlugin,
+            loading_screen::LoadingScreenPlugin,
             cursor::CursorPlugin,
         ));
     }

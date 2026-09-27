@@ -24,7 +24,7 @@ async-channel.workspace = true
 venture_server = { workspace = true, default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Crypto"] }
+web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Crypto", "Document", "Element"] }
 
 [lints]
 workspace = true

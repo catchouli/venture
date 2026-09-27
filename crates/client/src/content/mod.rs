@@ -9,6 +9,8 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy::asset::RenderAssetUsages;
 use bevy::asset::io::AssetSourceBuilder;
@@ -20,8 +22,8 @@ use venture_content::characters::{CharacterModels, parse_character_models};
 use venture_content::layout::{UiNode, UiStyles, parse_layout, parse_styles};
 use venture_content::sky::{SkyDef, SkyLight, parse_sky};
 use venture_content::{
-    AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, SkillDef, ThemeDef,
-    parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
+    AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, ManifestFile, SkillDef,
+    ThemeDef, parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
 };
 use venture_protocol::ServerMessage;
 
@@ -41,6 +43,7 @@ impl Plugin for ContentPlugin {
         app.insert_resource(source)
             .init_resource::<ContentStore>()
             .init_resource::<ContentDownload>()
+            .init_resource::<ContentProgress>()
             .add_systems(PreUpdate, start_download_when_needed.after(NetworkSystems))
             .add_systems(Update, finish_download);
     }
@@ -182,6 +185,26 @@ pub struct LocalContent(pub venture_server::SharedClientContent);
 #[derive(Resource, Default)]
 struct ContentDownload(Option<Task<Result<Downloaded, String>>>);
 
+/// How far the content download has got, for the loading screen: bytes
+/// arrived and bytes wanted (both zero before it starts). Updated by the
+/// download as each file arrives.
+#[derive(Resource, Clone, Default)]
+pub struct ContentProgress(Arc<ProgressCounts>);
+
+/// The counts behind [`ContentProgress`].
+#[derive(Default)]
+pub struct ProgressCounts {
+    done: AtomicU64,
+    total: AtomicU64,
+}
+
+impl ContentProgress {
+    /// Bytes arrived, and bytes wanted.
+    pub fn bytes(&self) -> (u64, u64) {
+        (self.0.done.load(Ordering::Relaxed), self.0.total.load(Ordering::Relaxed))
+    }
+}
+
 /// The result of a download: the manifest, and every file (new or kept).
 struct Downloaded {
     version: String,
@@ -198,6 +221,7 @@ fn start_download_when_needed(
     #[cfg(not(target_arch = "wasm32"))] local: Option<Res<LocalContent>>,
     store: Res<ContentStore>,
     mut download: ResMut<ContentDownload>,
+    progress: Res<ContentProgress>,
 ) {
     let needed = events.read().any(|FromServer(message)| match message {
         // (Before joining too, so a new player's character creation has the interface's look.)
@@ -210,7 +234,9 @@ fn start_download_when_needed(
     }
     let known = store.files.clone();
     let task = match &*source {
-        ContentSource::Http { base_url } => IoTaskPool::get().spawn(download_over_http(base_url.clone(), known)),
+        ContentSource::Http { base_url } => {
+            IoTaskPool::get().spawn(download_over_http(base_url.clone(), known, progress.clone()))
+        }
         #[cfg(not(target_arch = "wasm32"))]
         ContentSource::Local => {
             let Some(local) = local else { return };
@@ -226,15 +252,30 @@ fn start_download_when_needed(
     download.0 = Some(task);
 }
 
-/// Downloads the manifest, then each file whose hash is new.
-async fn download_over_http(base_url: String, known: HashMap<String, ContentFile>) -> Result<Downloaded, String> {
-    let fetch = crate::network::http::fetch;
+/// Downloads the manifest, then every file whose hash is new, all at once
+/// (so a distant server's round trips overlap). Each is asked for with its
+/// hash, so the browser can keep it for next time.
+async fn download_over_http(
+    base_url: String,
+    known: HashMap<String, ContentFile>,
+    progress: ContentProgress,
+) -> Result<Downloaded, String> {
+    use crate::network::http::{fetch, start_fetch};
     let manifest_bytes = fetch(format!("{base_url}/{CLIENT_MANIFEST_FILE}")).await?;
     let manifest = ContentManifest::from_ron(&String::from_utf8_lossy(&manifest_bytes))?;
+    let wanted: Vec<&ManifestFile> = changed_files(&manifest, &known)
+        .iter()
+        .filter_map(|path| manifest.files.iter().find(|f| &f.path == path))
+        .collect();
+    progress.0.done.store(0, Ordering::Relaxed);
+    progress.0.total.store(wanted.iter().map(|file| file.size).sum(), Ordering::Relaxed);
+    let started: Vec<_> =
+        wanted.iter().map(|file| (file, start_fetch(format!("{base_url}/{}?h={}", file.path, file.hash)))).collect();
     let mut new_files = HashMap::new();
-    for path in changed_files(&manifest, &known) {
-        let bytes = fetch(format!("{base_url}/{path}")).await?;
-        new_files.insert(path, bytes);
+    for (file, download) in started {
+        let bytes = download.await?;
+        progress.0.done.fetch_add(file.size, Ordering::Relaxed);
+        new_files.insert(file.path.clone(), bytes);
     }
     assemble(&manifest, known, new_files)
 }
