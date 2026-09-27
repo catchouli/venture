@@ -91,7 +91,9 @@ src/
     water_material.rs + shaders/water.wgsl       water's shader (waves, reflections)
     props.rs           tree, rock and bush meshes
     query.rs           ground height, raycasts, blocked cells
-    lighting.rs        sun, sky and ambient light
+    lighting.rs        sun, moon, sky and ambient light, by the time of day
+    time_of_day.rs     the clock the server set, running on
+    daylight.rs        the sun's colour and brightness, sky level and exposure by sun height
   characters/        characters in the world
     humans.rs          people as character models: loading them from the content,
                        dressing (body, hair, outfit parts, held things), and animation
@@ -106,7 +108,7 @@ src/
     level_up.rs        the level-up effect
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
-    admin_commands.rs  /setlevel, /reset, /setclass and /setgender, for admins
+    admin_commands.rs  /setlevel, /reset, /setclass, /setgender and /time, for admins
     orders.rs          ordering the character about: run, follow, walk over to talk, attack, use abilities
     abilities.rs          using abilities (checks, predicting the run-up) and their cooldowns
     targeting.rs       what's hovered and selected (anything with a Targetable), and /target's search

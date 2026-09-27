@@ -96,5 +96,5 @@ the same way, each with their own look.
 - Showing other things than the player (party members would be a good first).
 - Clicking the map (to move there, or to mark a spot).
 - A hand-authored map and names (above).
-- Rotating the minimap with the camera (it's north up).
-- Fog of war (only showing where the player has been).
+
+(The minimap stays north up, and there's no fog of war: both decided against.)

@@ -1,13 +1,23 @@
-//! The sky and lighting.
+//! The sky and lighting, by the time of day ([`TimeOfDay`]; see
+//! `docs/plan-day-night.md`).
 //!
 //! The sky comes from the content (`skies/day/`, made from an HDR panorama by
 //! `import_sky`; see `docs/textures.md`): a skybox, and the light it casts
 //! (image-based lighting: an irradiance cube for diffuse light and a
 //! prefiltered radiance cube for reflections), baked ahead of time because
-//! WebGL2 can't filter environment maps at run time. The sky is turned so
-//! its sun is where the game's sun is (the south-west, mid-afternoon), the
-//! sun rises to the sky's own sun's height, and distant haze takes the
-//! colour of its horizon.
+//! WebGL2 can't filter environment maps at run time.
+//!
+//! Each frame, by where the sun is ([`venture_simulation::DayCycle`]):
+//! - the one shadow-casting light is the sun, coloured and dimmed by the air
+//!   its light passes through (see [`crate::world::daylight`]); once it's
+//!   below the horizon, the moon (a dim, cool light) takes over, the swap
+//!   happening in twilight, when both are faint;
+//! - the sky (and the light it casts) dims through dusk to a dim night, and
+//!   the exposure opens up a few stops, so night is dark but playable;
+//! - distant haze takes the sky's horizon colour, warmed by a low sun.
+//!
+//! For now there's one sky, turned so its sun's glow follows the sun; the
+//! plan is to blend between skies for dawn, day, dusk and night.
 //!
 //! Until the sky arrives (or if the content has none), there's a plain haze
 //! colour and a flat ambient light instead.
@@ -22,8 +32,12 @@ use bevy::render::render_resource::{
 };
 use venture_content::sky::SkyDef;
 
+use crate::characters::player::GameRules;
+use crate::common::coords::to_bevy;
 use crate::common::palette;
 use crate::content::{CONTENT_SOURCE, ContentStore};
+use crate::world::daylight::{exposure, night, sky_level, smoothstep, sun_colour, sun_strength};
+use crate::world::time_of_day::TimeOfDay;
 
 /// The sky the world has (a folder in the content's `skies/`).
 const SKY: &str = "day";
@@ -33,10 +47,13 @@ const SKY_BRIGHTNESS: f32 = 1000.0;
 /// How bright the sun is, in lux. (About 8:1 over the day sky's light on open
 /// ground once the sky is up: bright enough for clear shadows.)
 const SUN_ILLUMINANCE: f32 = 14_000.0;
+/// How bright the moon is, in lux (with the night's exposure, a sixth or so
+/// of the day's light: a film night rather than a real one).
+const MOON_ILLUMINANCE: f32 = 450.0;
+/// The moon's colour.
+const MOON_COLOUR: Vec3 = Vec3::new(0.6, 0.7, 1.0);
 /// The flat ambient light without a sky.
 const PLAIN_AMBIENT: f32 = 450.0;
-/// Where the sun is, round the horizon: towards the south-west (x east, z south).
-const SUN_BEARING: Vec2 = Vec2::new(-1.0, 1.0);
 
 /// Lights the scene.
 pub struct LightingPlugin;
@@ -52,7 +69,7 @@ impl Plugin for LightingPlugin {
             })
             .init_resource::<SkyState>()
             .add_systems(Startup, spawn_sun)
-            .add_systems(Update, (load_sky, finish_sky, dress_cameras).chain());
+            .add_systems(Update, (load_sky, finish_sky, dress_cameras, light_by_time).chain());
     }
 }
 
@@ -95,20 +112,18 @@ impl SkyState {
 pub struct Sky {
     skybox: Skybox,
     light: EnvironmentMapLight,
-    haze: Color,
+    /// The direction of the sun in its picture (Bevy's axes).
+    sun: Vec3,
+    /// Its horizon's colour, on its brightness scale.
+    horizon: Vec3,
 }
 
 fn spawn_sun(mut commands: Commands) {
     commands.spawn((
         Sun,
-        DirectionalLight {
-            color: Color::srgb(1.0, 0.95, 0.85),
-            illuminance: SUN_ILLUMINANCE,
-            shadow_maps_enabled: true,
-            ..default()
-        },
-        // Mid-afternoon sun from the south-west, low enough for long shadows.
-        Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, -2.4, -0.7, 0.0)),
+        DirectionalLight { illuminance: SUN_ILLUMINANCE, shadow_maps_enabled: true, ..default() },
+        // (Placed by the time of day: see `light_by_time`.)
+        Transform::default(),
         CascadeShadowConfigBuilder { maximum_distance: 200.0, first_cascade_far_bound: 25.0, ..default() }.build(),
     ));
 }
@@ -154,15 +169,9 @@ fn cubemap(size: u32, mips: u32, texels: &[u32]) -> Image {
     image
 }
 
-/// Once the sky's picture has loaded: makes it a cubemap, turns the sky and
-/// the sun to match the game's, and gets it ready for cameras.
-fn finish_sky(
-    asset_server: Res<AssetServer>,
-    mut images: ResMut<Assets<Image>>,
-    mut state: ResMut<SkyState>,
-    mut ambient: ResMut<GlobalAmbientLight>,
-    mut sun: Single<&mut Transform, With<Sun>>,
-) {
+/// Once the sky's picture has loaded: makes it a cubemap, and gets it ready
+/// for cameras.
+fn finish_sky(asset_server: Res<AssetServer>, mut images: ResMut<Assets<Image>>, mut state: ResMut<SkyState>) {
     let SkyState::Loading { picture, def, diffuse, specular } = &*state else { return };
     if asset_server.load_state(picture).is_failed() {
         warn!("The sky's picture couldn't be loaded, so the sky stays plain.");
@@ -181,28 +190,17 @@ fn finish_sky(
     image.texture_view_descriptor =
         Some(TextureViewDescriptor { dimension: Some(TextureViewDimension::Cube), ..default() });
 
-    // Turn the sky round so its sun is on the game's bearing, and put the
-    // sun where the sky shows it.
-    let (x, y, z) = def.sun;
-    let turn = Quat::from_rotation_y(SUN_BEARING.x.atan2(SUN_BEARING.y) - x.atan2(z));
-    let towards_sun = turn * Vec3::new(x, y, z);
-    sun.look_to(-towards_sun, Vec3::Y);
-    ambient.brightness = 0.0;
-
-    let (r, g, b) = def.horizon;
-    let exposure = Exposure::default().exposure();
-    let scale = SKY_BRIGHTNESS * exposure;
-    let haze = Color::linear_rgb(r * scale, g * scale, b * scale);
     let sky = Sky {
-        skybox: Skybox { image: Some(picture.clone()), brightness: SKY_BRIGHTNESS, rotation: turn },
+        skybox: Skybox { image: Some(picture.clone()), brightness: SKY_BRIGHTNESS, rotation: Quat::IDENTITY },
         light: EnvironmentMapLight {
             diffuse_map: diffuse.clone(),
             specular_map: specular.clone(),
             intensity: SKY_BRIGHTNESS,
-            rotation: turn,
+            rotation: Quat::IDENTITY,
             affects_lightmapped_mesh_diffuse: true,
         },
-        haze,
+        sun: Vec3::from(def.sun),
+        horizon: Vec3::from(def.horizon),
     };
     info!("The sky is ready.");
     *state = SkyState::Ready(sky);
@@ -213,11 +211,84 @@ fn finish_sky(
 fn dress_cameras(
     mut commands: Commands,
     state: Res<SkyState>,
-    mut cameras: Query<(Entity, &mut DistanceFog), (With<Camera3d>, Without<Skybox>)>,
+    cameras: Query<Entity, (With<Camera3d>, With<DistanceFog>, Without<Skybox>)>,
 ) {
     let SkyState::Ready(sky) = &*state else { return };
-    for (camera, mut fog) in &mut cameras {
-        fog.color = sky.haze;
+    for camera in &cameras {
         commands.entity(camera).insert((sky.skybox.clone(), sky.light.clone()));
+    }
+}
+
+/// Lights the world for the time of day: the sun (or the moon), the sky and
+/// its light, the exposure, and the haze.
+fn light_by_time(
+    clock: Res<TimeOfDay>,
+    rules: Res<GameRules>,
+    state: Res<SkyState>,
+    mut ambient: ResMut<GlobalAmbientLight>,
+    mut clear: ResMut<ClearColor>,
+    sun: Single<(&mut DirectionalLight, &mut Transform), With<Sun>>,
+    mut cameras: Query<
+        (&mut DistanceFog, Option<&mut Skybox>, Option<&mut EnvironmentMapLight>, &mut Exposure),
+        With<Camera3d>,
+    >,
+) {
+    let day = rules.0.day;
+    let (sun_at, moon_at) = (day.sun(clock.0), day.moon(clock.0));
+    let height = sun_at.height;
+    let towards = |position: venture_simulation::SkyPosition| {
+        let (east, south, up) = position.direction();
+        to_bevy(east, south, up)
+    };
+
+    // One light: the sun, handing over to the moon in twilight (when both
+    // are faint), so the shadows never jump.
+    let (mut light, mut place) = sun.into_inner();
+    let sunlight = sun_colour(height);
+    let moonlight = MOON_ILLUMINANCE * smoothstep(-3f32.to_radians(), -9f32.to_radians(), height);
+    let (direction, colour, illuminance) = if height > -3f32.to_radians() {
+        (towards(sun_at), sunlight, SUN_ILLUMINANCE * sun_strength(height))
+    } else {
+        (towards(moon_at), MOON_COLOUR, moonlight)
+    };
+    place.look_to(-direction, Vec3::Y);
+    light.color = Color::linear_rgb(colour.x, colour.y, colour.z);
+    light.illuminance = illuminance;
+
+    let level = sky_level(height);
+    let ev100 = exposure(height);
+    let scale = Exposure { ev100 }.exposure();
+    // Haze is the horizon's colour, warmed by a low sun.
+    let warmth = 0.5 * (1.0 - smoothstep(0.0, 20f32.to_radians(), height)) * (1.0 - night(height));
+    let tint = Vec3::ONE.lerp(sunlight, warmth);
+    let (horizon, turn) = match &*state {
+        SkyState::Ready(sky) => {
+            // Turn the sky so its sun's glow is where the sun is.
+            let (east, south, _) = sun_at.direction();
+            (sky.horizon, Quat::from_rotation_y(east.atan2(south) - sky.sun.x.atan2(sky.sun.z)))
+        }
+        _ => (Vec3::from(palette::HAZE.to_linear().to_f32_array_no_alpha()) / (SKY_BRIGHTNESS * scale), Quat::IDENTITY),
+    };
+    let haze = horizon * tint * SKY_BRIGHTNESS * level * scale;
+    let haze = Color::linear_rgb(haze.x, haze.y, haze.z);
+    if matches!(*state, SkyState::Ready(_)) {
+        ambient.brightness = 0.0;
+    } else {
+        ambient.brightness = PLAIN_AMBIENT * level;
+        clear.0 = haze;
+    }
+
+    for (mut fog, skybox, environment, mut camera_exposure) in &mut cameras {
+        fog.color = haze;
+        fog.directional_light_color = Color::srgba(1.0, 0.9, 0.7, 0.4 * (1.0 - night(height)));
+        camera_exposure.ev100 = ev100;
+        if let Some(mut skybox) = skybox {
+            skybox.brightness = SKY_BRIGHTNESS * level;
+            skybox.rotation = turn;
+        }
+        if let Some(mut environment) = environment {
+            environment.intensity = SKY_BRIGHTNESS * level;
+            environment.rotation = turn;
+        }
     }
 }

@@ -364,6 +364,11 @@ pub enum AdminCommand {
         /// The new body type.
         body: BodyType,
     },
+    /// Set the time of day for everyone (`/time 19.5`), in hours.
+    SetTime {
+        /// The time, from 0 to 24.
+        hour: f32,
+    },
 }
 
 /// Events from the server.
@@ -563,6 +568,13 @@ pub enum ServerMessage {
     /// anything shown about it changes (such as a member's health). `None`:
     /// they aren't in one.
     Party(Option<PartyInfo>),
+    /// The time of day, in hours (0 to 24): sent when the player joins, and
+    /// when an admin sets it. The client runs the clock on from there (at
+    /// the pace of the day cycle in the rules).
+    Time {
+        /// The time.
+        hour: f32,
+    },
     /// The player has been invited to a party (`Some`), or the invitation
     /// has been answered or has run out (`None`).
     PartyInvite(Option<PartyInvite>),

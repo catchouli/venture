@@ -1,5 +1,5 @@
 //! Admin commands typed in chat: `/setlevel 10`, `/reset`, `/setclass mage`,
-//! `/setgender feminine`.
+//! `/setgender feminine`, `/time 19:30`.
 //!
 //! They become [`AdminCommand`]s for the server, which carries them out only
 //! if the player really is an admin. `/help` lists them for admins, marked
@@ -8,11 +8,12 @@
 use venture_protocol::{AdminCommand, BodyType};
 
 /// Every admin command: its name, what follows it, and what it does.
-pub const ADMIN_COMMANDS: [(&str, &str, &str); 4] = [
+pub const ADMIN_COMMANDS: [(&str, &str, &str); 5] = [
     ("setlevel", "LEVEL", "set your level"),
     ("reset", "", "start your character over at level 1"),
     ("setclass", "CLASS", "change class, getting your points back"),
     ("setgender", "BODY", "masculine, feminine or androgynous"),
+    ("time", "HOUR", "set the time of day for everyone (19.5, or 19:30)"),
 ];
 
 /// Reads an admin command from its name and the words after it. Returns
@@ -30,8 +31,18 @@ pub fn parse(name: &str, arguments: &[&str]) -> Option<Result<AdminCommand, Stri
             .find(|option| option.name().eq_ignore_ascii_case(body))
             .map(|body| AdminCommand::SetBody { body })
             .ok_or_else(|| "Write it as /setgender masculine, feminine or androgynous.".to_string()),
+        ("time", [time]) => parse_hour(time).map(|hour| AdminCommand::SetTime { hour }).ok_or_else(usage),
         _ => Err(usage()),
     })
+}
+
+/// A time of day, as hours (`19.5`) or hours and minutes (`19:30`).
+fn parse_hour(time: &str) -> Option<f32> {
+    let hour = match time.split_once(':') {
+        Some((hours, minutes)) => hours.parse::<f32>().ok()? + minutes.parse::<f32>().ok()? / 60.0,
+        None => time.parse().ok()?,
+    };
+    (0.0..24.0).contains(&hour).then_some(hour)
 }
 
 #[cfg(test)]
@@ -47,6 +58,9 @@ mod tests {
         assert_eq!(parse("reset", &["now"]), Some(Err("Write it as /reset.".to_string())));
         assert_eq!(parse("setgender", &["Feminine"]), Some(Ok(AdminCommand::SetBody { body: BodyType::Feminine })));
         assert!(parse("setgender", &["dragon"]).unwrap().is_err());
+        assert_eq!(parse("time", &["19:30"]), Some(Ok(AdminCommand::SetTime { hour: 19.5 })));
+        assert_eq!(parse("time", &["6"]), Some(Ok(AdminCommand::SetTime { hour: 6.0 })));
+        assert!(parse("time", &["25"]).unwrap().is_err());
         assert_eq!(parse("fly", &[]), None);
     }
 }

@@ -15,6 +15,7 @@
 
 use std::f32::consts::FRAC_PI_2;
 
+use bevy::camera::Exposure;
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
@@ -185,6 +186,8 @@ fn spawn_camera(
         // cameras, such as the character creation preview, draw into images;
         // left to choose, Bevy might pick one of those.)
         IsDefaultUiCamera,
+        // (Set by the time of day: see `world::lighting`.)
+        Exposure::default(),
         // A soft bloom, so glowing things (the move marker, lava) glow.
         // (Kept low: bloom without a threshold spreads a veil over everything
         // bright, such as the sun on water.)

@@ -27,6 +27,15 @@
         // How near (metres) a member must be to a defeated monster to share its experience.
         share_distance: 60.0,
     ),
+    day: (
+        // How long a whole day and night lasts, in real minutes.
+        day_minutes: 120.0,
+        // When the sun rises and sets, in hours on the game's clock (0 to 24).
+        sunrise: 3.0,
+        sunset: 21.0,
+        // How high the sun gets at midday, in degrees.
+        noon_height: 60.0,
+    ),
     // Characters with admin powers (/setlevel, /reset, /setclass, /setgender), by name.
     admins: ["cat"],
 )
