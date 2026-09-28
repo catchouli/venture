@@ -42,14 +42,14 @@ pub struct FoliageSettings {
 
 impl Default for FoliageSettings {
     fn default() -> Self {
-        Self { size: 1024, metres: 1.0, sprig: 0.42, cover: 5.0, seed: 1 }
+        Self { size: 2048, metres: 2.0, sprig: 0.6, cover: 10.0, seed: 1 }
     }
 }
 
 /// How much of a sprig's card its leaves cover, roughly (to know how many cover the texture).
 const SPRIG_COVERAGE: f32 = 0.4;
 /// How bright the innermost sprigs are, next to the outermost.
-const INNER_LIGHT: f32 = 0.35;
+const INNER_LIGHT: f32 = 0.5;
 /// How steep the relief is, for the normal map.
 const RELIEF: f32 = 5.0;
 /// The leaves' roughness (0 to 1).

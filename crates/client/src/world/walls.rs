@@ -37,7 +37,7 @@ use crate::world::trees::TreeTemplates;
 /// Each kind's texture (a folder in the content's `textures/`), and how
 /// many metres it covers before it repeats.
 const TEXTURES: [(WallKind, &str, f32); 3] =
-    [(WallKind::DryStone, "drystone", 1.6), (WallKind::Fence, "fence_wood", 1.2), (WallKind::Hedge, "hedge", 2.2)];
+    [(WallKind::DryStone, "drystone", 1.6), (WallKind::Fence, "fence_wood", 1.2), (WallKind::Hedge, "hedge", 2.0)];
 /// The pictures of each texture, and whether each is sRGB.
 const PICTURES: [(&str, bool); 3] = [("colour.jpg", true), ("normal.jpg", false), ("surface.jpg", false)];
 /// The tree species whose leaves hedges wear.

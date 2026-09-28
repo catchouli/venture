@@ -14,7 +14,7 @@
 //! some species, and `--seed` still applies. `--textures FOLDER` also saves
 //! a tree's bark, sprig and impostor pictures. `--foliage FOLDER` saves a
 //! foliage texture from the species' sprigs instead (a leafy surface that
-//! tiles, a metre across: `colour.jpg`, `normal.jpg` and `surface.jpg`, as
+//! tiles, two metres across: `colour.jpg`, `normal.jpg` and `surface.jpg`, as
 //! content textures are), such as the hedges' `content/textures/hedge`.
 
 use std::path::PathBuf;
@@ -127,7 +127,7 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
 /// Saves a foliage texture made from a species' sprigs, as a content texture.
 fn save_foliage(species: &Species, textures: &TreeTextures, seed: u64, folder: &std::path::Path) -> Result<(), String> {
     // Between the leaves: the species' darkest leaf colour, in deep shade.
-    let shade = species.leaves.colours.1.scaled(0.3).to_bytes();
+    let shade = species.leaves.colours.1.scaled(0.5).to_bytes();
     let settings = venture_trees::foliage::FoliageSettings { seed, ..Default::default() };
     let foliage = venture_trees::foliage::foliage(&textures.leaves, shade, settings);
     std::fs::create_dir_all(folder).map_err(|error| format!("Can't make {}: {error}", folder.display()))?;
