@@ -16,8 +16,8 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use image::codecs::jpeg::JpegEncoder;
 use image::{Rgb, RgbImage};
 use venture_world::{
-    BUSH_SCALE, BakedWall, CHUNK_SIZE, ChunkPos, FluidKind, Ground, MAP_LABELS_FILE, MapInfo, PropKind, WallKind,
-    WorldManifest, chunk_file_path, decode_chunk, map_tile_path,
+    BUSH_SCALE, BakedBuilding, BakedWall, CHUNK_SIZE, ChunkPos, FluidKind, Ground, MAP_LABELS_FILE, MapInfo, PropKind,
+    WallKind, WorldManifest, chunk_file_path, decode_chunk, map_tile_path,
 };
 
 use crate::map_labels::{LandFacts, place_names};
@@ -73,7 +73,44 @@ fn draw_world(folder: &Path, manifest: &WorldManifest) -> std::io::Result<(RgbIm
         facts.merge(&band.facts);
     }
     draw_walls(&mut picture, &manifest.walls);
+    draw_buildings(&mut picture, &manifest.buildings);
     Ok((picture, facts))
+}
+
+/// Draws buildings as their roofs, seen from above: their footprints in
+/// thatch, darker at the edges.
+fn draw_buildings(picture: &mut RgbImage, buildings: &[BakedBuilding]) {
+    let (width, height) = (picture.width() as i32, picture.height() as i32);
+    for building in buildings {
+        let points: Vec<(f32, f32)> = building.plan.outline.clone();
+        if points.len() < 3 {
+            continue;
+        }
+        let inside = |x: f32, y: f32| {
+            let mut inside = false;
+            for i in 0..points.len() {
+                let (a, b) = (points[i], points[(i + 1) % points.len()]);
+                if (a.1 > y) != (b.1 > y) && x < a.0 + (y - a.1) / (b.1 - a.1) * (b.0 - a.0) {
+                    inside = !inside;
+                }
+            }
+            inside
+        };
+        let low = points.iter().fold((f32::MAX, f32::MAX), |low, p| (low.0.min(p.0), low.1.min(p.1)));
+        let high = points.iter().fold((f32::MIN, f32::MIN), |high, p| (high.0.max(p.0), high.1.max(p.1)));
+        for y in (low.1.floor() as i32 - 1).max(0)..=(high.1.ceil() as i32 + 1).min(height - 1) {
+            for x in (low.0.floor() as i32 - 1).max(0)..=(high.0.ceil() as i32 + 1).min(width - 1) {
+                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                if !inside(px, py) {
+                    continue;
+                }
+                let edge =
+                    !(inside(px - 1.0, py) && inside(px + 1.0, py) && inside(px, py - 1.0) && inside(px, py + 1.0));
+                let colour = if edge { Rgb([96, 78, 56]) } else { Rgb([150, 126, 92]) };
+                picture.put_pixel(x as u32, y as u32, colour);
+            }
+        }
+    }
 }
 
 /// Draws walls and fences as lines along their samples (leaving their gaps):
