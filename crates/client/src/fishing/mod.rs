@@ -8,11 +8,13 @@
 //! - once one's hooked, holding the mouse button or Space reels, and
 //!   letting go lets it run; the float comes in as the line does.
 //!
-//! [`shadows`] shows the fish in the water, and [`panel`] shows how it's going: what's happening, and in a fight the
+//! [`shadows`] shows the fish in the water, [`traps`] handles traps, and
+//! [`panel`] shows how it's going: what's happening, and in a fight the
 //! line's tension and how much is out.
 
 pub mod panel;
 pub mod shadows;
+pub mod traps;
 
 use bevy::prelude::*;
 use venture_content::FishingPart;
@@ -55,7 +57,7 @@ impl Plugin for FishingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Angling>()
             .add_message::<CastAt>()
-            .add_plugins((panel::PanelPlugin, shadows::ShadowsPlugin))
+            .add_plugins((panel::PanelPlugin, shadows::ShadowsPlugin, traps::TrapsPlugin))
             .add_systems(Startup, make_float)
             .add_systems(
                 Update,

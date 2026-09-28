@@ -31,6 +31,11 @@ pub enum EntityKind {
         /// How it looks.
         look: MonsterLook,
     },
+    /// A fishing trap set in the water.
+    Trap {
+        /// Whose it is.
+        owner: EntityId,
+    },
 }
 
 /// The kind of body a monster has (placeholder models, until real ones).
@@ -292,6 +297,19 @@ pub enum FishingCommand {
     Reel(bool),
     /// Reel in and stop fishing.
     Stop,
+    /// Set a trap from the bag in the water, with bait from the bag if any.
+    SetTrap {
+        /// Where, in metres.
+        x: f32,
+        /// Where, in metres.
+        y: f32,
+        /// The trap (an item id).
+        trap: String,
+        /// The bait (an item id), if any.
+        bait: Option<String>,
+    },
+    /// Empty your trap and take it back (if it's caught anything).
+    CollectTrap,
 }
 
 /// How a player's fishing is going, in a [`ServerMessage::Fishing`].

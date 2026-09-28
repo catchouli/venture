@@ -24,6 +24,7 @@ use crate::characters::nameplates::NameplateHeight;
 use crate::characters::player::LocalPlayer;
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::content::ContentStore;
+use crate::fishing::traps::{TrapAssets, TrapOwner, spawn_trap};
 use crate::interaction::targeting::{Health, Level, TargetKind, Targetable};
 use crate::network::{ClientState, FromServer};
 use crate::world::query::ground_height;
@@ -85,6 +86,7 @@ fn follow_server_events(
     mut players: Query<(&mut Level, &mut PlayerAppearance)>,
     mut healths: Query<&mut Health>,
     mut gaits: Query<&mut Gait, Without<LocalPlayer>>,
+    trap_assets: Res<TrapAssets>,
 ) {
     let now = time.elapsed_secs();
     let my_id = me.map(|me| me.id);
@@ -112,6 +114,11 @@ fn follow_server_events(
                             &content.items,
                         ));
                         (entity, TargetKind::Npc, Some(appearance.clone()))
+                    }
+                    EntityKind::Trap { owner } => {
+                        let entity = spawn_trap(&mut commands, &trap_assets, &store, (*x, *y));
+                        commands.entity(entity).insert((TrapOwner(*owner), NameplateHeight(0.6)));
+                        (entity, TargetKind::Trap, None)
                     }
                     EntityKind::Monster { look, level } => {
                         let entity = spawn_monster(&mut commands, &assets, &mut materials, transform, look);

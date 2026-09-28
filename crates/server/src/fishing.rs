@@ -16,13 +16,22 @@
 //!
 //! The player is told how it's going ([`ServerMessage::Fishing`]), and why
 //! it ended (a [`ServerMessage::Notice`]).
+//!
+//! **Traps** are the other half. A player sets one (a trap item from their
+//! bag, with bait if they have some) in water within reach; it's saved with
+//! them ([`PlacedTrap`], in their profile) and soaks by the real clock, so it
+//! fills while they're away. While they're in the game, everyone sees it
+//! ([`TrapInWater`]). When they collect it, its catches are drawn from the
+//! fish traps catch in that water (a quarter of them bycatch; bait makes the
+//! fish it appeals to likelier), go into their bag with their experience,
+//! and the trap comes back with them.
 
 use std::collections::BTreeMap;
 
 use bevy::prelude::*;
 use venture_content::{FishDef, FishingPart, ItemDef, fish_living_in};
 use venture_navigation::Point;
-use venture_protocol::{FishingState, ServerMessage};
+use venture_protocol::{EntityId, EntityKind, FishingState, ServerMessage};
 use venture_rpg::fishing::{self, Method};
 use venture_simulation::fishing::{Fight, FightEnd, FightSetup, most_common_water, region_cells, shoal_region, shoals};
 use venture_world::{Biome, FluidBody};
@@ -32,10 +41,11 @@ use crate::clock::WorldClock;
 use crate::combat::{Attacking, Health};
 use crate::config::FishingConfig;
 use crate::content::LoadedContent;
-use crate::entities::{Mover, Player, Position};
+use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
 use crate::equipment::Equipment;
 use crate::inventory::{Change, Inventory, describe_items};
 use crate::link::Link;
+use crate::profiles::SavedTrap;
 use crate::requests::{FishingAction, FishingRequest};
 use crate::world::ServerWorld;
 use crate::{GameRules, ServerSystems};
@@ -45,6 +55,9 @@ pub const SKILL: &str = "fishing";
 
 /// How much likelier a fish is to bite a line cast where it's shoaling.
 const SHOAL_BONUS: f32 = 3.0;
+
+/// How far from a player (in metres) they can set a trap, and collect one.
+const TRAP_REACH: f32 = 5.0;
 
 /// How much further than a rod's reach a cast may land (for where the
 /// player stands being a little off on the server).
@@ -57,7 +70,7 @@ impl Plugin for FishingPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             FixedUpdate,
-            (act_on_requests, stop_when_busy, run_lines).chain().in_set(ServerSystems::Fishing),
+            (act_on_requests, stop_when_busy, run_lines, show_traps).chain().in_set(ServerSystems::Fishing),
         );
     }
 }
@@ -71,6 +84,159 @@ pub struct FishingRules(pub FishingConfig);
 pub struct Fishing {
     line: Line,
     stage: Stage,
+}
+
+/// The trap a player has set, if any (saved with them).
+#[derive(Component, Default, Debug)]
+pub struct PlacedTrap(pub Option<SavedTrap>);
+
+/// A trap in the water, for everyone to see: the entity standing for a
+/// player's [`PlacedTrap`] while they're in the game.
+#[derive(Component)]
+pub struct TrapInWater {
+    /// Whose it is.
+    owner: Entity,
+    /// Their id, for clients.
+    owner_id: EntityId,
+    /// Where it is.
+    at: Point,
+}
+
+impl TrapInWater {
+    /// How clients are told about it.
+    pub fn kind(&self) -> EntityKind {
+        EntityKind::Trap { owner: self.owner_id }
+    }
+}
+
+/// Seconds since 1970, by the real clock.
+fn unix_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
+}
+
+/// Checks setting a trap and works out what's saved. `trap` and `bait` are
+/// item ids from the request. Returns why not, in words for the player.
+pub fn check_trap(
+    items: &BTreeMap<String, ItemDef>,
+    inventory: &Inventory,
+    placed: &PlacedTrap,
+    skill: u32,
+    from: Point,
+    at: Point,
+    (trap, bait): (&str, Option<&str>),
+    water: Option<(FluidBody, Biome)>,
+    now: u64,
+) -> Result<SavedTrap, String> {
+    if placed.0.is_some() {
+        return Err("You already have a trap set. Collect it first.".to_string());
+    }
+    let Some(&FishingPart::Trap { level, .. }) = items.get(trap).and_then(|item| item.fishing.as_ref()) else {
+        return Err("That isn't a trap.".to_string());
+    };
+    if inventory.count(trap) == 0 {
+        return Err(format!("You have no {}.", named(trap, items)));
+    }
+    if skill < level {
+        return Err(format!("You need fishing level {level} to set the {}.", named(trap, items)));
+    }
+    if water.is_none() {
+        return Err("Traps go in the water.".to_string());
+    }
+    if (at.0 - from.0).hypot(at.1 - from.1) > TRAP_REACH {
+        return Err("Stand closer to the water to set a trap.".to_string());
+    }
+    if let Some(bait) = bait {
+        let is_bait = matches!(items.get(bait).and_then(|item| item.fishing.as_ref()), Some(FishingPart::Bait(_)));
+        if !is_bait || inventory.count(bait) == 0 {
+            return Err(format!("You have no {} to bait it with.", named(bait, items)));
+        }
+    }
+    Ok(SavedTrap { item: trap.to_string(), at, set_at: now, bait: bait.map(str::to_string) })
+}
+
+/// How many catches a trap has soaked long enough for.
+fn trap_fill(items: &BTreeMap<String, ItemDef>, trap: &SavedTrap, now: u64) -> u32 {
+    match items.get(&trap.item).and_then(|item| item.fishing.as_ref()) {
+        Some(&FishingPart::Trap { capacity, soak, .. }) => {
+            fishing::trap_catches(now.saturating_sub(trap.set_at) as f32, soak, capacity)
+        }
+        _ => 0,
+    }
+}
+
+/// What a trap has caught (item ids, one each), from `rolls` (two a catch,
+/// 0 to 1): how many catches from how long it's soaked, each drawn from the
+/// fish traps catch in its water that the player's level can, a quarter of
+/// them bycatch, and those its bait appeals to likelier.
+pub fn trap_catches<'a>(
+    items: &'a BTreeMap<String, ItemDef>,
+    trap: &SavedTrap,
+    (body, biome): (FluidBody, Biome),
+    skill: u32,
+    now: u64,
+    rolls: &mut impl FnMut() -> f32,
+) -> Vec<&'a str> {
+    let caught = trap_fill(items, trap, now);
+    let bait = match trap.bait.as_ref().and_then(|bait| items.get(bait)?.fishing.as_ref()) {
+        Some(FishingPart::Bait(bait)) => Some(bait),
+        _ => None,
+    };
+    let living: Vec<(&str, &FishDef)> = fish_living_in(items.values(), body, biome)
+        .into_iter()
+        .filter(|(_, fish)| fish.trap > 0.0 && fish.level <= skill)
+        .collect();
+    let pool = |bycatch: bool| -> Vec<(&str, f32)> {
+        living
+            .iter()
+            .filter(|(_, fish)| fish.bycatch == bycatch)
+            .map(|(id, fish)| (*id, fishing::trap_weight(&fish.traits, fish.trap, bait)))
+            .collect()
+    };
+    let (main, bycatch) = (pool(false), pool(true));
+    (0..caught)
+        .filter_map(|_| {
+            let wants_bycatch = rolls() < fishing::BYCATCH_SHARE;
+            let from = match (wants_bycatch, main.is_empty(), bycatch.is_empty()) {
+                (true, _, false) | (false, true, false) => &bycatch,
+                (_, false, _) => &main,
+                _ => return None,
+            };
+            let weights: Vec<f32> = from.iter().map(|(_, weight)| *weight).collect();
+            fishing::choose(&weights, rolls()).map(|index| from[index].0)
+        })
+        .collect()
+}
+
+/// Keeps a [`TrapInWater`] for every trap set by a player in the game, and
+/// tells everyone when they come and go.
+fn show_traps(
+    mut commands: Commands,
+    mut link: ResMut<Link>,
+    mut ids: ResMut<EntityIds>,
+    players: Query<(Entity, &Player, &NetworkId, &DisplayName, &PlacedTrap)>,
+    shown: Query<(Entity, &NetworkId, &TrapInWater)>,
+) {
+    let everyone = || players.iter().map(|(_, player, ..)| player.connection).collect::<Vec<_>>();
+    for (entity, &NetworkId(id), trap) in &shown {
+        let still_there = players
+            .get(trap.owner)
+            .is_ok_and(|(.., placed)| placed.0.as_ref().is_some_and(|saved| saved.at == trap.at));
+        if !still_there {
+            commands.entity(entity).despawn();
+            link.broadcast(everyone(), &ServerMessage::EntityLeft { id });
+        }
+    }
+    for (owner, _, &NetworkId(owner_id), name, placed) in &players {
+        let Some(saved) = &placed.0 else { continue };
+        if shown.iter().any(|(_, _, trap)| trap.owner == owner && trap.at == saved.at) {
+            continue;
+        }
+        let id = ids.allocate();
+        let name = DisplayName(format!("{}'s trap", name.0));
+        let trap = TrapInWater { owner, owner_id, at: saved.at };
+        link.broadcast(everyone(), &appeared(id, &name, trap.kind(), Position(saved.at)));
+        commands.spawn((trap, NetworkId(id), name, Position(saved.at)));
+    }
 }
 
 /// A cast line: what the player fishes with, and where.
@@ -249,12 +415,20 @@ fn act_on_requests(
     time: Res<Time>,
     clock: Res<WorldClock>,
     game_rules: Res<GameRules>,
-    mut players: Query<(&Player, &Position, &Equipment, &Character, &mut Inventory, Option<&mut Fishing>)>,
+    mut players: Query<(
+        &Player,
+        &Position,
+        &Equipment,
+        &mut Character,
+        &mut Inventory,
+        &mut PlacedTrap,
+        Option<&mut Fishing>,
+    )>,
 ) {
     let now = time.elapsed_secs();
     let items = &content.pack.items;
     for request in requests.read() {
-        let Ok((player, &Position(from), equipment, character, mut inventory, fishing)) =
+        let Ok((player, &Position(from), equipment, mut character, mut inventory, mut placed, fishing)) =
             players.get_mut(request.player)
         else {
             continue;
@@ -325,6 +499,96 @@ fn act_on_requests(
                 {
                     *reeling = *reel;
                 }
+            }
+            FishingAction::SetTrap { at, trap, bait } => {
+                let skill = character.skill(SKILL).level;
+                let water = world.water_at(*at);
+                let saved = check_trap(
+                    items,
+                    &inventory,
+                    &placed,
+                    skill,
+                    from,
+                    *at,
+                    (trap, bait.as_deref()),
+                    water,
+                    unix_now(),
+                );
+                let saved = match saved {
+                    Ok(saved) => saved,
+                    Err(text) => {
+                        tell(&mut link, text);
+                        continue;
+                    }
+                };
+                let mut change = Change::take(trap, 1);
+                if let Some(bait) = bait {
+                    change = change.and_take(bait, 1);
+                }
+                if inventory.apply(&change, items).is_err() {
+                    continue;
+                }
+                let minutes = match items.get(trap).and_then(|item| item.fishing.as_ref()) {
+                    Some(&FishingPart::Trap { soak, .. }) => (soak / 60.0).round(),
+                    _ => 0.0,
+                };
+                let baited =
+                    bait.as_ref().map_or(String::new(), |bait| format!(", baited with {}", named(bait, items)));
+                tell(
+                    &mut link,
+                    format!("You set your {}{baited}. It fills over {minutes} minutes.", named(trap, items)),
+                );
+                placed.0 = Some(saved);
+            }
+            FishingAction::CollectTrap => {
+                let Some(saved) = placed.0.clone() else {
+                    tell(&mut link, "You haven't set a trap.".to_string());
+                    continue;
+                };
+                if (saved.at.0 - from.0).hypot(saved.at.1 - from.1) > TRAP_REACH {
+                    tell(&mut link, "Your trap is too far away to collect.".to_string());
+                    continue;
+                }
+                let skill = character.skill(SKILL).level;
+                let water = world.water_at(saved.at).unwrap_or((FluidBody::River, Biome::Grassland));
+                let caught = trap_catches(items, &saved, water, skill, unix_now(), &mut || fastrand::f32());
+                if caught.is_empty() && trap_fill(items, &saved, unix_now()) == 0 {
+                    tell(&mut link, "Nothing in it yet. Give it longer.".to_string());
+                    continue;
+                }
+                if caught.is_empty() {
+                    // It's soaked, but nothing here goes into traps for them yet.
+                    if inventory.apply(&Change::give(&saved.item, 1), items).is_ok() {
+                        let text = "It's empty: nothing here will go into your trap yet. Try the coast, or \
+                                    come back with more fishing experience.";
+                        tell(&mut link, text.to_string());
+                        placed.0 = None;
+                    }
+                    continue;
+                }
+                let mut change = Change::give(&saved.item, 1);
+                for fish in &caught {
+                    change = change.and_give(fish, 1);
+                }
+                if inventory.apply(&change, items).is_err() {
+                    tell(&mut link, "Your bag is too full to empty the trap.".to_string());
+                    continue;
+                }
+                let experience: u64 = caught
+                    .iter()
+                    .filter_map(|fish| match items.get(*fish)?.fishing.as_ref()? {
+                        FishingPart::Fish(def) => Some(u64::from(def.experience)),
+                        _ => None,
+                    })
+                    .sum();
+                let levels = character.add_skill_experience(SKILL, experience);
+                let names: Vec<String> = caught.iter().map(|fish| a(&named(fish, items))).collect();
+                let mut text = format!("You empty your trap: {}. (+{experience} fishing experience)", names.join(", "));
+                if levels > 0 {
+                    text += &format!(" Your fishing level is now {}.", character.skill(SKILL).level);
+                }
+                tell(&mut link, text);
+                placed.0 = None;
             }
             FishingAction::Stop => {
                 if fishing.is_some() {
@@ -536,6 +800,63 @@ mod tests {
             .flat_map(|x| shoaling_at(&items, (FluidBody::Sea, Biome::Grassland), (x as f32 * 12.0, 0.0), 1, 9))
             .collect();
         assert!(!sea.contains(&"dace"));
+    }
+
+    #[test]
+    fn traps_are_set_in_water_within_reach() {
+        let items = items();
+        let kit = bag(&items, &[("cage_trap", 1), ("shrimp_bits", 2)]);
+        let none = PlacedTrap(None);
+        let set = |placed: &PlacedTrap, at: Point, water, bait| {
+            check_trap(&items, &kit, placed, 1, (0.0, 0.0), at, ("cage_trap", bait), water, 1000)
+        };
+        let saved = set(&none, (3.0, 0.0), RIVER, Some("shrimp_bits")).unwrap();
+        assert_eq!(
+            saved,
+            SavedTrap { item: "cage_trap".into(), at: (3.0, 0.0), set_at: 1000, bait: Some("shrimp_bits".into()) }
+        );
+        assert!(set(&none, (3.0, 0.0), RIVER, None).unwrap().bait.is_none(), "bait is optional");
+        assert!(set(&PlacedTrap(Some(saved)), (3.0, 0.0), RIVER, None).unwrap_err().contains("already"));
+        assert!(set(&none, (9.0, 0.0), RIVER, None).unwrap_err().contains("closer"));
+        assert!(set(&none, (3.0, 0.0), None, None).unwrap_err().contains("in the water"));
+        assert!(set(&none, (3.0, 0.0), RIVER, Some("worm")).unwrap_err().contains("no worm"));
+        let empty = Inventory::empty();
+        let refused = check_trap(&items, &empty, &none, 1, (0.0, 0.0), (3.0, 0.0), ("cage_trap", None), RIVER, 0);
+        assert!(refused.unwrap_err().contains("no cage trap"));
+    }
+
+    #[test]
+    fn traps_fill_with_what_lives_there() {
+        let items = items();
+        let trap = |bait: Option<&str>| SavedTrap {
+            item: "cage_trap".into(),
+            at: (0.0, 0.0),
+            set_at: 0,
+            bait: bait.map(Into::into),
+        };
+        let mut rng = fastrand::Rng::with_seed(3);
+        let mut rolls = || rng.f32();
+        let river = RIVER.unwrap();
+        assert!(trap_catches(&items, &trap(None), river, 99, 60, &mut rolls).is_empty(), "nothing in the first minute");
+        assert_eq!(trap_catches(&items, &trap(None), river, 99, 800, &mut rolls).len(), 2, "two thirds full");
+        let full = trap_catches(&items, &trap(None), river, 99, 100_000, &mut rolls);
+        assert_eq!(full.len(), 3, "and no more than it holds");
+        let living = fish_living_in(items.values(), river.0, river.1);
+        let trap_fish = |id: &str| living.iter().any(|(fish, def)| *fish == id && def.trap > 0.0);
+        let mut seen = Vec::new();
+        for _ in 0..200 {
+            for fish in trap_catches(&items, &trap(Some("shrimp_bits")), river, 99, 100_000, &mut rolls) {
+                assert!(trap_fish(fish), "{fish} isn't caught in river traps");
+                seen.push(fish);
+            }
+        }
+        let bycatch = seen.iter().filter(|fish| ["river_snail", "freshwater_mussel"].contains(fish)).count();
+        assert!((90..210).contains(&bycatch), "about a quarter bycatch: {bycatch} of {}", seen.len());
+        // At level 1, only what a beginner can catch.
+        let beginner = trap_catches(&items, &trap(None), river, 1, 100_000, &mut rolls);
+        assert!(beginner.is_empty(), "nothing in the river's traps is level 1: {beginner:?}");
+        let coast = trap_catches(&items, &trap(None), (FluidBody::Sea, Biome::Grassland), 1, 100_000, &mut rolls);
+        assert!(coast.iter().all(|fish| ["brown_shrimp", "shore_crab"].contains(fish)), "{coast:?}");
     }
 
     #[test]

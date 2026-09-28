@@ -38,6 +38,8 @@
 //!   in hand (if none is), and cast at `(x, y)`.
 //! - `VENTURE_FISH_AUTO=1`: and strike at the bite, and reel while the fish
 //!   rests (to see a fight).
+//! - `VENTURE_TRAP=1`: once loaded, set the first fishing trap in the bag in
+//!   the nearest water.
 //!
 //! Environment variables don't exist on the web, so there these are all unset.
 
@@ -87,6 +89,8 @@ pub struct DevSettings {
     pub fish_at: Option<Point>,
     /// Whether to play the fish once it bites.
     pub fish_auto: bool,
+    /// Whether to set a trap once loaded.
+    pub trap: bool,
 }
 
 impl DevSettings {
@@ -123,6 +127,7 @@ impl DevSettings {
             choose: numbers("VENTURE_CHOOSE").unwrap_or_default().into_iter().map(|n| n as u32).collect(),
             fish_at: numbers("VENTURE_FISH").filter(|n| n.len() == 2).map(|n| (n[0], n[1])),
             fish_auto: std::env::var_os("VENTURE_FISH_AUTO").is_some(),
+            trap: std::env::var_os("VENTURE_TRAP").is_some(),
         }
     }
 }

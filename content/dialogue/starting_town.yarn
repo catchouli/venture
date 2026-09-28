@@ -104,6 +104,9 @@ Wendel: Ho there, {player_name()}. Come to wet a line?
     Wendel: Hold a rod in your hand, and click the water to cast.
     Wendel: With a ledger rod, watch the tip. Something nibbles first: leave it. When a fish bites, strike, quick!
     Wendel: Then hold to reel it in. When it runs, let it go, or your line snaps. When it tires, bring it home.
+    -> And traps?
+        Wendel: Stand at the water's edge and set your cage trap. Bait it with shrimp bits, and leave it to soak.
+        Wendel: Come back in twenty minutes and see what's crawled in. Shrimps and crabs on the coast; crayfish in the river, once you know the knack.
     -> What bites on what?
         Wendel: Worms for the river fish: dace, gudgeon, roach and chub. Paste for bream, once you've the reel for them.
         Wendel: Predators like perch take live shrimp, or chase a spinner. Every fish has its tastes.

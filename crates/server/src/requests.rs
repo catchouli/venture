@@ -286,6 +286,17 @@ pub enum FishingAction {
     Reel(bool),
     /// Stop fishing.
     Stop,
+    /// Set a trap at this point.
+    SetTrap {
+        /// Where.
+        at: Point,
+        /// The trap's item id.
+        trap: String,
+        /// The bait's item id, if any.
+        bait: Option<String>,
+    },
+    /// Collect their trap.
+    CollectTrap,
 }
 
 /// An admin command, for [`crate::admin`] (which checks the player is an admin).
@@ -603,6 +614,14 @@ fn judge_player_message(
                     }
                     FishingAction::Cast { at: (x, y), tackle }
                 }
+                FishingCommand::SetTrap { x, y, trap, bait } => {
+                    let long = |id: &str| id.len() > MAX_ID_BYTES;
+                    if !world.contains((x, y)) || long(&trap) || bait.as_deref().is_some_and(long) {
+                        return Verdict::Strike;
+                    }
+                    FishingAction::SetTrap { at: (x, y), trap, bait }
+                }
+                FishingCommand::CollectTrap => FishingAction::CollectTrap,
                 FishingCommand::Strike => FishingAction::Strike,
                 FishingCommand::Reel(reeling) => FishingAction::Reel(reeling),
                 FishingCommand::Stop => FishingAction::Stop,

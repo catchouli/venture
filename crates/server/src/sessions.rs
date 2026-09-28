@@ -11,6 +11,7 @@ use crate::combat::{Health, Mana, max_health, max_mana};
 use crate::content::LoadedContent;
 use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
 use crate::equipment::{Equipment, player_look};
+use crate::fishing::{PlacedTrap, TrapInWater};
 use crate::hotbar::Hotbar;
 use crate::inventory::{Change, Inventory};
 use crate::link::{ConnectionId, Link};
@@ -67,6 +68,7 @@ type SavedParts = (
     &'static Character,
     &'static Equipment,
     &'static Hotbar,
+    &'static PlacedTrap,
 );
 
 /// The resources joining and leaving need.
@@ -87,6 +89,7 @@ struct Sessions<'w, 's> {
     npcs: Query<'w, 's, (&'static Npc, &'static NetworkId, &'static DisplayName, &'static Position)>,
     monsters:
         Query<'w, 's, (&'static Monster, &'static NetworkId, &'static DisplayName, &'static Position), Without<Dead>>,
+    traps: Query<'w, 's, (&'static TrapInWater, &'static NetworkId, &'static DisplayName, &'static Position)>,
 }
 
 fn handle_session_requests(mut requests: MessageReader<SessionRequest>, mut sessions: Sessions) {
@@ -199,6 +202,7 @@ impl Sessions<'_, '_> {
         let hotbar = Hotbar::from_saved(saved.hotbar.take(), &character);
         let inventory = Inventory::from_saved(saved.inventory, saved.miasma);
         let quests = QuestLog::from_saved(saved.quests);
+        let trap = PlacedTrap(saved.trap.take());
         let admin = self.admins.includes(&name.0);
         let kind = EntityKind::Player { level: character.level(), look: look.clone() };
 
@@ -208,7 +212,7 @@ impl Sessions<'_, '_> {
             ServerMessage::Welcome { you: id, name: name.0.clone(), position: position.0, rules, admin, look };
         self.link.send(connection, &welcome);
         self.link.send(connection, &hotbar.message());
-        for (_, &NetworkId(other), (_, other_name, &other_position, _, _, other_character, other_equipment, _)) in
+        for (_, &NetworkId(other), (_, other_name, &other_position, _, _, other_character, other_equipment, _, _)) in
             &self.players
         {
             let other_look = player_look(other_character, other_equipment, &self.content.pack.items);
@@ -220,6 +224,9 @@ impl Sessions<'_, '_> {
         }
         for (monster, &NetworkId(monster_id), monster_name, &monster_position) in &self.monsters {
             self.link.send(connection, &appeared(monster_id, monster_name, monster.kind(), monster_position));
+        }
+        for (trap, &NetworkId(trap_id), trap_name, &trap_position) in &self.traps {
+            self.link.send(connection, &appeared(trap_id, trap_name, trap.kind(), trap_position));
         }
         // Tell everyone else about the newcomer.
         let others: Vec<ConnectionId> = self.players.iter().map(|(_, _, (player, ..))| player.connection).collect();
@@ -236,7 +243,7 @@ impl Sessions<'_, '_> {
             position,
             Mover::default(),
             (inventory, quests, character, equipment, health),
-            (mana, hotbar, Cooldowns::default()),
+            (mana, hotbar, Cooldowns::default(), trap),
         ));
         if admin {
             player.insert(Admin);
@@ -358,7 +365,7 @@ fn save_all(store: &ProfileStore, players: &Query<SavedParts>) {
 
 /// What to save about a player.
 fn profile_of(
-    (_, name, &Position(position), inventory, quests, character, equipment, hotbar): (
+    (_, name, &Position(position), inventory, quests, character, equipment, hotbar, trap): (
         &Player,
         &DisplayName,
         &Position,
@@ -367,6 +374,7 @@ fn profile_of(
         &Character,
         &Equipment,
         &Hotbar,
+        &PlacedTrap,
     ),
 ) -> Profile {
     let mut profile = Profile::new(name.0.clone(), position);
@@ -376,6 +384,7 @@ fn profile_of(
     profile.miasma = inventory.miasma();
     profile.quests = quests.saved();
     profile.hotbar = Some(hotbar.slots().to_vec());
+    profile.trap.clone_from(&trap.0);
     profile
 }
 

@@ -102,12 +102,19 @@ Each step ends playable or testable, and is committed.
    times as likely to bite (and bite sooner): shadows show where to cast.
 5. **Looks and feel.** The line and float, the rod bending, splashes, fight
    animation, sounds, icons for each fish (the placeholder icon tool).
-6. **Traps.** Placing, soaking (saved), harvesting, bycatch.
+6. **Done: traps.** Placing, soaking (saved), harvesting, bycatch. Use a
+   cage trap from the bag at the water's edge (it takes shrimp bits, or
+   other bait crayfish and crabs go for, if you carry some); it's saved with
+   you and soaks by the real clock (20 minutes to fill its 3 catches), and
+   everyone sees it while you're in the game. Select it and click it again
+   to collect: catches are drawn from what traps catch in that water at
+   your level, a quarter of them bycatch, those the bait draws three times
+   as likely; the trap comes back to the bag. One trap a player.
 7. **Content and vendor.** The slice's fish, bait and gear; the starter kit;
    the tackle vendor in town; the lure static profiles. (Done for rods:
    new characters start with a ledger rod, a reel and worms, and Wendel,
    by the town square, sells the slice's tackle, buys fish and explains
-   how to fish. The cage trap and shrimp bits join the kit with traps.)
+   how to fish. The kit has a cage trap and shrimp bits too.)
 8. **Playtest tools.** Logging catches per hour, XP per hour and losses by
    cause; admin commands (set a skill's level, give gear); every number in
    content, so it can be tuned without code.
