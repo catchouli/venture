@@ -57,10 +57,11 @@ fn load_character_models(mut commands: Commands, project: Res<crate::Project>) {
         warn!("{file}: {problem}");
     }
     store.tree_species = trees.species;
+    store.tree_drawing = trees.drawing;
     store.tree_photos = trees
         .files
         .into_iter()
-        .filter(|(path, _)| path != venture_content::trees::TREE_SPECIES_FILE)
+        .filter(|(path, _)| path.ends_with(".png") || path.ends_with(".jpg"))
         .map(|(path, bytes)| (path, std::sync::Arc::new(bytes)))
         .collect();
     commands.insert_resource(store);

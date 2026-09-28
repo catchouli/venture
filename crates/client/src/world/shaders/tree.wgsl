@@ -1,14 +1,14 @@
-// Trees: Bevy's standard PBR shading, fading out where a tree comes
-// between the camera and the player (see `world/trees.rs`).
+// Trees: Bevy's standard PBR shading, fading out close to the camera, so
+// they never block the view (see `world/trees.rs`, and `trees/drawing.ron`
+// in the content for the distances).
 //
-// A fragment close to the line from the camera to the player (within the
-// fade's inner radius) is gone; beyond its outer radius it's all there; in
-// between it fades smoothly. It fades through alpha to coverage (with
-// multisampling on, which the game has): the fade sets how many of each
-// pixel's samples are covered, which needs no sorting, unlike blending.
-// Without multisampling it dithers instead, dropping some pixels in
-// interleaved gradient noise (Jimenez, "Next Generation Post Processing in
-// Call of Duty: Advanced Warfare", 2014). Behind the player nothing fades. Shadows are drawn by the
+// A fragment nearer the camera than the fade's start is gone; beyond its
+// end it's all there; in between it fades smoothly. It fades through alpha
+// to coverage (with multisampling on, which the game has): the fade sets how
+// many of each pixel's samples are covered, which needs no sorting, unlike
+// blending. Without multisampling it dithers instead, dropping some pixels
+// in interleaved gradient noise (Jimenez, "Next Generation Post Processing
+// in Call of Duty: Advanced Warfare", 2014). Shadows are drawn by the
 // standard shadow pass, so a faded tree still casts its shadow.
 
 #import bevy_pbr::{
@@ -30,11 +30,9 @@
 #endif
 
 struct TreeFade {
-    // xyz: the point the camera looks at (the player), w: 1 if fading is on
-    focus: vec4<f32>,
-    // x: inner radius (gone within), y: outer radius (all there beyond),
-    // z: how far past the player (a share of the camera's distance) trees come back
-    shape: vec4<f32>,
+    // x: where the fade starts (gone nearer), y: where it ends (all there
+    // further), in metres from the camera; z: 1 if fading is on
+    settings: vec4<f32>,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(100) var<uniform> fade: TreeFade;
@@ -44,15 +42,9 @@ fn dither(pixel: vec2<f32>) -> f32 {
     return fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
 }
 
-// How much of a tree shows at `p`: 0 on the line from the camera to the player, 1 well away from it.
+// How much of a tree shows at `p`: none right by the camera, all of it further away.
 fn opacity(p: vec3<f32>) -> f32 {
-    let camera = view.world_position;
-    let line = fade.focus.xyz - camera;
-    let along = dot(p - camera, line) / max(dot(line, line), 1e-4);
-    let nearest = camera + line * clamp(along, 0.0, 1.0);
-    let off_line = smoothstep(fade.shape.x, fade.shape.y, distance(p, nearest));
-    let behind = smoothstep(1.0, 1.0 + fade.shape.z, along);
-    return max(off_line, behind);
+    return smoothstep(fade.settings.x, fade.settings.y, distance(p, view.world_position));
 }
 
 @fragment
@@ -64,7 +56,7 @@ fn fragment(
     pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
 
     var shown = 1.0;
-    if fade.focus.w > 0.5 {
+    if fade.settings.z > 0.5 {
         shown = opacity(in.world_position.xyz);
     }
 #ifdef MAY_DISCARD

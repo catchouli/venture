@@ -55,6 +55,8 @@ content/
   skills/*.ron         gathering and making skills (sent to clients)
   trees/species.ron    tree species: shape, branching, leaves and bark, for the tree
                        generator (see plan-trees.md; try them with the `tree` tool)
+  trees/drawing.ron    how trees are drawn: the fade near the camera, and where the
+                       levels of detail change (sent to clients)
   trees/bark/*.jpg,    photographed bark and leaf sets the species use (imported by
   trees/leaves/*.png   `import_tree_texture`; see plan-trees.md)
   sounds/*.wav         sounds (sent to clients)

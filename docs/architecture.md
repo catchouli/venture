@@ -94,7 +94,7 @@ src/
     water_material.rs + shaders/water.wgsl       water's shader (waves, reflections)
     props.rs           rock and dead-tree meshes
     trees.rs + shaders/tree.wgsl   trees grown by venture_trees: templates, levels of detail,
-                       impostors, and fading trees between the camera and the player
+                       impostors, and fading trees close to the camera
     query.rs           ground height, raycasts, blocked cells
     lighting.rs        sun, moon, skies and their light, by the time of day
     sky.rs + shaders/sky.wgsl   drawing the sky: two skies blended, the sun and moon

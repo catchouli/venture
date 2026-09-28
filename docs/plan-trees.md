@@ -192,9 +192,10 @@ over 10,000 trees. The plan:
 6. **The editor:** a Trees tab with a live preview, and the World tab's
    area-drawing and placing tools, with affected chunks re-made at once.
 7. **Impostors** for the far LOD, and **wind**.
-7½. **Trees in the way fade** (asked for on 2026-09-28): where a tree comes
-   between the camera and the player, it fades out smoothly the closer it is
-   to the line between them.
+7½. **Trees fade close to the camera** (asked for on 2026-09-28): the
+   parts of a tree near the camera fade out smoothly by their distance from
+   it, so the view is never blocked while trees by the player stay whole
+   (for woodcutting). The distances are tunable in `trees/drawing.ron`.
 8. **Seasons and health** (autumn colours, bare winter branches, dead
    trees), blossom on hawthorn, more species.
 
@@ -207,7 +208,7 @@ over 10,000 trees. The plan:
 - [ ] 5. Authored trees
 - [ ] 6. The editor (it shows the new trees; no tree tools yet)
 - [ ] 7. Impostors and wind (impostors are in; no wind yet)
-- [x] 7½. Trees in the way fade
+- [x] 7½. Trees fade close to the camera
 - [ ] 8. Seasons, health, more species
 
 ## Where it stands
@@ -254,12 +255,23 @@ cargo run --release -p venture_trees --bin tree -- oak --age 1.5 --seed 7 --out 
 - Leaves and bark use alpha to coverage (the game has 4× MSAA). Leaves have
   mipmaps that keep their coverage (Castaño's method), so distant crowns
   don't thin away.
-- **Trees in the way fade** (`shaders/tree.wgsl`):
-  - Within 1.5 m of the line from the camera to the player's chest, trees
-    are gone. Beyond 5 m they're whole, and in between they fade smoothly.
+- **Trees fade close to the camera** (`shaders/tree.wgsl`):
+  - A tree fragment nearer the camera than 2 m is gone, beyond 7 m it's
+    whole, and in between it fades smoothly.
   - The fade goes through alpha to coverage, so it's a smooth dissolve,
     with no sorting and no dots.
-  - Their shadows stay.
+  - Shadows stay.
+  - The distances, and those of the levels of detail, are in the
+    content's `trees/drawing.ron`. It's sent to clients, so tuning it needs
+    no rebuild.
+
+  (The first version faded trees near the line from the camera to the
+  player. The playtest found it cut a circle round the character, when
+  trees by the player need to stay visible for woodcutting.)
+- Bark was inside out (its triangles wound clockwise seen from outside), so
+  the insides of trunks showed. It's fixed, with a test. Leaves and
+  impostors are drawn from both sides with their own normals, so they
+  weren't affected.
 - Until the world names species (step 4), each old prop kind stands for a
   mix, chosen by place and biome:
   - "oak": oak, ash, beech and sycamore, with the odd yew, and willow in
