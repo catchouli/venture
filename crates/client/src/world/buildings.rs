@@ -10,8 +10,9 @@
 //! - **Materials:** a material a surface (stone, boards, wood, thatch,
 //!   plaster, floor, glass), the textured ones from the content's
 //!   `textures/` (see `surfaces.rs`).
-//! - **Inside:** while the player's inside a building, its upper parts
-//!   (the roof, the floors above and the chimney) hide, so the room can be seen.
+//! - **Inside:** while the player (or the camera) is inside a building, its
+//!   upper parts (the roof, the floors above and the chimney) hide, so the
+//!   room can be seen, and the camera never looks at a roof from inside.
 
 use std::collections::HashMap;
 
@@ -226,15 +227,24 @@ fn finish_building(mut commands: Commands, mut buildings: ResMut<Buildings>, mut
     }
 }
 
-/// Hides a building's upper parts while the player's inside it.
+/// Hides a building's upper parts while the player (or the camera) is
+/// inside it, so the camera never looks at the inside of a roof.
 fn show_inside(
     player: Query<&Transform, With<LocalPlayer>>,
+    cameras: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     roots: Query<(&BuildingRoot, &Children)>,
     mut uppers: Query<&mut Visibility, With<UpperPart>>,
 ) {
-    let inside_at = player.iter().next().map(|transform| Vec2::from(from_bevy(transform.translation)));
+    let mut inside_at: Vec<Vec2> =
+        player.iter().map(|transform| Vec2::from(from_bevy(transform.translation))).collect();
+    inside_at.extend(
+        cameras
+            .iter()
+            .filter(|(camera, _)| camera.is_active)
+            .map(|(_, place)| Vec2::from(from_bevy(place.translation()))),
+    );
     for (root, children) in &roots {
-        let inside = inside_at.is_some_and(|at| contains(&root.outline, at));
+        let inside = inside_at.iter().any(|&at| contains(&root.outline, at));
         let wanted = if inside { Visibility::Hidden } else { Visibility::Inherited };
         for child in children {
             if let Ok(mut visibility) = uppers.get_mut(*child) {

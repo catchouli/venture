@@ -41,4 +41,23 @@
             plaster: (0.48, 0.45, 0.4),
         ),
     ),
+    (
+        id: "stone_hall",
+        name: "Stone hall",
+        walls: Stone,
+        scale: 1.2,
+        wall_thickness: 0.6,
+        storey: 3.4,
+        roof: (pitch: (44.0, 50.0), eaves: 0.45, verge: 0.3, thickness: 0.35),
+        door: (size: (1.8, 2.4)),
+        window: (size: (0.8, 1.0), sill: 1.3, gap: 2.2, corner: 1.2, chance: 0.9, shutters: false),
+        chimney: (chance: 1.0, size: (1.1, 0.9), above_ridge: 1.1),
+        colours: (
+            walls: ((0.9, 0.88, 0.84), (0.72, 0.7, 0.66)),
+            roof: ((0.92, 0.86, 0.76), (0.7, 0.64, 0.54)),
+            trim: ((0.5, 0.42, 0.34), (0.36, 0.3, 0.25)),
+            doors: [(0.3, 0.26, 0.22), (0.4, 0.3, 0.22)],
+            plaster: (0.46, 0.44, 0.4),
+        ),
+    ),
 ]
