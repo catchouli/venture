@@ -4,3 +4,5 @@ content/characters/*.glb filter=lfs diff=lfs merge=lfs -text
 content/textures/**/*.jpg filter=lfs diff=lfs merge=lfs -text
 content/skies/**/*.jpg filter=lfs diff=lfs merge=lfs -text
 content/skies/**/*.bin filter=lfs diff=lfs merge=lfs -text
+content/trees/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+content/trees/**/*.png filter=lfs diff=lfs merge=lfs -text

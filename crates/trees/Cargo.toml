@@ -1,0 +1,22 @@
+[package]
+name = "venture_trees"
+description = "The tree generator: realistic procedural trees from a species and a few parameters, as meshes, textures, preview pictures and glTF models."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+# Reflection (for the editor's property panels).
+reflect = ["dep:bevy_reflect", "bevy_reflect/reflect_documentation"]
+
+[dependencies]
+bevy_reflect = { workspace = true, optional = true }
+glam.workspace = true
+image = { workspace = true, features = ["png", "jpeg"] }
+ron.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
