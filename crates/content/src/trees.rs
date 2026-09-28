@@ -37,6 +37,26 @@ pub struct TreeWoodcutting {
     pub hardness: u32,
 }
 
+/// What a standing tree of a species is called ("Oak tree", "Silver birch").
+pub fn tree_name(species_name: &str) -> String {
+    if species_name.contains(' ') { species_name.to_string() } else { format!("{species_name} tree") }
+}
+
+/// A species' name as it reads in a sentence ("oak", "silver birch", but
+/// "Scots pine": names of peoples and places keep their capitals).
+pub fn common_name(species_name: &str) -> String {
+    let proper = ["Scots", "English", "Welsh", "Cornish"];
+    let mut words = species_name.split(' ');
+    let first = words.next().unwrap_or_default();
+    let first = if proper.contains(&first) { first.to_string() } else { first.to_lowercase() };
+    std::iter::once(first).chain(words.map(str::to_string)).collect::<Vec<_>>().join(" ")
+}
+
+/// What a fallen tree of a species is called ("Fallen oak").
+pub fn fallen_name(species_name: &str) -> String {
+    format!("Fallen {}", common_name(species_name))
+}
+
 /// Reads `trees/woodcutting.ron`.
 pub fn parse_tree_woodcutting(text: &str) -> Result<Vec<TreeWoodcutting>, String> {
     ron::from_str(text).map_err(|error| error.to_string())
@@ -204,4 +224,18 @@ pub fn load_trees(folder: &Path) -> LoadedTrees {
         }
     }
     LoadedTrees { species, problems, files, drawing, woodcutting }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trees_are_named_as_people_say_them() {
+        assert_eq!(tree_name("Oak"), "Oak tree");
+        assert_eq!(tree_name("Silver birch"), "Silver birch");
+        assert_eq!(common_name("Silver birch"), "silver birch");
+        assert_eq!(common_name("Scots pine"), "Scots pine");
+        assert_eq!(fallen_name("Yew"), "Fallen yew");
+    }
 }

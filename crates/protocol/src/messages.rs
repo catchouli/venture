@@ -9,6 +9,12 @@ use venture_simulation::Rules;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EntityId(pub u32);
 
+impl EntityId {
+    /// Not an entity of the server's: things of the world itself (a tree)
+    /// that clients select. The server's ids start at 1.
+    pub const NONE: EntityId = EntityId(0);
+}
+
 /// What kind of thing an entity is.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EntityKind {
@@ -35,6 +41,15 @@ pub enum EntityKind {
     Trap {
         /// Whose it is.
         owner: EntityId,
+    },
+    /// A felled tree, lying where it fell (its entity's position is where it stood).
+    FallenTree {
+        /// The tree it was.
+        tree: TreeId,
+        /// Which way it fell, in radians (around the vertical, as props turn).
+        toward: f32,
+        /// The woodworking level it takes to cut it up.
+        level: u32,
     },
 }
 
@@ -274,6 +289,39 @@ pub enum ClientMessage {
     Party(PartyCommand),
     /// Something to do with fishing.
     Fishing(FishingCommand),
+    /// Something to do with felling trees and cutting them up.
+    Woodcutting(WoodcuttingCommand),
+}
+
+/// A tree in the world: the chunk it's in, and its place among the chunk's
+/// props (the same on every machine for a bake).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct TreeId {
+    /// The chunk's x.
+    pub chunk_x: i32,
+    /// The chunk's y.
+    pub chunk_y: i32,
+    /// Its place among the chunk's props.
+    pub index: u16,
+}
+
+/// Something to do with woodcutting (part of the Woodworking skill; see
+/// `docs/plan-trees.md`), in a [`ClientMessage::Woodcutting`].
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum WoodcuttingCommand {
+    /// Start chopping at a standing tree (the player must be beside it,
+    /// with an axe in hand), to fell it.
+    Fell {
+        /// Which tree.
+        tree: TreeId,
+    },
+    /// Start chopping a fallen tree up for logs.
+    Cut {
+        /// The fallen tree.
+        fallen: EntityId,
+    },
+    /// Stop chopping.
+    Stop,
 }
 
 /// Something to do with fishing, in a [`ClientMessage::Fishing`] (see
@@ -718,6 +766,42 @@ pub enum ServerMessage {
         /// Where their line is.
         at: Option<(f32, f32)>,
     },
+    /// Every tree that's been felled (and not grown back yet), sent on joining.
+    TreesFelled {
+        /// The trees.
+        trees: Vec<TreeId>,
+    },
+    /// A tree has been felled (its fallen trunk comes as an entity).
+    TreeFelled {
+        /// Which.
+        tree: TreeId,
+    },
+    /// A felled tree has grown back.
+    TreeGrewBack {
+        /// Which.
+        tree: TreeId,
+    },
+    /// Someone nearby swung an axe (sent to everyone nearby, them too).
+    Chopped {
+        /// Who.
+        id: EntityId,
+        /// Whether it bit.
+        bit: bool,
+    },
+    /// The player has started chopping (at this tree or fallen tree), or stopped (`None`).
+    Chopping {
+        /// What they're chopping.
+        at: Option<ChopTarget>,
+    },
+}
+
+/// What a player chops.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ChopTarget {
+    /// A standing tree, to fell it.
+    Standing(TreeId),
+    /// A fallen tree, for logs.
+    Fallen(EntityId),
 }
 
 /// One entity's state in a [`ServerMessage::Snapshot`].

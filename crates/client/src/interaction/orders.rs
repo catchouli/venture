@@ -119,6 +119,11 @@ impl Orders<'_, '_> {
         self.player.as_ref().is_some_and(|player| player.1.admin)
     }
 
+    /// Whether the player's character is moving (as predicted).
+    pub fn is_moving(&self) -> bool {
+        self.player.as_ref().is_some_and(|player| player.1.movement.is_moving())
+    }
+
     /// Where the player's character is, if it's in the game.
     pub fn position(&self) -> Option<Vec3> {
         self.player.as_ref().map(|player| player.0.translation)

@@ -65,6 +65,18 @@
             snap_grace: 0.3,
         ),
     ),
+    // Felling trees and cutting them up (see docs/plan-trees.md; which tree is which is
+    // content/trees/woodcutting.ron, and the chances are venture_rpg::woodcutting).
+    woodcutting: (
+        // Seconds between swings of an axe.
+        swing_seconds: 1.6,
+        // How far from a trunk (standing or fallen) a player can chop it, in metres.
+        reach: 3.0,
+        // How long a fallen tree lies before it goes, in seconds.
+        fallen_seconds: 180.0,
+        // How long after that the tree grows back, in seconds.
+        regrow_seconds: 60.0,
+    ),
     day: (
         // How long a whole day and night lasts, in real minutes.
         day_minutes: 120.0,

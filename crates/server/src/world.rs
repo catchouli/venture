@@ -1,13 +1,15 @@
 //! The baked world, as the server needs it: which cells can be walked on,
-//! and which are water (of what body, in what biome: for fishing).
+//! which are water (of what body, in what biome: for fishing), and where the
+//! trees are (for woodcutting).
 
 use std::path::Path;
 
 use bevy::prelude::*;
 use venture_navigation::{ChunkObstacles, WalkingLimits};
+use venture_protocol::TreeId;
 use venture_world::{
-    Biome, CHUNK_SIZE, CellPos, Chunk, ChunkPos, FluidBody, FluidKind, MANIFEST_FILE, WorldManifest, chunk_file_path,
-    decode_chunk,
+    BUSH_SCALE, Biome, CHUNK_SIZE, CellPos, Chunk, ChunkPos, FluidBody, FluidKind, MANIFEST_FILE, PropKind,
+    WorldManifest, chunk_file_path, decode_chunk,
 };
 
 /// The loaded world.
@@ -19,6 +21,36 @@ pub struct ServerWorld {
     obstacles: Vec<ChunkObstacles>,
     /// Each cell's water, for every chunk (see [`Waters`]), in the same order.
     waters: Vec<Waters>,
+    /// Each chunk's trees (not bushes), by their place among its props, in the same order.
+    trees: Vec<Vec<WorldTree>>,
+}
+
+/// A tree standing in the world.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorldTree {
+    /// Its place among its chunk's props.
+    pub index: u16,
+    /// Where it stands, in metres.
+    pub at: (f32, f32),
+    /// Its species: an index into the manifest's `tree_species`.
+    pub species: u16,
+    /// Young, mature or old (0, 1 or 2).
+    pub variant: u8,
+}
+
+/// A chunk's trees (props that are trees, and not bushes).
+fn trees_in(chunk: &Chunk) -> Vec<WorldTree> {
+    chunk
+        .props
+        .iter()
+        .enumerate()
+        .filter_map(|(index, prop)| match prop.kind {
+            PropKind::Tree { species, variant } if prop.scale >= BUSH_SCALE => {
+                Some(WorldTree { index: index as u16, at: (prop.x, prop.y), species, variant })
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// A chunk's water: a byte a cell, `y * CHUNK_SIZE + x`: 0 for none, or the
@@ -62,7 +94,7 @@ impl ServerWorld {
         let batch = positions.len().div_ceil(threads);
         let limits = WalkingLimits::default();
 
-        let obstacles = std::thread::scope(|scope| {
+        let loaded = std::thread::scope(|scope| {
             let workers: Vec<_> = positions
                 .chunks(batch)
                 .map(|batch| {
@@ -76,7 +108,11 @@ impl ServerWorld {
                                     .map_err(|error| format!("can't read {}: {error}", path.display()))?;
                                 let chunk =
                                     decode_chunk(&bytes).map_err(|error| format!("{}: {error}", path.display()))?;
-                                Ok((ChunkObstacles::from_chunk(&chunk, limits), Waters::from_chunk(&chunk)))
+                                Ok((
+                                    ChunkObstacles::from_chunk(&chunk, limits),
+                                    Waters::from_chunk(&chunk),
+                                    trees_in(&chunk),
+                                ))
                             })
                             .collect::<Result<Vec<_>, String>>()
                     })
@@ -88,8 +124,13 @@ impl ServerWorld {
                 .collect::<Result<Vec<_>, String>>()
         })?;
 
-        let (obstacles, waters) = obstacles.into_iter().flatten().unzip();
-        Ok(Self { manifest, obstacles, waters })
+        let (mut obstacles, mut waters, mut trees) = (Vec::new(), Vec::new(), Vec::new());
+        for (chunk_obstacles, chunk_waters, chunk_trees) in loaded.into_iter().flatten() {
+            obstacles.push(chunk_obstacles);
+            waters.push(chunk_waters);
+            trees.push(chunk_trees);
+        }
+        Ok(Self { manifest, obstacles, waters, trees })
     }
 
     /// A world made from chunks already in memory (for tests and tools).
@@ -99,7 +140,8 @@ impl ServerWorld {
         let limits = WalkingLimits::default();
         let obstacles = chunks.iter().map(|chunk| ChunkObstacles::from_chunk(chunk, &limits)).collect();
         let waters = chunks.iter().map(Waters::from_chunk).collect();
-        Self { manifest, obstacles, waters }
+        let trees = chunks.iter().map(trees_in).collect();
+        Self { manifest, obstacles, waters, trees }
     }
 
     /// Whether cell `(x, y)` can't be walked on. Everything outside the world is blocked.
@@ -131,6 +173,21 @@ impl ServerWorld {
             _ => return None,
         };
         Some((body, Biome::ALL[(byte / 4) as usize % Biome::COUNT]))
+    }
+
+    /// A standing tree (not a bush), if there's one with this id.
+    pub fn tree(&self, id: TreeId) -> Option<WorldTree> {
+        let chunk = ChunkPos::new(id.chunk_x, id.chunk_y);
+        if !self.manifest.contains_chunk(chunk) {
+            return None;
+        }
+        let trees = &self.trees[(chunk.y * self.manifest.chunks_per_side() + chunk.x) as usize];
+        trees.binary_search_by_key(&id.index, |tree| tree.index).ok().map(|found| trees[found])
+    }
+
+    /// A tree species' id (in the content), by its index in the manifest.
+    pub fn species_id(&self, species: u16) -> Option<&str> {
+        self.manifest.tree_species.get(usize::from(species)).map(String::as_str)
     }
 
     /// Whether a point (in metres) is inside the world.

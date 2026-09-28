@@ -15,7 +15,7 @@
 //! (for [`crate::equipment`]), an [`ItemUseRequest`] (for
 //! [`crate::consumables`]), a [`AbilityRequest`] (for [`crate::abilities`]), a
 //! [`HotbarRequest`] (for [`crate::hotbar`]), a [`PartyRequest`] (for
-//! [`crate::parties`]), a [`FishingRequest`] (for [`crate::fishing`]) or an [`AdminRequest`] (for [`crate::admin`]). Too many strikes and the connection is closed.
+//! [`crate::parties`]), a [`FishingRequest`] (for [`crate::fishing`]), a [`WoodcuttingRequest`] (for [`crate::woodcutting`]) or an [`AdminRequest`] (for [`crate::admin`]). Too many strikes and the connection is closed.
 
 use std::collections::HashMap;
 
@@ -23,7 +23,8 @@ use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{
     AdminCommand, ClientMessage, EntityId, FishingCommand, HOTBAR_SLOTS, HotbarEntry, MAX_NAME_CHARS, PROTOCOL_VERSION,
-    PartyCommand, ServerMessage, TeleportTo, clean_chat_text, clean_name, clean_party_name, is_valid_token,
+    PartyCommand, ServerMessage, TeleportTo, WoodcuttingCommand, clean_chat_text, clean_name, clean_party_name,
+    is_valid_token,
 };
 use venture_simulation::steering_direction;
 
@@ -65,6 +66,7 @@ impl Plugin for RequestsPlugin {
             .add_message::<HotbarRequest>()
             .add_message::<PartyRequest>()
             .add_message::<FishingRequest>()
+            .add_message::<WoodcuttingRequest>()
             .add_systems(FixedUpdate, receive_messages.in_set(ServerSystems::Requests));
     }
 }
@@ -269,6 +271,16 @@ pub struct FishingRequest {
     pub action: FishingAction,
 }
 
+/// A player's request about woodcutting, for [`crate::woodcutting`] (which
+/// checks the tree, their axe and their level).
+#[derive(Message)]
+pub struct WoodcuttingRequest {
+    /// The player entity.
+    pub player: Entity,
+    /// What they asked for.
+    pub command: WoodcuttingCommand,
+}
+
 /// What a player asked about fishing. The cast's point is in the world and
 /// its tackle id no longer than [`MAX_ID_BYTES`]; the rest (their rod, the
 /// water, their bag) is for [`crate::fishing`] to check.
@@ -369,7 +381,8 @@ fn receive_messages(
     mut abilities: MessageWriter<AbilityRequest>,
     mut hotbars: MessageWriter<HotbarRequest>,
     mut parties: MessageWriter<PartyRequest>,
-    mut fishing: MessageWriter<FishingRequest>,
+    // (Together, as the system has as many parameters as Bevy allows.)
+    (mut fishing, mut woodcutting): (MessageWriter<FishingRequest>, MessageWriter<WoodcuttingRequest>),
 ) {
     let now = time.elapsed_secs();
     while let Some(event) = link.next_event() {
@@ -426,6 +439,9 @@ fn receive_messages(
                     Verdict::Fishing(request) => {
                         fishing.write(request);
                     }
+                    Verdict::Woodcutting(request) => {
+                        woodcutting.write(request);
+                    }
                     Verdict::Reply(message) => link.send(id, &message),
                     Verdict::Ignore => {}
                     Verdict::Strike => {
@@ -459,6 +475,7 @@ enum Verdict {
     Hotbar(HotbarRequest),
     Party(PartyRequest),
     Fishing(FishingRequest),
+    Woodcutting(WoodcuttingRequest),
     /// Answer the client directly, without changing anything.
     Reply(ServerMessage),
     Ignore,
@@ -635,6 +652,15 @@ fn judge_player_message(
                 FishingCommand::Stop => FishingAction::Stop,
             };
             return Verdict::Fishing(FishingRequest { player, action });
+        }
+        ClientMessage::Woodcutting(command) => {
+            // (Trees must be in chunks of the world; the rest is for `crate::woodcutting` to check.)
+            if let WoodcuttingCommand::Fell { tree } = command
+                && !world.manifest.contains_chunk(venture_world::ChunkPos::new(tree.chunk_x, tree.chunk_y))
+            {
+                return Verdict::Strike;
+            }
+            return Verdict::Woodcutting(WoodcuttingRequest { player, command });
         }
         ClientMessage::Hello { .. } | ClientMessage::CreateCharacter { .. } => return Verdict::Strike,
     };

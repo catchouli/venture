@@ -35,15 +35,19 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat};
 use bevy::shader::ShaderRef;
 use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
-use venture_content::trees::{Species, TreeDrawing};
+use venture_content::trees::{Species, TreeDrawing, tree_name};
+use venture_protocol::{EntityId, ServerMessage, TreeId};
+use venture_rpg::woodcutting::FALLEN_LENGTHS;
 use venture_trees::impostor::{Impostor, impostor};
 use venture_trees::photos::{LeafPhotos, Photos};
 use venture_trees::{Detail, MeshPart, TreeParams, TreeTextures, grow, textures};
-use venture_world::{CHUNK_SIZE, Chunk, PropKind};
+use venture_world::{BUSH_SCALE, CHUNK_SIZE, Chunk, Prop, PropKind};
 
 use crate::common::coords::to_bevy;
 use crate::common::mipmaps::{add_mipmaps, add_mipmaps_keeping_coverage};
 use crate::content::ContentStore;
+use crate::interaction::targeting::{Level, PickShape, TargetKind, TargetLabel, Targetable};
+use crate::network::FromServer;
 use crate::world::source::WorldInfo;
 use crate::world::streaming::{ChunkStore, MeshTask, ShownChunks};
 
@@ -52,6 +56,20 @@ use crate::world::streaming::{ChunkStore, MeshTask, ShownChunks};
 const VARIANTS: [(f32, u64); 3] = [(0.55, 11), (1.0, 12), (1.4, 13)];
 /// Leaves are see-through below this coverage.
 const ALPHA_CUTOFF: f32 = 0.5;
+/// A standing tree can be picked this high up its trunk, in metres...
+const TRUNK_PICK_HEIGHT: f32 = 5.0;
+/// ...and this far round it.
+const TRUNK_PICK_RADIUS: f32 = 0.8;
+/// A fallen tree can be picked this far round its trunk, in metres.
+const FALLEN_PICK_RADIUS: f32 = 0.9;
+/// Trees can only be picked this near the player, in metres.
+const PICK_TREES_WITHIN: f32 = 40.0;
+/// How tall a felled tree's stump is, in metres.
+const STUMP_HEIGHT: f32 = 0.55;
+/// How wide young, mature and old trees' stumps (and fallen trunks) are, in metres of radius.
+const STUMP_RADII: [f32; 3] = [0.22, 0.38, 0.55];
+/// How long a felled tree takes to tip over, in seconds.
+const FALL_SECONDS: f32 = 2.2;
 /// How far from its middle a trunk's flared base reaches, for sinking it on slopes, in metres.
 const TRUNK_BASE_REACH: f32 = 1.2;
 /// A tree's material: the standard one, fading where it's in the way.
@@ -85,7 +103,21 @@ impl Plugin for TreesPlugin {
         embedded_asset!(app, "shaders/tree.wgsl");
         app.add_plugins(MaterialPlugin::<TreeMaterial>::default())
             .init_resource::<TreeTemplates>()
-            .add_systems(Update, (start_growing, finish_growing, take_drawing, plant_trees).chain());
+            .init_resource::<FelledTrees>()
+            .add_systems(
+                Update,
+                (
+                    start_growing,
+                    finish_growing,
+                    take_drawing,
+                    plant_trees,
+                    follow_felling,
+                    show_felled,
+                    dress_fallen,
+                    tip_over,
+                )
+                    .chain(),
+            );
     }
 }
 
@@ -100,6 +132,8 @@ pub struct TreeTemplates {
     growing: Option<(String, Vec<Task<GrownSpecies>>)>,
     /// How trees are drawn (from the content).
     drawing: TreeDrawing,
+    /// A stump: a cylinder a metre high and a metre in radius (scaled to size).
+    stump: Option<Handle<Mesh>>,
     /// Counts up each time the templates (or how they're drawn) change, so chunks replant.
     generation: u32,
 }
@@ -127,6 +161,56 @@ struct GrownVariant {
     reduced: venture_trees::TreeMeshes,
     impostor: Impostor,
 }
+
+/// A standing tree (not a bush) that can be selected and felled: its id.
+#[derive(Component)]
+pub struct StandingTree(pub TreeId);
+
+/// What a planted tree looks like (for its stump, once felled).
+#[derive(Component)]
+struct TreeLook {
+    bark: Handle<TreeMaterial>,
+    variant: u8,
+}
+
+/// A part of a standing tree's body (hidden while it's felled).
+#[derive(Component)]
+struct TreeBody;
+
+/// A felled tree's stump.
+#[derive(Component)]
+struct Stump;
+
+/// A fallen tree: an entity of the server's (see `characters::remote`), drawn here.
+#[derive(Component)]
+pub struct Fallen {
+    /// The tree it was.
+    pub tree: TreeId,
+    /// Which way it fell (radians round the vertical, as props turn).
+    pub toward: f32,
+}
+
+/// A fallen tree has been drawn, this long (its trunk, in metres).
+#[derive(Component)]
+pub struct Dressed(pub f32);
+
+/// The pivot at a fallen tree's foot, which tips it over.
+#[derive(Component)]
+struct FallenPivot {
+    /// How high its trunk's middle lies once down (its radius), in metres.
+    lying_radius: f32,
+}
+
+/// A fallen tree still tipping over: seconds since it started.
+#[derive(Component)]
+struct Falling {
+    since: f32,
+}
+
+/// The trees felled (and not grown back yet), as the server says, with when
+/// the client heard (seconds; long ago for those felled before joining).
+#[derive(Resource, Default)]
+pub struct FelledTrees(pub HashMap<TreeId, f32>);
 
 /// A chunk's trees are planted, from this generation of templates.
 #[derive(Component)]
@@ -228,6 +312,7 @@ fn finish_growing(
     }
     info!("Trees ready: {} species, {} variants each.", by_species.len(), VARIANTS.len());
     templates.species = by_species;
+    templates.stump.get_or_insert_with(|| meshes.add(Cylinder::new(1.0, 1.0).mesh().resolution(10)));
     templates.grown_from = Some(version);
     templates.generation += 1;
 }
@@ -327,6 +412,7 @@ fn plant_trees(
     shown: Res<ShownChunks>,
     store: Res<ChunkStore>,
     world: Option<Res<WorldInfo>>,
+    content: Res<ContentStore>,
     chunks: Query<(&GlobalTransform, Option<&Planted>, Option<&Children>), Without<MeshTask>>,
     parts: Query<(), With<TreePart>>,
 ) {
@@ -334,6 +420,7 @@ fn plant_trees(
     if templates.species.is_empty() {
         return;
     }
+    let facts = tree_facts(&content);
     for (pos, &entity) in &shown.0 {
         let Ok((chunk_place, planted, children)) = chunks.get(entity) else { continue };
         if planted.is_some_and(|planted| planted.0 == templates.generation) {
@@ -345,22 +432,51 @@ fn plant_trees(
             commands.entity(*child).despawn();
         }
         commands.entity(entity).insert(Planted(templates.generation));
-        plant_chunk(&mut commands, entity, chunk_place, chunk, &templates, &world.0.tree_species);
+        plant_chunk(&mut commands, entity, chunk_place, chunk, &templates, &world.0.tree_species, &facts);
     }
 }
 
-fn plant_chunk(
-    commands: &mut Commands,
-    entity: Entity,
-    chunk_place: &GlobalTransform,
-    chunk: &Chunk,
-    templates: &TreeTemplates,
+/// What a species is called, and the woodworking level it takes to fell it
+/// (by species id), for selecting trees.
+fn tree_facts(content: &ContentStore) -> HashMap<String, (String, u32)> {
+    content
+        .tree_species
+        .iter()
+        .filter_map(|species| {
+            let entry = content.tree_woodcutting.iter().find(|entry| entry.species == species.id)?;
+            Some((species.id.clone(), (tree_name(&species.name), entry.level)))
+        })
+        .collect()
+}
+
+/// A tree prop's template and its place in its chunk (transform), unless its
+/// species isn't grown.
+fn template_for<'a>(
+    templates: &'a TreeTemplates,
     species_ids: &[String],
-) {
+    chunk: &Chunk,
+    prop: &Prop,
+) -> Option<(&'a Template, Transform)> {
+    let PropKind::Tree { species, variant } = prop.kind else { return None };
+    let variants = species_ids
+        .get(usize::from(species))
+        .and_then(|id| templates.species.get(id))
+        .filter(|variants| !variants.is_empty())?;
+    let template = &variants[usize::from(variant).min(variants.len() - 1)];
     let (origin_x, origin_y) = chunk.pos.origin_cell();
-    let drawing = &templates.drawing;
+    let (local_x, local_y) = (prop.x - origin_x as f32, prop.y - origin_y as f32);
+    // Sunk into the ground, so the trunk's base stays buried on a slope.
+    let sink = ground_slope(chunk, local_x, local_y) * TRUNK_BASE_REACH + 0.1;
+    let local = Transform::from_translation(to_bevy(local_x, local_y, prop.ground_height - sink))
+        .with_rotation(Quat::from_rotation_y(prop.rotation))
+        .with_scale(Vec3::splat(prop.scale));
+    Some((template, local))
+}
+
+/// The ranges each level of detail shows over: full, reduced, impostor.
+fn lod_ranges(drawing: &TreeDrawing) -> [VisibilityRange; 3] {
     let range = |(start, end): (f32, f32)| start..end.max(start);
-    let ranges = [
+    [
         VisibilityRange { start_margin: 0.0..0.0, end_margin: range(drawing.full_until), use_aabb: false },
         VisibilityRange {
             start_margin: range(drawing.full_until),
@@ -372,26 +488,51 @@ fn plant_chunk(
             end_margin: range(drawing.impostors_until),
             use_aabb: false,
         },
-    ];
-    for prop in &chunk.props {
+    ]
+}
+
+fn plant_chunk(
+    commands: &mut Commands,
+    entity: Entity,
+    chunk_place: &GlobalTransform,
+    chunk: &Chunk,
+    templates: &TreeTemplates,
+    species_ids: &[String],
+    facts: &HashMap<String, (String, u32)>,
+) {
+    let ranges = lod_ranges(&templates.drawing);
+    for (index, prop) in chunk.props.iter().enumerate() {
+        let Some((template, local)) = template_for(templates, species_ids, chunk, prop) else { continue };
         let PropKind::Tree { species, variant } = prop.kind else { continue };
-        let (local_x, local_y) = (prop.x - origin_x as f32, prop.y - origin_y as f32);
-        let Some(variants) = species_ids
-            .get(usize::from(species))
-            .and_then(|id| templates.species.get(id))
-            .filter(|variants| !variants.is_empty())
-        else {
-            continue;
-        };
-        let template = &variants[usize::from(variant).min(variants.len() - 1)];
-        let scale = prop.scale;
-        // Sunk into the ground, so the trunk's base stays buried on a slope.
-        let sink = ground_slope(chunk, local_x, local_y) * TRUNK_BASE_REACH + 0.1;
-        let local = Transform::from_translation(to_bevy(local_x, local_y, prop.ground_height - sink))
-            .with_rotation(Quat::from_rotation_y(prop.rotation))
-            .with_scale(Vec3::splat(scale));
         // (Placed now, as the chunk's other children are: see `finish_mesh_tasks`.)
-        let placed = (local, chunk_place.mul_transform(local));
+        let global = chunk_place.mul_transform(local);
+        let root = commands
+            .spawn((
+                TreePart,
+                TreeLook { bark: template.bark.clone(), variant },
+                local,
+                global,
+                Visibility::default(),
+                ChildOf(entity),
+            ))
+            .id();
+        // Trees (not bushes) of species that can be felled can be selected.
+        let facts = species_ids.get(usize::from(species)).and_then(|id| facts.get(id));
+        if let Some((name, level)) = facts.filter(|_| prop.scale >= BUSH_SCALE) {
+            let id = TreeId { chunk_x: chunk.pos.x, chunk_y: chunk.pos.y, index: index as u16 };
+            commands.entity(root).insert((
+                StandingTree(id),
+                Targetable { id: EntityId::NONE, kind: TargetKind::Tree },
+                TargetLabel(name.clone()),
+                Level(*level),
+                PickShape {
+                    from: Vec3::ZERO,
+                    to: Vec3::Y * TRUNK_PICK_HEIGHT / prop.scale,
+                    radius: TRUNK_PICK_RADIUS,
+                    within: PICK_TREES_WITHIN,
+                },
+            ));
+        }
         let pieces = [
             (template.full.0.clone(), template.bark.clone(), 0),
             (template.full.1.clone(), template.leaves.clone(), 0),
@@ -399,9 +540,162 @@ fn plant_chunk(
             (template.reduced.1.clone(), template.leaves.clone(), 1),
             (template.impostor.clone(), template.impostor_material.clone(), 2),
         ];
-        let mut chunk_entity = commands.entity(entity);
         for (mesh, material, level) in pieces {
-            chunk_entity.with_child((TreePart, Mesh3d(mesh), MeshMaterial3d(material), placed, ranges[level].clone()));
+            commands.spawn((
+                TreeBody,
+                Mesh3d(mesh),
+                MeshMaterial3d(material),
+                (Transform::IDENTITY, global),
+                ranges[level].clone(),
+                ChildOf(root),
+            ));
+        }
+    }
+}
+
+/// Keeps track of which trees are felled, as the server says.
+fn follow_felling(time: Res<Time>, mut events: MessageReader<FromServer>, mut felled: ResMut<FelledTrees>) {
+    for FromServer(message) in events.read() {
+        match message {
+            ServerMessage::TreesFelled { trees } => {
+                felled.0 = trees.iter().map(|&tree| (tree, f32::NEG_INFINITY)).collect();
+            }
+            ServerMessage::TreeFelled { tree } => {
+                felled.0.insert(*tree, time.elapsed_secs());
+            }
+            ServerMessage::TreeGrewBack { tree } => {
+                felled.0.remove(tree);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Felled trees hide behind a stump; trees that grow back come back.
+fn show_felled(
+    mut commands: Commands,
+    felled: Res<FelledTrees>,
+    templates: Res<TreeTemplates>,
+    trees: Query<(Entity, &StandingTree, &TreeLook, &GlobalTransform, &Children, Ref<StandingTree>)>,
+    mut bodies: Query<&mut Visibility, With<TreeBody>>,
+    stumps: Query<(), With<Stump>>,
+) {
+    let Some(stump_mesh) = templates.stump.clone() else { return };
+    for (root, &StandingTree(id), look, place, children, added) in &trees {
+        if !felled.is_changed() && !added.is_added() {
+            continue;
+        }
+        let is_felled = felled.0.contains_key(&id);
+        for child in children {
+            if let Ok(mut visibility) = bodies.get_mut(*child) {
+                visibility.set_if_neq(if is_felled { Visibility::Hidden } else { Visibility::Inherited });
+            }
+        }
+        let stump = children.iter().find(|child| stumps.contains(*child));
+        match (is_felled, stump) {
+            (true, None) => {
+                let radius = STUMP_RADII[usize::from(look.variant.min(2))];
+                let local = Transform::from_xyz(0.0, STUMP_HEIGHT / 2.0, 0.0).with_scale(Vec3::new(
+                    radius,
+                    STUMP_HEIGHT,
+                    radius,
+                ));
+                commands.spawn((
+                    Stump,
+                    Mesh3d(stump_mesh.clone()),
+                    MeshMaterial3d(look.bark.clone()),
+                    (local, place.mul_transform(local)),
+                    ChildOf(root),
+                ));
+            }
+            (false, Some(stump)) => commands.entity(stump).despawn(),
+            _ => {}
+        }
+    }
+}
+
+/// Draws fallen trees (entities of the server's: see
+/// `characters::remote`) as their tree, lying the way it fell: tipping over
+/// first, if it's only just been felled.
+fn dress_fallen(
+    mut commands: Commands,
+    time: Res<Time>,
+    templates: Res<TreeTemplates>,
+    store: Res<ChunkStore>,
+    world: Option<Res<WorldInfo>>,
+    felled: Res<FelledTrees>,
+    mut fallen: Query<(Entity, &Fallen, &mut Transform), Without<Dressed>>,
+) {
+    let Some(world) = world else { return };
+    if templates.species.is_empty() {
+        return;
+    }
+    let ranges = lod_ranges(&templates.drawing);
+    for (entity, fallen_tree, mut transform) in &mut fallen {
+        let tree = fallen_tree.tree;
+        let Some(chunk) = store.0.get(&venture_world::ChunkPos::new(tree.chunk_x, tree.chunk_y)) else { continue };
+        let Some(prop) = chunk.props.get(usize::from(tree.index)) else { continue };
+        let Some((template, local)) = template_for(&templates, &world.0.tree_species, chunk, prop) else { continue };
+        let PropKind::Tree { variant, .. } = prop.kind else { continue };
+        let length = FALLEN_LENGTHS[usize::from(variant.min(2))] * prop.scale;
+        commands.entity(entity).insert(Dressed(length));
+        // The root turns to the way it fell; a pivot at its foot tips it over.
+        transform.rotation = Quat::from_rotation_y(fallen_tree.toward);
+        let lying_radius = STUMP_RADII[usize::from(variant.min(2))] * prop.scale;
+        let just_felled = felled.0.get(&tree).is_some_and(|&at| time.elapsed_secs() - at < 1.0);
+        let pivot = commands
+            .spawn((
+                Transform::from_scale(local.scale),
+                Visibility::default(),
+                ChildOf(entity),
+                FallenPivot { lying_radius },
+            ))
+            .id();
+        let pieces = [
+            (template.full.0.clone(), template.bark.clone(), ranges[0].clone()),
+            (template.full.1.clone(), template.leaves.clone(), ranges[0].clone()),
+            // (No impostor lying down: the reduced tree goes on to the end.)
+            (
+                template.reduced.0.clone(),
+                template.bark.clone(),
+                VisibilityRange { end_margin: ranges[2].end_margin.clone(), ..ranges[1].clone() },
+            ),
+            (
+                template.reduced.1.clone(),
+                template.leaves.clone(),
+                VisibilityRange { end_margin: ranges[2].end_margin.clone(), ..ranges[1].clone() },
+            ),
+        ];
+        for (mesh, material, range) in pieces {
+            commands.spawn((Mesh3d(mesh), MeshMaterial3d(material), Transform::IDENTITY, range, ChildOf(pivot)));
+        }
+        commands.entity(entity).insert(PickShape {
+            from: Vec3::Y * lying_radius,
+            to: Vec3::new(0.0, lying_radius, length),
+            radius: FALLEN_PICK_RADIUS,
+            within: PICK_TREES_WITHIN,
+        });
+        commands.entity(pivot).insert(Falling { since: if just_felled { 0.0 } else { FALL_SECONDS } });
+    }
+}
+
+/// Tips fallen trees over: slowly at first, faster as they go (as a falling
+/// tree does), landing with a small bounce.
+fn tip_over(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut pivots: Query<(Entity, &mut Falling, &FallenPivot, &mut Transform)>,
+) {
+    for (entity, mut falling, pivot, mut transform) in &mut pivots {
+        falling.since += time.delta_secs();
+        let t = (falling.since / FALL_SECONDS).min(1.0);
+        // Accelerating (squared), then a small bounce as it lands.
+        let bounce = if t > 0.85 { (1.0 - t) / 0.15 * (1.0 - (1.0 - t) / 0.15) * 0.08 } else { 0.0 };
+        let share = (t * t - bounce).clamp(0.0, 1.0);
+        transform.rotation = Quat::from_rotation_x(std::f32::consts::FRAC_PI_2 * share);
+        transform.translation.y = pivot.lying_radius * share;
+        if t >= 1.0 {
+            commands.entity(entity).remove::<Falling>();
         }
     }
 }

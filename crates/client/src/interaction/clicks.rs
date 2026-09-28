@@ -3,6 +3,8 @@
 //! - on a character: select it; or, if it's selected already, follow them
 //!   (a player) or walk over and talk to them (an NPC);
 //! - on a trap: select it; or, if it's selected already and yours, collect it;
+//! - on a tree (standing or fallen): select it; or, if it's selected already,
+//!   chop it (see [`crate::woodcutting`]);
 //! - on water, with a fishing rod in hand: cast there (see [`crate::fishing`]);
 //! - on the ground: run there (at most the server's move distance away),
 //!   with a move marker at the destination.
@@ -25,6 +27,7 @@ use crate::interaction::targeting::{Hovered, Target, TargetKind, Targetable};
 use crate::network::ClientState;
 use crate::ui::character_window::Sheet;
 use crate::ui::text_input::KeyboardFocus;
+use crate::woodcutting::ChopClicked;
 use crate::world::query::{raycast_ground, raycast_surface, water_level};
 use crate::world::streaming::StreamingProgress;
 
@@ -52,8 +55,8 @@ fn handle_click(
     angling: Res<Angling>,
     sheet: Res<Sheet>,
     content: Res<ContentStore>,
-    mut casts: MessageWriter<CastAt>,
-    mut traps: MessageWriter<CollectTrap>,
+    // (Together, as the system has as many parameters as Bevy allows.)
+    (mut casts, mut traps, mut chops): (MessageWriter<CastAt>, MessageWriter<CollectTrap>, MessageWriter<ChopClicked>),
 ) {
     if !buttons.just_pressed(MouseButton::Left) || angling.busy() {
         return;
@@ -79,6 +82,9 @@ fn handle_click(
             }
             Ok(TargetKind::Trap) if already_selected => {
                 traps.write(CollectTrap(clicked));
+            }
+            Ok(TargetKind::Tree | TargetKind::FallenTree) if already_selected => {
+                chops.write(ChopClicked(clicked));
             }
             _ => target.0 = Some(clicked),
         }
