@@ -58,10 +58,42 @@ struct HostState {
     link: LinkSender,
     connections: Arc<AtomicUsize>,
     content: SharedClientContent,
-    /// The fingerprint of the world's manifest, which world addresses carry.
-    world_version: Arc<String>,
+    /// The fingerprint of the world's manifest, which world addresses carry
+    /// (see [`WorldVersion`]).
+    world_version: Arc<WorldVersion>,
     /// The web client's folder.
     client_folder: Arc<PathBuf>,
+}
+
+/// The fingerprint of the world's manifest, worked out again whenever the
+/// manifest changes (the world is baked again while the server runs).
+struct WorldVersion {
+    folder: PathBuf,
+    /// When the manifest was changed, and its fingerprint then.
+    known: std::sync::RwLock<(Option<std::time::SystemTime>, String)>,
+}
+
+impl WorldVersion {
+    fn new(folder: PathBuf) -> Self {
+        let version = Self { folder, known: std::sync::RwLock::new((None, String::new())) };
+        version.current();
+        version
+    }
+
+    /// The fingerprint of the manifest as it is now.
+    fn current(&self) -> String {
+        let path = self.folder.join(venture_world::MANIFEST_FILE);
+        let changed = std::fs::metadata(&path).and_then(|meta| meta.modified()).ok();
+        {
+            let known = self.known.read().expect("the world version lock isn't poisoned");
+            if known.0 == changed && changed.is_some() {
+                return known.1.clone();
+            }
+        }
+        let fingerprint = venture_protocol::fingerprint(&std::fs::read(&path).unwrap_or_default());
+        *self.known.write().expect("the world version lock isn't poisoned") = (changed, fingerprint.clone());
+        fingerprint
+    }
 }
 
 /// Keep for good (a year, and don't check).
@@ -81,12 +113,11 @@ pub fn start(config: HttpConfig, link: LinkSender) -> std::thread::JoinHandle<()
 }
 
 async fn serve(config: HttpConfig, link: LinkSender) {
-    let manifest = std::fs::read(config.world_folder.join(venture_world::MANIFEST_FILE)).unwrap_or_default();
     let state = HostState {
         link,
         connections: Arc::new(AtomicUsize::new(0)),
         content: config.content.clone(),
-        world_version: Arc::new(venture_protocol::fingerprint(&manifest)),
+        world_version: Arc::new(WorldVersion::new(config.world_folder.clone())),
         client_folder: Arc::new(config.client_folder.clone()),
     };
     let client_folder = config.client_folder.clone();
@@ -141,7 +172,7 @@ async fn cache_headers(State(state): State<HostState>, request: Request, next: N
     }
     let forever = if let Some(world_path) = path.strip_prefix("/world/") {
         world_path != venture_world::MANIFEST_FILE
-            && query.split('&').any(|pair| pair == format!("v={}", state.world_version))
+            && query.split('&').any(|pair| pair == format!("v={}", state.world_version.current()))
     } else {
         is_hashed_client_file(&path)
     };

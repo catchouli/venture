@@ -45,9 +45,10 @@ as for `--local`.
     them itself, against the same world generator), with gaps where roads
     cross.
   - **Save and bake** saves, then bakes the world again in the background
-    (about ten seconds), so walls block the ground they stand on and clear
-    trees from their way. The game (or server) needs restarting to use the
-    new world, and the editor reopening to show the cleared trees.
+    (`bake --walls`: only the chunks walls touch, about a second), so walls
+    block the ground they stand on and clear trees from their way. The
+    editor then shows the world as baked, and a game or server that's
+    running loads it by itself.
   - **Save and play here** saves, then starts the game (`--local`) with a
     new character at the camera's spot. It uses a profile of its own
     ("editor"), with admin powers, so your usual character is left alone.

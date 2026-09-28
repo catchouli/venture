@@ -44,6 +44,12 @@ const BIRCH: TreeId = TreeId { chunk_x: 1, chunk_y: 1, index: 0 };
 /// The flat world with a mature birch at (106, 100.5), six metres east of
 /// the spawn point.
 fn wood_world() -> ServerWorld {
+    let (manifest, chunks) = wood_chunks();
+    ServerWorld::from_chunks(manifest, &chunks)
+}
+
+/// [`wood_world`]'s manifest and chunks.
+fn wood_chunks() -> (WorldManifest, Vec<Chunk>) {
     let manifest = WorldManifest {
         world_size: 4 * CHUNK_SIZE,
         chunk_size: CHUNK_SIZE,
@@ -59,7 +65,17 @@ fn wood_world() -> ServerWorld {
     let mut chunks: Vec<Chunk> = (0..16).map(|i| Chunk::new(ChunkPos::new(i % 4, i / 4))).collect();
     let kind = PropKind::Tree { species: 0, variant: 1 };
     chunks[5].props.push(Prop { kind, x: 106.0, y: 100.5, ground_height: 0.0, scale: 1.0, rotation: 0.0 });
-    ServerWorld::from_chunks(manifest, &chunks)
+    (manifest, chunks)
+}
+
+/// Writes a world to a folder, as the bake does.
+fn write_world(folder: &std::path::Path, manifest: &WorldManifest, chunks: &[Chunk]) {
+    std::fs::create_dir_all(folder.join("chunks")).unwrap();
+    for chunk in chunks {
+        std::fs::write(folder.join(venture_world::chunk_file_path(chunk.pos)), venture_world::encode_chunk(chunk))
+            .unwrap();
+    }
+    std::fs::write(folder.join(venture_world::MANIFEST_FILE), manifest.to_ron()).unwrap();
 }
 
 /// The flat world with a river across it: cells 104 to 113 metres east,
@@ -1947,4 +1963,48 @@ fn newcomers_are_told_which_trees_are_down() {
     assert!(
         messages.iter().any(|m| matches!(m, ServerMessage::EntityAppeared { kind: EntityKind::FallenTree { .. }, .. }))
     );
+}
+
+#[test]
+fn a_world_baked_again_is_loaded_and_players_are_told() {
+    let mut server = TestServer::woods("rebake");
+    let folder = std::env::temp_dir().join(format!("venture-test-rebake-world-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    let (manifest, mut chunks) = wood_chunks();
+    write_world(&folder, &manifest, &chunks);
+    server.app.insert_resource(ServerWorld::load(&folder).unwrap());
+
+    // Fell the birch.
+    let (boss, _) = server.join(TOKEN_A, "Boss");
+    boss.send(&ClientMessage::Admin(AdminCommand::SetSkill { skill: "woodworking".to_string(), level: 99 }));
+    boss.send(&ClientMessage::Admin(AdminCommand::Give { item: "bread".to_string(), count: 1 }));
+    let messages = gather(&mut server, &boss, 2);
+    let axe = slot_of(&messages, "stone_axe").expect("a stone axe");
+    boss.send(&ClientMessage::Equip { slot: axe });
+    boss.send(&ClientMessage::MoveTo { x: 104.0, y: 100.5 });
+    gather(&mut server, &boss, 40);
+    boss.send(&ClientMessage::Woodcutting(WoodcuttingCommand::Fell { tree: BIRCH }));
+    gather_until(&mut server, &boss, 20 * 40, |m| matches!(m, ServerMessage::TreeFelled { .. }));
+
+    // Bake its chunk again (a boulder beside the birch now), and the manifest last.
+    std::thread::sleep(Duration::from_millis(20));
+    chunks[5].props.push(Prop {
+        kind: PropKind::Boulder,
+        x: 110.0,
+        y: 110.0,
+        ground_height: 0.0,
+        scale: 1.0,
+        rotation: 0.0,
+    });
+    write_world(&folder, &manifest, &chunks);
+    let messages = gather_until(&mut server, &boss, 20 * 30, |m| matches!(m, ServerMessage::WorldChanged { .. }));
+    let changed = messages.iter().find_map(|m| match m {
+        ServerMessage::WorldChanged { chunks } => Some(chunks.clone()),
+        _ => None,
+    });
+    assert_eq!(changed, Some(vec![(1, 1)]), "only the chunk baked again changed");
+    // The birch felled in it grows back (its chunk's trees may be different ones now), in the same tick.
+    let later = gather(&mut server, &boss, 4);
+    assert!(messages.iter().chain(&later).any(|m| matches!(m, ServerMessage::TreeGrewBack { tree } if *tree == BIRCH)));
+    let _ = std::fs::remove_dir_all(&folder);
 }
