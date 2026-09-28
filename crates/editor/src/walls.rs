@@ -100,6 +100,8 @@ pub struct WallTool {
     bake: Option<Child>,
     /// What happened last, for the panel.
     pub status: String,
+    /// A split asked for, at this point, waiting for "are you sure?".
+    confirm_split: Option<usize>,
 }
 
 impl WallTool {
@@ -109,6 +111,7 @@ impl WallTool {
             self.chosen = id;
             self.point = None;
             self.drawing = false;
+            self.confirm_split = None;
         }
     }
 }
@@ -341,6 +344,52 @@ fn add_wall(document: &mut Document, kind: WallKind, first: (f32, f32), now: f64
     walls.files_mut().first_mut()?.entries.push(def);
     document.changed(collection, 0, now);
     Some(id)
+}
+
+/// What splitting a wall at a point makes: the walls it becomes (each of
+/// at least two points). An open wall becomes the parts either side of the
+/// point (a part of a single point is too short to be a wall, so it goes);
+/// a ring opens there. The point itself goes. `None` if it can't be split
+/// there (an open wall's end, or too few points).
+fn split_parts(def: &WallDef, index: usize) -> Option<Vec<Vec<(f32, f32)>>> {
+    let points = &def.points;
+    if index >= points.len() {
+        return None;
+    }
+    let parts = if def.closed {
+        vec![points[index + 1..].iter().chain(&points[..index]).copied().collect::<Vec<_>>()]
+    } else {
+        if index == 0 || index + 1 == points.len() {
+            return None;
+        }
+        vec![points[..index].to_vec(), points[index + 1..].to_vec()]
+    };
+    let parts: Vec<Vec<(f32, f32)>> = parts.into_iter().filter(|part| part.len() >= 2).collect();
+    (!parts.is_empty()).then_some(parts)
+}
+
+/// Splits a wall at a point (see [`split_parts`]), as one change. Returns
+/// the id of the new wall, if it made one.
+pub fn split_wall(document: &mut Document, id: &str, index: usize, now: f64) -> Option<String> {
+    let (collection, walls) = document.find_mut::<WallDef>()?;
+    let taken: Vec<String> = walls.files().iter().flat_map(|file| file.entries.iter().map(Entry::key)).collect();
+    let (f, file) =
+        walls.files_mut().iter_mut().enumerate().find(|(_, file)| file.entries.iter().any(|def| def.id == id))?;
+    let at = file.entries.iter().position(|def| def.id == id)?;
+    let mut parts = split_parts(&file.entries[at], index)?.into_iter();
+    let first = parts.next()?;
+    let def = &mut file.entries[at];
+    def.points = first;
+    def.closed = false;
+    let mut made = None;
+    if let Some(second) = parts.next() {
+        let new_id = (2..).map(|n| format!("{id}_{n}")).find(|key| !taken.contains(key))?;
+        let copy = WallDef { id: new_id.clone(), points: second, seed: def.seed + 1, ..def.clone() };
+        file.entries.insert(at + 1, copy);
+        made = Some(new_id);
+    }
+    document.changed(collection, f, now);
+    made
 }
 
 /// Removes a wall.
@@ -754,6 +803,44 @@ pub fn wall_buttons(ui: &mut egui::Ui, tool: &mut WallTool, document: &mut Docum
             }
         });
     });
+    // Splitting at the chosen point (after "are you sure?").
+    let def = wall_defs(document).into_iter().find(|def| def.id == id);
+    let can_split = def.as_ref().zip(tool.point).is_some_and(|(def, index)| split_parts(def, index).is_some());
+    match (tool.confirm_split, tool.point) {
+        (Some(asked), Some(point)) if asked == point && can_split => {
+            ui.horizontal(|ui| {
+                let ring = def.as_ref().is_some_and(|def| def.closed);
+                ui.label(if ring {
+                    format!("Open the ring at point {}, removing it?", point + 1)
+                } else {
+                    format!("Split in two at point {}, removing it?", point + 1)
+                });
+                if ui.button("Split").clicked() {
+                    let made = split_wall(document, &id, point, now);
+                    tool.status = match made {
+                        Some(new) => format!("Split: the rest is {new}."),
+                        None => "Split.".to_string(),
+                    };
+                    tool.point = None;
+                    tool.confirm_split = None;
+                }
+                if ui.button("Cancel").clicked() {
+                    tool.confirm_split = None;
+                }
+            });
+        }
+        _ => {
+            tool.confirm_split = None;
+            let button = ui.add_enabled(can_split, egui::Button::new("Split here…"));
+            let button = button.on_hover_text(
+                "Splits the wall in two at the chosen point, removing it (or opens a ring there). \
+                 Choose a point that isn't an end first.",
+            );
+            if button.clicked() {
+                tool.confirm_split = tool.point;
+            }
+        }
+    }
     ui.weak(
         "Drag a point to move it. Click the wall between two points to add one, or a green + past an end. \
          Delete removes the chosen point.",
@@ -820,6 +907,36 @@ mod tests {
         place_added_point(&mut document, &def);
         let def = wall_defs(&document).into_iter().find(|def| def.id == id).unwrap();
         assert_eq!(def.points.last(), Some(&(22.0, 10.0)));
+        let _ = std::fs::remove_dir_all(content.parent().unwrap());
+    }
+
+    #[test]
+    fn walls_split_in_two_and_rings_open() {
+        let def = WallDef {
+            id: "w".into(),
+            kind: WallKind::DryStone,
+            points: vec![(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0), (4.0, 0.0)],
+            closed: false,
+            height: 1.3,
+            seed: 0,
+        };
+        assert_eq!(split_parts(&def, 2), Some(vec![vec![(0.0, 0.0), (1.0, 0.0)], vec![(3.0, 0.0), (4.0, 0.0)]]));
+        assert_eq!(split_parts(&def, 1), Some(vec![vec![(2.0, 0.0), (3.0, 0.0), (4.0, 0.0)]]), "a one-point part goes");
+        assert_eq!(split_parts(&def, 0), None, "not at an end");
+        let ring = WallDef { closed: true, ..def.clone() };
+        assert_eq!(split_parts(&ring, 1), Some(vec![vec![(2.0, 0.0), (3.0, 0.0), (4.0, 0.0), (0.0, 0.0)]]));
+
+        let (content, authoring) = scratch("split");
+        let mut document = Document::load_with_authoring(&content, Some(&authoring)).unwrap();
+        let id = add_wall(&mut document, WallKind::Fence, (0.0, 0.0), 0.0).unwrap();
+        change_wall(&mut document, &id, 0.0, |wall| wall.points = def.points.clone());
+        let made = split_wall(&mut document, &id, 2, 5.0).unwrap();
+        let walls = wall_defs(&document);
+        let first = walls.iter().find(|wall| wall.id == id).unwrap();
+        let second = walls.iter().find(|wall| wall.id == made).unwrap();
+        assert_eq!((first.points.len(), second.points.len(), second.kind), (2, 2, WallKind::Fence));
+        document.undo();
+        assert!(!wall_defs(&document).iter().any(|wall| wall.id == made), "one undo puts it back");
         let _ = std::fs::remove_dir_all(content.parent().unwrap());
     }
 
