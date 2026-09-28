@@ -1,8 +1,9 @@
 //! The content being edited: every data file of the content pack, loaded
 //! into memory as the content crate's own types, and written back as tidy
-//! RON. Changes can be undone and redone, and are checked by the same
-//! checks the game runs (on a mirror of the content folder, so nothing is
-//! written to the real one until it's saved).
+//! RON, and the world's authored files (walls, in `world_authoring/`),
+//! which the bake reads. Changes can be undone and redone, and are checked
+//! by the same checks the game runs (on a mirror of the content folder, so
+//! nothing is written to the real one until it's saved) and the bake runs.
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -17,6 +18,7 @@ use venture_content::{
     AbilityDef, AppearanceDef, ClassDef, ContentError, ContentPack, ItemDef, MonsterDef, NewCharacterDef, NpcDef,
     QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef,
 };
+use venture_structures::{WALLS_FILE, WallDef, check_walls};
 
 /// Changes to the same file this close together (seconds) undo as one (so
 /// typing a name is one step, not one per letter).
@@ -54,6 +56,15 @@ entries_with_ids!(
     ShopDef,
     QuestDef
 );
+
+impl Entry for WallDef {
+    fn key(&self) -> String {
+        self.id.clone()
+    }
+    fn set_key(&mut self, key: String) {
+        self.id = key;
+    }
+}
 
 impl Entry for RespawnPoint {
     fn key(&self) -> String {
@@ -103,6 +114,8 @@ pub struct Collection<T> {
     title: &'static str,
     place: Place,
     files: Vec<EntryFile<T>>,
+    /// Whether it's in the world authoring folder (not the content folder).
+    authored: bool,
 }
 
 /// A kind of content, whatever its type: what the editor's tabs work with.
@@ -111,6 +124,8 @@ pub trait AnyCollection: Send + Sync {
     fn title(&self) -> &'static str;
     /// Whether it holds a single thing rather than lists.
     fn is_single(&self) -> bool;
+    /// Whether it's in the world authoring folder (not the content folder).
+    fn is_authored(&self) -> bool;
     /// Its files (relative paths).
     fn paths(&self) -> Vec<PathBuf>;
     /// Each file's entries' keys.
@@ -172,7 +187,13 @@ impl<T: Entry> Collection<T> {
             };
             files.push(EntryFile { path, entries });
         }
-        Ok(Self { title, place, files })
+        Ok(Self { title, place, files, authored: false })
+    }
+
+    /// Makes it one of the world authoring folder's (loaded from there).
+    fn authored(mut self) -> Self {
+        self.authored = true;
+        self
     }
 }
 
@@ -238,6 +259,10 @@ impl<T: Entry> AnyCollection for Collection<T> {
 
     fn is_single(&self) -> bool {
         matches!(self.place, Place::Single(_))
+    }
+
+    fn is_authored(&self) -> bool {
+        self.authored
     }
 
     fn paths(&self) -> Vec<PathBuf> {
@@ -327,6 +352,8 @@ struct Step {
 pub struct Document {
     /// The content folder.
     pub root: PathBuf,
+    /// The world authoring folder, if its files are being edited too.
+    pub authoring: Option<PathBuf>,
     /// Every kind of content, in the order the tabs show them.
     pub collections: Vec<Box<dyn AnyCollection>>,
     /// Each file's text now (as it would be saved), by (collection, file).
@@ -340,9 +367,16 @@ pub struct Document {
 }
 
 impl Document {
-    /// Loads every kind of content the editor edits.
+    /// Loads every kind of content the editor edits (but no authored files).
+    #[cfg(test)]
     pub fn load(root: &Path) -> Result<Self, String> {
-        let collections: Vec<Box<dyn AnyCollection>> = vec![
+        Self::load_with_authoring(root, None)
+    }
+
+    /// Loads every kind of content, and the world's authored files from
+    /// `authoring` (if given).
+    pub fn load_with_authoring(root: &Path, authoring: Option<&Path>) -> Result<Self, String> {
+        let mut collections: Vec<Box<dyn AnyCollection>> = vec![
             Box::new(Collection::<ClassDef>::load(root, "Classes", Place::Folder("classes"))?),
             Box::new(Collection::<AbilityDef>::load(root, "Abilities", Place::Folder("abilities"))?),
             Box::new(Collection::<ItemDef>::load(root, "Items", Place::Folder("items"))?),
@@ -361,8 +395,13 @@ impl Document {
                 Place::Single("characters/characters.ron"),
             )?),
         ];
+        if let Some(folder) = authoring {
+            collections
+                .push(Box::new(Collection::<WallDef>::load(folder, "Walls", Place::List(WALLS_FILE))?.authored()));
+        }
         let mut document = Self {
             root: root.to_path_buf(),
+            authoring: authoring.map(Path::to_path_buf),
             collections,
             current: HashMap::new(),
             on_disk: HashMap::new(),
@@ -486,14 +525,20 @@ impl Document {
         self.current.get(&(collection, file)) != self.on_disk.get(&(collection, file))
     }
 
-    /// Writes every changed file to `folder` (the content folder, or a mirror of it).
-    fn write_to(&self, folder: &Path, only_changed: bool) -> Result<usize, String> {
+    /// Writes every changed file to `folder` (the content folder, or a
+    /// mirror of it), and the world's authored ones to `authoring` (if given).
+    fn write_to(&self, folder: &Path, authoring: Option<&Path>, only_changed: bool) -> Result<usize, String> {
         let mut written = 0;
         for (&(c, f), text) in &self.current {
             if only_changed && self.on_disk.get(&(c, f)) == Some(text) {
                 continue;
             }
-            let path = folder.join(&self.collections[c].paths()[f]);
+            let base = match (self.collections[c].is_authored(), authoring) {
+                (false, _) => folder,
+                (true, Some(authoring)) => authoring,
+                (true, None) => continue,
+            };
+            let path = base.join(&self.collections[c].paths()[f]);
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
@@ -505,7 +550,7 @@ impl Document {
 
     /// Saves every changed file. Returns how many were written.
     pub fn save(&mut self) -> Result<usize, String> {
-        let written = self.write_to(&self.root.clone(), true)?;
+        let written = self.write_to(&self.root, self.authoring.as_deref(), true)?;
         self.on_disk = self.current.clone();
         Ok(written)
     }
@@ -513,13 +558,23 @@ impl Document {
     /// Checks the content as it is now (saved or not), with the game's own
     /// checks, in `mirror`: a copy of the content folder kept for this.
     pub fn check(&self, mirror: &Path) -> Vec<ContentError> {
-        if let Err(error) = self.write_to(mirror, false) {
+        if let Err(error) = self.write_to(mirror, None, false) {
             return vec![ContentError { file: PathBuf::new(), message: format!("can't check: {error}") }];
         }
-        match ContentPack::load(mirror) {
+        let mut problems = match ContentPack::load(mirror) {
             Ok(_) => Vec::new(),
             Err(errors) => errors,
+        };
+        if let Some((_, walls)) = self.find::<WallDef>() {
+            for file in walls.files() {
+                problems.extend(
+                    check_walls(&file.entries)
+                        .into_iter()
+                        .map(|message| ContentError { file: file.path.clone(), message }),
+                );
+            }
         }
+        problems
     }
 }
 
@@ -559,7 +614,7 @@ mod tests {
         let folder = scratch("round-trip");
         let before = ContentPack::load(&folder).expect("the real content is fine");
         let document = Document::load(&folder).unwrap();
-        document.write_to(&folder, false).unwrap();
+        document.write_to(&folder, None, false).unwrap();
         let after = ContentPack::load(&folder).expect("the saved content is fine");
         assert_eq!(before.classes, after.classes);
         assert_eq!(before.abilities, after.abilities);

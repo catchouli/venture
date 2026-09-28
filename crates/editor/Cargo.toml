@@ -10,6 +10,8 @@ rust-version.workspace = true
 venture_client = { path = "../client" }
 venture_content = { workspace = true, features = ["reflect"] }
 venture_world.workspace = true
+venture_structures = { workspace = true, features = ["reflect"] }
+venture_worldgen.workspace = true
 venture_protocol.workspace = true
 venture_rpg.workspace = true
 bevy = { workspace = true, features = ["default"] }

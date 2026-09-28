@@ -3,8 +3,10 @@
 //! manifest, which carry their paths and the ground's height along them, so
 //! they don't wait for the terrain.
 //!
-//! - **Building:** when the world arrives (or changes), every wall is built
-//!   in the background, in stretches of about 16 m.
+//! - **Building:** the walls shown ([`ShownWalls`]) are the world's own,
+//!   from its manifest, unless something else sets them (the editor shows
+//!   the walls it's editing). Whenever they change, the walls that changed
+//!   are built again in the background, in stretches of about 16 m.
 //! - **Levels of detail:** a dry stone wall is every stone close up and one
 //!   plain band far away, with Bevy's [`VisibilityRange`] crossfading
 //!   between them; fences are light enough to be the same at any distance.
@@ -14,6 +16,8 @@
 //!   colour. Bevy doesn't make mipmaps for JPEGs, so they're added once the
 //!   pictures load.
 
+use std::collections::HashMap;
+
 use bevy::asset::{LoadState, RenderAssetUsages};
 use bevy::camera::visibility::VisibilityRange;
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor};
@@ -21,7 +25,7 @@ use bevy::math::Affine2;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
-use venture_structures::{MeshPart, Stretch, WallKind, build_wall};
+use venture_structures::{BakedWall, MeshPart, Stretch, WallKind, build_wall};
 
 use crate::common::mipmaps::add_mipmaps;
 use crate::content::{CONTENT_SOURCE, ContentStore};
@@ -45,20 +49,40 @@ pub struct WallsPlugin;
 
 impl Plugin for WallsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Walls>()
-            .add_systems(Update, (load_materials, finish_textures, start_building, finish_building).chain());
+        app.init_resource::<Walls>().init_resource::<ShownWalls>().add_systems(
+            Update,
+            (load_materials, finish_textures, take_manifest_walls, start_building, finish_building).chain(),
+        );
     }
 }
 
-/// The walls: their materials, and what they were built from.
+/// The walls to show.
+#[derive(Resource, Default)]
+pub struct ShownWalls {
+    /// The walls.
+    pub walls: Vec<BakedWall>,
+    /// Whether something else sets them (the editor), rather than their
+    /// being the world's own, from its manifest.
+    pub authored: bool,
+}
+
+/// A wall's stretches, built.
+type Built = Vec<(WallKind, Stretch)>;
+
+/// The walls: their materials, and what's built.
 #[derive(Resource, Default)]
 pub struct Walls {
     /// Each kind's material (in the order of [`TEXTURES`]), once asked for.
     materials: Option<[Handle<StandardMaterial>; 2]>,
     /// Each kind's pictures, until they've been given mipmaps.
     pictures: Vec<Handle<Image>>,
-    /// Building, if under way.
-    building: Option<Task<Vec<(WallKind, Stretch)>>>,
+    /// Each wall shown, by its key: what it was built from, and its stretches.
+    built: HashMap<String, (BakedWall, Vec<Entity>)>,
+    /// Building, if under way: every wall's key (to know which have gone),
+    /// and the ones built again.
+    building: Option<Task<(Vec<String>, Vec<(String, BakedWall, Built)>)>>,
+    /// Whether the walls shown changed while others were being built.
+    dirty: bool,
 }
 
 /// A stretch of wall (the parent of its meshes).
@@ -129,71 +153,116 @@ fn finish_textures(asset_server: Res<AssetServer>, mut walls: ResMut<Walls>, mut
     });
 }
 
-/// Builds every wall in the background when the world arrives or changes
-/// (and takes down the old ones).
-fn start_building(
-    mut commands: Commands,
-    world: Option<Res<WorldInfo>>,
-    mut walls: ResMut<Walls>,
-    old: Query<Entity, With<WallStretch>>,
-) {
-    let Some(world) = world else { return };
-    if !world.is_changed() {
+/// Shows the world's own walls, unless something else sets them.
+fn take_manifest_walls(world: Option<Res<WorldInfo>>, mut shown: ResMut<ShownWalls>) {
+    if let Some(world) = world
+        && world.is_changed()
+        && !shown.authored
+    {
+        shown.walls = world.0.walls.clone();
+    }
+}
+
+/// Each wall's key: its id (made unique, should two share one).
+fn keys(walls: &[BakedWall]) -> Vec<String> {
+    let mut keys: Vec<String> = Vec::with_capacity(walls.len());
+    for wall in walls {
+        let key = (1..)
+            .map(|n| if n == 1 { wall.id.clone() } else { format!("{}#{n}", wall.id) })
+            .find(|key| !keys.contains(key))
+            .unwrap_or_default();
+        keys.push(key);
+    }
+    keys
+}
+
+/// Builds the walls that changed in the background (one build at a time).
+fn start_building(shown: Res<ShownWalls>, mut walls: ResMut<Walls>) {
+    if shown.is_changed() {
+        walls.dirty = true;
+    }
+    if !walls.dirty || walls.building.is_some() {
         return;
     }
-    for stretch in &old {
-        commands.entity(stretch).despawn();
-    }
-    let baked = world.0.walls.clone();
-    if baked.is_empty() {
-        walls.building = None;
+    walls.dirty = false;
+    let keys = keys(&shown.walls);
+    let changed: Vec<(String, BakedWall)> = keys
+        .iter()
+        .zip(&shown.walls)
+        .filter(|(key, wall)| walls.built.get(*key).is_none_or(|(built, _)| built != *wall))
+        .map(|(key, wall)| (key.clone(), wall.clone()))
+        .collect();
+    if changed.is_empty() && walls.built.keys().all(|key| keys.contains(key)) {
         return;
     }
     walls.building = Some(AsyncComputeTaskPool::get().spawn(async move {
         let started = bevy::platform::time::Instant::now();
-        let stretches: Vec<(WallKind, Stretch)> =
-            baked.iter().flat_map(|wall| build_wall(wall).into_iter().map(|stretch| (wall.kind, stretch))).collect();
-        let triangles: usize = stretches.iter().map(|(_, stretch)| stretch.full.triangles()).sum();
+        let built: Vec<(String, BakedWall, Built)> = changed
+            .into_iter()
+            .map(|(key, wall)| {
+                let stretches = build_wall(&wall).into_iter().map(|stretch| (wall.kind, stretch)).collect();
+                (key, wall, stretches)
+            })
+            .collect();
+        let triangles: usize =
+            built.iter().flat_map(|(_, _, stretches)| stretches).map(|(_, stretch)| stretch.full.triangles()).sum();
         let took = started.elapsed().as_secs_f64() * 1000.0;
-        info!("{} walls built: {} stretches, {triangles} triangles, in {took:.0} ms.", baked.len(), stretches.len());
-        stretches
+        debug!("{} walls built: {triangles} triangles, in {took:.0} ms.", built.len());
+        (keys, built)
     }));
 }
 
-/// Shows the walls once they're built (and their materials exist).
+/// Shows the walls once they're built (and their materials exist), and
+/// takes down the ones they replace or that have gone.
 fn finish_building(mut commands: Commands, mut walls: ResMut<Walls>, mut meshes: ResMut<Assets<Mesh>>) {
     let Some(materials) = walls.materials.clone() else { return };
     let Some(task) = walls.building.as_mut() else { return };
-    let Some(stretches) = check_ready(task) else { return };
+    let Some((keys, built)) = check_ready(task) else { return };
     walls.building = None;
+    let gone: Vec<String> = walls
+        .built
+        .keys()
+        .filter(|key| !keys.contains(key) || built.iter().any(|(rebuilt, ..)| rebuilt == *key))
+        .cloned()
+        .collect();
+    for key in gone {
+        if let Some((_, entities)) = walls.built.remove(&key) {
+            for entity in entities {
+                commands.entity(entity).despawn();
+            }
+        }
+    }
     let material = |kind: WallKind| {
         let index = TEXTURES.iter().position(|(of, ..)| *of == kind).unwrap_or(0);
         materials[index].clone()
     };
-    let near =
-        VisibilityRange { start_margin: 0.0..0.0, end_margin: FULL_UNTIL..FULL_UNTIL + CROSSFADE, use_aabb: false };
-    let far = VisibilityRange {
-        start_margin: FULL_UNTIL..FULL_UNTIL + CROSSFADE,
-        end_margin: DRAWN_UNTIL..DRAWN_UNTIL + CROSSFADE,
+    let range = |from: f32, to: f32| VisibilityRange {
+        start_margin: from..if from > 0.0 { from + CROSSFADE } else { 0.0 },
+        end_margin: to..to + CROSSFADE,
         use_aabb: false,
     };
-    let everywhere =
-        VisibilityRange { start_margin: 0.0..0.0, end_margin: DRAWN_UNTIL..DRAWN_UNTIL + CROSSFADE, use_aabb: false };
-    for (kind, stretch) in stretches {
-        let material = material(kind);
-        let [x, height, y] = stretch.origin;
-        commands.spawn((WallStretch, Transform::from_xyz(x, height, y), Visibility::default())).with_children(
-            |parent| {
-                // Fences have no far look: they're the same at any distance.
-                let full_range = if stretch.far.is_empty() { everywhere.clone() } else { near.clone() };
-                for (part, range) in [(&stretch.full, full_range), (&stretch.far, far.clone())] {
-                    if part.is_empty() {
-                        continue;
+    let (near, far, everywhere) = (range(0.0, FULL_UNTIL), range(FULL_UNTIL, DRAWN_UNTIL), range(0.0, DRAWN_UNTIL));
+    for (key, wall, stretches) in built {
+        let mut entities = Vec::with_capacity(stretches.len());
+        for (kind, stretch) in stretches {
+            let material = material(kind);
+            let [x, height, y] = stretch.origin;
+            let parent = commands
+                .spawn((WallStretch, Transform::from_xyz(x, height, y), Visibility::default()))
+                .with_children(|parent| {
+                    // Fences have no far look: they're the same at any distance.
+                    let full_range = if stretch.far.is_empty() { everywhere.clone() } else { near.clone() };
+                    for (part, range) in [(&stretch.full, full_range), (&stretch.far, far.clone())] {
+                        if part.is_empty() {
+                            continue;
+                        }
+                        parent.spawn((Mesh3d(meshes.add(to_mesh(part))), MeshMaterial3d(material.clone()), range));
                     }
-                    parent.spawn((Mesh3d(meshes.add(to_mesh(part))), MeshMaterial3d(material.clone()), range));
-                }
-            },
-        );
+                })
+                .id();
+            entities.push(parent);
+        }
+        walls.built.insert(key, (wall, entities));
     }
 }
 

@@ -4,10 +4,11 @@
 //! world already baked.)
 //!
 //! ```text
-//! cargo run --release -p venture_worldgen --bin bake -- [output folder] [seed]
+//! cargo run --release -p venture_worldgen --bin bake -- [output folder] [seed] [authoring folder]
 //! ```
 //!
-//! The output folder defaults to `world`, and the seed to the default config's.
+//! The output folder defaults to `world`, the seed to the default config's,
+//! and the authoring folder to `world_authoring`.
 //!
 //! Authored world data (`world_authoring/`, see `docs/world-authoring.md`)
 //! is baked in too: walls and fences (`walls.ron`, see `docs/plan-walls.md`)
@@ -19,12 +20,13 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
-use venture_structures::{WALLS_FILE, bake_wall, cells_near, parse_walls, wall_cells};
+use venture_structures::{WALLS_FILE, cells_near, check_walls, parse_walls, wall_cells};
 use venture_world::{
     BakedWall, CHUNK_FORMAT_VERSION, CHUNK_SIZE, CellPos, Chunk, ChunkPos, MANIFEST_FILE, SettlementInfo,
     WorldManifest, chunk_file_path, encode_chunk,
 };
 use venture_worldgen::map_render::bake_map;
+use venture_worldgen::structures::bake_authored_wall;
 use venture_worldgen::{GENERATOR_VERSION, WorldGenConfig, WorldGenerator};
 
 fn main() -> std::io::Result<()> {
@@ -34,6 +36,7 @@ fn main() -> std::io::Result<()> {
     if let Some(seed) = args.next() {
         config.seed = seed.parse().expect("the seed must be a whole number");
     }
+    let authoring = PathBuf::from(args.next().unwrap_or_else(|| AUTHORING_FOLDER.to_string()));
 
     let started = Instant::now();
     let world = WorldGenerator::new(config);
@@ -57,7 +60,7 @@ fn main() -> std::io::Result<()> {
         walls: Vec::new(),
     };
     let mut manifest = manifest;
-    manifest.walls = bake_walls(&world, Path::new(AUTHORING_FOLDER));
+    manifest.walls = bake_walls(&world, &authoring);
     let structures = Structures::of(&manifest.walls);
     std::fs::create_dir_all(output.join("chunks"))?;
 
@@ -76,23 +79,21 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-/// The authored world data's folder.
+/// The authored world data's folder (unless another is given).
 const AUTHORING_FOLDER: &str = "world_authoring";
 /// Trees and rocks this near a wall's line (beyond its own width) are cleared, in metres.
 const WALL_CLEARANCE: f32 = 1.5;
-/// Walls open where a road passes within this much of its edge, in metres.
-const ROAD_GAP_MARGIN: f32 = 0.5;
 
 /// The authored walls, baked (none if there's no walls file).
 fn bake_walls(world: &WorldGenerator, folder: &Path) -> Vec<BakedWall> {
     let path = folder.join(WALLS_FILE);
     let Ok(text) = std::fs::read_to_string(&path) else { return Vec::new() };
     let defs = parse_walls(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-    let road = world.config().road_half_width + ROAD_GAP_MARGIN;
-    let walls: Vec<BakedWall> = defs
-        .iter()
-        .map(|def| bake_wall(def, |x, y| world.ground_height(x, y), |x, y| world.road_distance(x, y, road).is_some()))
-        .collect();
+    let problems = check_walls(&defs);
+    if !problems.is_empty() {
+        panic!("{}: {}", path.display(), problems.join("; "));
+    }
+    let walls: Vec<BakedWall> = defs.iter().map(|def| bake_authored_wall(world, def)).collect();
     println!("{} walls and fences baked from {}.", walls.len(), path.display());
     walls
 }

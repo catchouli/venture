@@ -22,6 +22,8 @@ use crate::places::{
     EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, add_place, copy_place, delete_place, marker_heights,
 };
 use crate::previews::{class_preview, monster_preview};
+use crate::walls::{WallTool, baking, save_and_bake, wall_buttons, walls_list};
+use venture_client::world::source::WorldInfo;
 
 /// How long after the last change the content is checked, in seconds.
 const CHECK_DELAY: f64 = 0.4;
@@ -189,15 +191,18 @@ fn shortcuts(ctx: &egui::Context, shell: &mut Shell, document: &mut Document, no
         save_all(shell, document);
     }
     if undo && let Some(place) = document.undo() {
-        after_undo(shell, place, "Undone.", now);
+        after_undo(shell, document, place, "Undone.", now);
     }
     if redo && let Some(place) = document.redo() {
-        after_undo(shell, place, "Redone.", now);
+        after_undo(shell, document, place, "Redone.", now);
     }
 }
 
-fn after_undo(shell: &mut Shell, (collection, file): (usize, usize), status: &str, now: f64) {
-    shell.tab = Tab::Content(collection);
+fn after_undo(shell: &mut Shell, document: &Document, (collection, file): (usize, usize), status: &str, now: f64) {
+    // (Walls are edited on the World tab, so it stays there for them.)
+    if !(shell.tab == Tab::World && document.collections[collection].is_authored()) {
+        shell.tab = Tab::Content(collection);
+    }
     let chosen = shell.chosen.entry(collection).or_insert((file, 0));
     chosen.0 = file;
     shell.status = status.to_string();
@@ -236,12 +241,12 @@ fn top_bar(root: &mut egui::Ui, shell: &mut Shell, document: &mut Document, now:
                 if ui.add_enabled(document.can_redo(), egui::Button::new("Redo")).clicked()
                     && let Some(place) = document.redo()
                 {
-                    after_undo(shell, place, "Redone.", now);
+                    after_undo(shell, document, place, "Redone.", now);
                 }
                 if ui.add_enabled(document.can_undo(), egui::Button::new("Undo")).clicked()
                     && let Some(place) = document.undo()
                 {
-                    after_undo(shell, place, "Undone.", now);
+                    after_undo(shell, document, place, "Undone.", now);
                 }
             });
         });
@@ -566,89 +571,125 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
     let mut action = None;
     let mut cameras = world.query::<&EditorCamera>();
     let focus = cameras.single(world).map(|camera| from_bevy(camera.focus)).unwrap_or_default();
-    world.resource_scope(|world, mut selection: Mut<Selection>| {
-        let places = world.resource::<Places>();
-        let chosen_place = places.list.iter().find(|place| selection.is(place)).cloned();
-        egui::Panel::left("places").resizable(true).default_size(240.0).show_inside(root, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Add:");
-                for (kind, label) in [
-                    (PlaceKind::Npc, "NPC"),
-                    (PlaceKind::Spawner, "Spawner"),
-                    (PlaceKind::RespawnPoint, "Respawn point"),
-                ] {
-                    if ui.button(label).on_hover_text("Where the camera is looking").clicked() {
-                        action = Some(WorldAction::Add(kind));
-                    }
-                }
-            });
-            if let Some(place) = &chosen_place {
+    let mut wall_go_to = None;
+    world.resource_scope(|world, mut tool: Mut<WallTool>| {
+        world.resource_scope(|world, mut selection: Mut<Selection>| {
+            let places = world.resource::<Places>();
+            let chosen_place = places.list.iter().find(|place| selection.is(place)).cloned();
+            egui::Panel::left("places").resizable(true).default_size(240.0).show_inside(root, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button("Copy").clicked() {
-                        action = Some(WorldAction::Copy(place.clone()));
-                    }
-                    if ui.button("Delete").clicked() {
-                        action = Some(WorldAction::Delete(place.clone()));
+                    ui.label("Add:");
+                    for (kind, label) in [
+                        (PlaceKind::Npc, "NPC"),
+                        (PlaceKind::Spawner, "Spawner"),
+                        (PlaceKind::RespawnPoint, "Respawn point"),
+                    ] {
+                        if ui.button(label).on_hover_text("Where the camera is looking").clicked() {
+                            action = Some(WorldAction::Add(kind));
+                        }
                     }
                 });
-            }
-            ui.separator();
-            ui.horizontal(|ui| {
-                let mut limited = shell.nearby.is_some();
-                ui.checkbox(&mut limited, "Only within")
-                    .on_hover_text("List only things this near where the camera is looking");
-                let mut metres = shell.nearby.unwrap_or(DEFAULT_NEARBY);
-                ui.add_enabled(limited, egui::DragValue::new(&mut metres).range(1.0..=10000.0).speed(5.0).suffix(" m"));
-                shell.nearby = limited.then_some(metres);
-            });
-            let nearby = shell.nearby;
-            let chosen = selection.clone();
-            let near = |place: &Place| {
-                let (x, y) = place.position;
-                nearby.is_none_or(|metres| (x - focus.0).hypot(y - focus.1) <= metres) || chosen.is(place)
-            };
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for kind in PlaceKind::ALL {
-                    let of_kind: Vec<&Place> = places.list.iter().filter(|place| place.kind == kind).collect();
-                    let shown: Vec<&Place> = of_kind.iter().copied().filter(|place| near(place)).collect();
-                    let count = match shown.len() == of_kind.len() {
-                        true => format!("{}", of_kind.len()),
-                        false => format!("{} of {}", shown.len(), of_kind.len()),
-                    };
-                    egui::CollapsingHeader::new(format!("{} ({count})", kind.title()))
-                        .id_salt(kind.title())
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            for place in shown {
-                                if ui.selectable_label(selection.is(place), &place.label).clicked() {
-                                    selection.0 = Some((place.kind, place.key.clone()));
-                                    go_to = Some(place.position);
+                if let Some(place) = &chosen_place {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Copy").clicked() {
+                            action = Some(WorldAction::Copy(place.clone()));
+                        }
+                        if ui.button("Delete").clicked() {
+                            action = Some(WorldAction::Delete(place.clone()));
+                        }
+                    });
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    let mut limited = shell.nearby.is_some();
+                    ui.checkbox(&mut limited, "Only within")
+                        .on_hover_text("List only things this near where the camera is looking");
+                    let mut metres = shell.nearby.unwrap_or(DEFAULT_NEARBY);
+                    ui.add_enabled(
+                        limited,
+                        egui::DragValue::new(&mut metres).range(1.0..=10000.0).speed(5.0).suffix(" m"),
+                    );
+                    shell.nearby = limited.then_some(metres);
+                });
+                let nearby = shell.nearby;
+                let chosen = selection.clone();
+                let near = |place: &Place| {
+                    let (x, y) = place.position;
+                    nearby.is_none_or(|metres| (x - focus.0).hypot(y - focus.1) <= metres) || chosen.is(place)
+                };
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for kind in PlaceKind::ALL {
+                        let of_kind: Vec<&Place> = places.list.iter().filter(|place| place.kind == kind).collect();
+                        let shown: Vec<&Place> = of_kind.iter().copied().filter(|place| near(place)).collect();
+                        let count = match shown.len() == of_kind.len() {
+                            true => format!("{}", of_kind.len()),
+                            false => format!("{} of {}", shown.len(), of_kind.len()),
+                        };
+                        egui::CollapsingHeader::new(format!("{} ({count})", kind.title()))
+                            .id_salt(kind.title())
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                for place in shown {
+                                    if ui.selectable_label(selection.is(place), &place.label).clicked() {
+                                        selection.0 = Some((place.kind, place.key.clone()));
+                                        tool.choose(None);
+                                        go_to = Some(place.position);
+                                    }
                                 }
-                            }
-                        });
-                }
-                ui.separator();
-                if ui.button("Save and play here").on_hover_text(PLAY_HERE_HELP).clicked() {
-                    action = Some(WorldAction::PlayHere);
-                }
-                ui.separator();
-                ui.weak("Click a marker to choose it, and drag it to move it.");
-                ui.weak("Right drag: turn. Middle drag (or Shift + right drag): slide.");
-                ui.weak("Scroll: closer or further. W A S D: move (Shift: faster).");
+                            });
+                    }
+                    if let Some(at) = walls_list(ui, &mut tool, document, nearby, focus, now) {
+                        selection.0 = None;
+                        wall_go_to = Some(at);
+                    }
+                    if tool.drawing || tool.chosen.is_some() {
+                        selection.0 = None;
+                    }
+                    ui.separator();
+                    if ui.button("Save and play here").on_hover_text(PLAY_HERE_HELP).clicked() {
+                        action = Some(WorldAction::PlayHere);
+                    }
+                    let label = if baking(&tool) { "Baking…" } else { "Save and bake" };
+                    if ui.add_enabled(!baking(&tool), egui::Button::new(label)).on_hover_text(BAKE_HELP).clicked() {
+                        action = Some(WorldAction::Bake);
+                    }
+                    ui.separator();
+                    ui.weak("Click a marker to choose it, and drag it to move it.");
+                    ui.weak("Right drag: turn. Middle drag (or Shift + right drag): slide.");
+                    ui.weak("Scroll: closer or further. W A S D: move (Shift: faster).");
+                });
             });
-        });
-        let chosen = places.list.iter().find(|place| selection.is(place)).map(|place| place.entry);
-        if let Some(entry) = chosen {
-            let mut changed = false;
-            egui::Panel::right("place properties").resizable(true).default_size(380.0).show_inside(root, |ui| {
-                changed = edit_entry(ui, world, document, entry);
-            });
-            if changed {
-                document.changed(entry.0, entry.1, now);
-                shell.check_due = Some(now + CHECK_DELAY);
+            let chosen = places.list.iter().find(|place| selection.is(place)).map(|place| place.entry);
+            if let Some(entry) = chosen {
+                let mut changed = false;
+                egui::Panel::right("place properties").resizable(true).default_size(380.0).show_inside(root, |ui| {
+                    changed = edit_entry(ui, world, document, entry);
+                });
+                if changed {
+                    document.changed(entry.0, entry.1, now);
+                    shell.check_due = Some(now + CHECK_DELAY);
+                }
+            } else if let Some(entry) = chosen_wall(document, &tool) {
+                let mut changed = false;
+                egui::Panel::right("wall properties").resizable(true).default_size(380.0).show_inside(root, |ui| {
+                    wall_buttons(ui, &mut tool, document, now);
+                    ui.separator();
+                    changed = edit_entry(ui, world, document, entry);
+                });
+                if changed {
+                    document.changed(entry.0, entry.1, now);
+                }
+                // (Renaming it, or undoing, can leave the choice naming nothing.)
+                if chosen_wall(document, &tool).is_none() {
+                    tool.choose(None);
+                }
             }
-        }
+        });
     });
+    if wall_go_to.is_some() {
+        shell.check_due = Some(now + CHECK_DELAY);
+        go_to = wall_go_to;
+    }
     if let Some((x, y)) = go_to {
         let mut cameras = world.query::<&mut EditorCamera>();
         if let Ok(mut camera) = cameras.single_mut(world) {
@@ -687,6 +728,22 @@ enum WorldAction {
     Copy(Place),
     Delete(Place),
     PlayHere,
+    Bake,
+}
+
+const BAKE_HELP: &str = "Saves, then bakes the world again (in the background, about ten seconds), with the \
+walls as they are: they block the ground they stand on and clear trees from their way. Restart the game (or \
+the server) to play in it.";
+
+/// The chosen wall's entry in the document, if there is one.
+fn chosen_wall(document: &Document, tool: &WallTool) -> Option<EntryRef> {
+    let id = tool.chosen.as_ref()?;
+    let (collection, walls) = document.find::<venture_structures::WallDef>()?;
+    walls
+        .files()
+        .iter()
+        .enumerate()
+        .find_map(|(f, file)| file.entries.iter().position(|def| &def.id == id).map(|i| (collection, f, i)))
 }
 
 const PLAY_HERE_HELP: &str = "Saves, then starts the game (--local) with a new character at the camera's spot. \
@@ -707,6 +764,14 @@ fn world_action(world: &mut World, shell: &mut Shell, document: &mut Document, a
         WorldAction::Delete(place) => {
             delete_place(document, &place, now);
             None
+        }
+        WorldAction::Bake => {
+            let project = world.resource::<Project>().clone();
+            let seed = world.get_resource::<WorldInfo>().map(|info| info.0.seed);
+            let mut tool = world.resource_mut::<WallTool>();
+            save_and_bake(&mut tool, document, &project, seed);
+            shell.status = tool.status.clone();
+            return;
         }
         WorldAction::PlayHere => {
             save_all(shell, document);

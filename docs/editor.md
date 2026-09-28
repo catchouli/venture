@@ -6,7 +6,7 @@ it's going).
 
 ```sh
 cargo run -p venture_editor                                  # edits content/, shows world/
-cargo run -p venture_editor -- --content content --world world
+cargo run -p venture_editor -- --content content --world world --authoring world_authoring
 ```
 
 Bake the world first (`cargo run --release -p venture_worldgen --bin bake`),
@@ -26,6 +26,23 @@ as for `--local`.
   - Click a thing in the view to choose it, and drag it to move it along
     the ground.
   - The chosen thing's every field is on the right.
+  - **Walls and fences** (`world_authoring/walls.ron`, baked into the
+    world; see [plan-walls.md](plan-walls.md)) are listed too. **Draw**
+    (with the kind beside it: dry-stone wall or fence) starts a new one:
+    click points on the ground and it's built as you go; double-click,
+    Enter or Escape finishes, and clicking its first point closes it into a
+    ring. Click a wall to choose it: its points show as handles. Drag one
+    to move it, click the wall between two points to add one there (and
+    drag it), and Delete removes the chosen point. On the right are **New
+    seed** (the same wall, its stones laid differently), **Delete wall**,
+    and its fields (kind, points, whether it's a ring, height, seed).
+    Walls are shown exactly as the bake will make them (the editor bakes
+    them itself, against the same world generator), with gaps where roads
+    cross.
+  - **Save and bake** saves, then bakes the world again in the background
+    (about ten seconds), so walls block the ground they stand on and clear
+    trees from their way. The game (or server) needs restarting to use the
+    new world, and the editor reopening to show the cleared trees.
   - **Save and play here** saves, then starts the game (`--local`) with a
     new character at the camera's spot. It uses a profile of its own
     ("editor"), with admin powers, so your usual character is left alone.
@@ -87,6 +104,13 @@ aren't kept, so notes about an entry go in its `notes` field (see
 - `document.rs`: the content in memory, one list of entries per file, as
   the content crate's own types. It loads, writes, undoes (by keeping each
   changed file's text before and after), and checks.
+- `walls.rs`: the World tab's walls and fences: drawing, handles, the
+  live bake (a `WorldGenerator` built in the background from the world's
+  seed, and `venture_worldgen::structures`, as `bake` uses), handing them to
+  the game's wall drawing (`ShownWalls`), and running the bake. The walls
+  file is a document collection like the content's, but saved to the
+  authoring folder (and not part of the content check; walls have checks of
+  their own).
 - `places.rs`: the World tab's placed things. The document stays the one
   truth; each placed thing has a marker entity kept in step with it (the
   game's own character and monster models, through `looks.rs`, which points
@@ -112,9 +136,11 @@ aren't kept, so notes about an entry go in its `notes` field (see
   `VENTURE_EDITOR_ENTRY=mage` choose what's showing (with
   `VENTURE_EDITOR_TABLE=1` for tables), `VENTURE_EDITOR_PLACE=town_guard`
   chooses a placed thing, and `VENTURE_EDITOR_FOCUS=x,y` and
-  `VENTURE_EDITOR_DISTANCE=metres` set the camera.
+  `VENTURE_EDITOR_DISTANCE=metres` set the camera. `VENTURE_EDITOR_WALL=id`
+  chooses a wall.
 
 Tests (`cargo test -p venture_editor`) check that saving everything gives the
 game the same content, that awkward text survives, that undo works, that
-problems are found before saving, and that placed things are added, copied,
-and deleted properly.
+problems are found before saving, that placed things are added, copied,
+and deleted properly, and that walls are drawn, saved to the authoring
+folder and checked.

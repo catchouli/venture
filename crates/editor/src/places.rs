@@ -40,9 +40,16 @@ impl Plugin for PlacesPlugin {
             .init_resource::<Selection>()
             .init_resource::<Drag>()
             .add_systems(Startup, make_marker_assets)
-            .add_systems(Update, (list_places, sync_markers, pick_and_drag, keep_on_ground, draw_guides).chain());
+            .add_systems(
+                Update,
+                (list_places, sync_markers, pick_and_drag.in_set(PickPlaces), keep_on_ground, draw_guides).chain(),
+            );
     }
 }
+
+/// Where clicks pick placed things (walls' clicks are ordered around it).
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PickPlaces;
 
 /// The kinds of things placed in the world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
