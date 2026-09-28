@@ -24,6 +24,8 @@ pub struct ServerConfig {
     pub party: PartyConfig,
     /// Rules for fishing.
     pub fishing: FishingConfig,
+    /// Rules for woodcutting (felling trees and cutting them up).
+    pub woodcutting: WoodcuttingConfig,
     /// How the days go: the length of a day, sunrise and sunset, and how
     /// high the sun gets (see `venture_simulation::DayCycle`).
     pub day: DayCycle,
@@ -142,6 +144,41 @@ impl Default for FishingConfig {
     }
 }
 
+/// Rules for woodcutting (see `crate::woodcutting`; the rest are in
+/// `venture_rpg::woodcutting` and the content's `trees/woodcutting.ron`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct WoodcuttingConfig {
+    /// Seconds between swings of an axe.
+    pub swing_seconds: f32,
+    /// How far from a tree's trunk (or a fallen tree's) a player can chop it, in metres.
+    pub reach: f32,
+    /// How long a fallen tree lies before it goes, in seconds.
+    pub fallen_seconds: f32,
+    /// How long after its fallen trunk goes a tree grows back, in seconds.
+    pub regrow_seconds: f32,
+}
+
+impl Default for WoodcuttingConfig {
+    fn default() -> Self {
+        Self { swing_seconds: 1.6, reach: 3.0, fallen_seconds: 180.0, regrow_seconds: 60.0 }
+    }
+}
+
+impl WoodcuttingConfig {
+    /// What's wrong with these settings, if anything.
+    pub fn problems(&self) -> Option<String> {
+        let numbers = [self.swing_seconds, self.reach, self.fallen_seconds, self.regrow_seconds];
+        numbers
+            .iter()
+            .any(|number| !(number.is_finite() && *number >= 0.0))
+            .then(|| "woodcutting's times and reach must be numbers, none negative".to_string())
+            .or_else(|| {
+                (self.swing_seconds < 0.2).then(|| "woodcutting.swing_seconds must be at least 0.2".to_string())
+            })
+    }
+}
+
 impl ServerConfig {
     /// Reads the settings from a RON file. A missing file gives the defaults.
     pub fn load(path: &Path) -> Result<Self, String> {
@@ -198,6 +235,9 @@ impl ServerConfig {
         if !bonus.is_finite() || bonus < 1.0 {
             return Err(format!("fishing.shoal_bonus must be at least 1, not {bonus}"));
         }
+        if let Some(problem) = self.woodcutting.problems() {
+            return Err(problem);
+        }
         if let Some(problem) = self.fishing.tuning.problems().or_else(|| self.fishing.fight.problems()) {
             return Err(format!("fishing: {problem}"));
         }
@@ -230,6 +270,7 @@ mod tests {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../server.ron");
         let config = ServerConfig::load(&path).unwrap();
         assert_eq!(config.fishing, FishingConfig::default(), "server.ron lists fishing's defaults");
+        assert_eq!(config.woodcutting, WoodcuttingConfig::default(), "server.ron lists woodcutting's defaults");
         let mut tuned = config.clone();
         tuned.fishing.tuning.bycatch_share = 2.0;
         assert!(tuned.validate().unwrap_err().contains("bycatch_share"));

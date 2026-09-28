@@ -276,7 +276,7 @@ Blacksmithing.
 - [ ] 7. Impostors and wind (impostors are in; no wind yet)
 - [x] 7½. Trees fade close to the camera
 - [ ] 8. Seasons, health, more species
-- [ ] 9. Woodcutting
+- [x] 9. Woodcutting (first form: all four parts)
 
 ## Where it stands
 
@@ -360,3 +360,28 @@ Things seen in playtest screenshots that want work:
 - pine sprays look coarse close up (a photographed pine spray would help);
 - willow's shape;
 - measuring how long the templates take to grow in the browser.
+
+**Woodcutting** (step 9, first form; see "Woodcutting" above and
+`docs/client-server.md`):
+- **Selecting:** standing trees near the player (within 40 m; not bushes)
+  can be selected. The target frame shows the tree's name and Woodworking
+  level ("Yew tree, Level 60").
+- **Felling:** clicking a selected tree again with an axe in hand (the
+  cursor is an axe) runs the player beside it and chops. When it falls, a
+  stump is left, and the fallen tree tips over, slowly then faster, landing
+  with a small bounce, away from the feller. Fallen trees are selectable
+  too.
+- **Logs and experience:** cutting up a fallen tree gives logs (2, 4 or 6,
+  by the tree's size) and Woodworking experience.
+- **Growing back:** after 3 minutes the fallen tree goes, and a minute later
+  the tree grows back.
+- **Gear:** new characters carry a stone axe. There are ten kinds of logs,
+  from hazel rods (level 1) to yew (level 60).
+- **Trying it without a keyboard:**
+  `VENTURE_CHOP=1 VENTURE_SAY="/setskill woodworking 99" ... --local --admin`
+  fells the nearest tree.
+- **Still to come:**
+  - chopping sounds;
+  - a woodsman who sells axes and buys logs;
+  - fallen trees and felled lists surviving a server restart;
+  - making things from wood.

@@ -27,7 +27,9 @@
 //! 8. [`parties`]: groups of players, and invitations to them (the only code
 //!    that changes who's in a party).
 //! 9. [`fishing`]: casting, bites, fights and catches (the only code that
-//!    changes a player's fishing).
+//!    changes a player's fishing), and [`woodcutting`]: felling trees and
+//!    cutting them up, and trees falling and growing back (the only code
+//!    that changes them).
 //!
 //! Inventories and quest logs are the exception that proves the rule: several
 //! modules may change them (shops, dialogue), but only through their own
@@ -72,6 +74,7 @@ pub mod requests;
 pub mod scripting;
 pub mod sessions;
 pub mod shops;
+pub mod woodcutting;
 pub mod world;
 
 use std::time::Duration;
@@ -101,6 +104,8 @@ pub struct GameServer {
     pub party: config::PartyConfig,
     /// Rules for fishing (from the config file).
     pub fishing: config::FishingConfig,
+    /// Rules for woodcutting (from the config file).
+    pub woodcutting: config::WoodcuttingConfig,
     /// The content pack.
     pub content: ContentSetup,
     /// Where new characters start, if not the world's spawn point (for development).
@@ -152,6 +157,8 @@ pub enum ServerSystems {
     Combat,
     /// Fishing: casts, bites, fights with fish and catches.
     Fishing,
+    /// Woodcutting: felling trees, cutting them up, trees falling and growing back.
+    Woodcutting,
     /// Conversations with NPCs.
     Dialogue,
     /// Shops.
@@ -176,6 +183,7 @@ impl GameServer {
             .insert_resource(consumables::ItemCooldown(self.item_cooldown))
             .insert_resource(parties::PartyRules(self.party))
             .insert_resource(fishing::FishingRules(self.fishing))
+            .insert_resource(woodcutting::WoodcuttingRules(self.woodcutting))
             .insert_resource(Admins { names: self.admins, everyone: self.everyone_is_admin })
             .insert_resource(sessions::SpawnPoint(self.spawn_override))
             .configure_sets(
@@ -189,6 +197,7 @@ impl GameServer {
                     ServerSystems::Abilities,
                     ServerSystems::Combat,
                     ServerSystems::Fishing,
+                    ServerSystems::Woodcutting,
                     ServerSystems::Dialogue,
                     ServerSystems::Shops,
                     ServerSystems::Updates,
@@ -209,7 +218,13 @@ impl GameServer {
                 equipment::EquipmentPlugin,
                 monsters::MonstersPlugin,
                 (abilities::AbilitiesPlugin, hotbar::HotbarPlugin, combat::CombatPlugin),
-                (consumables::ConsumablesPlugin, parties::PartiesPlugin, clock::ClockPlugin, fishing::FishingPlugin),
+                (
+                    consumables::ConsumablesPlugin,
+                    parties::PartiesPlugin,
+                    clock::ClockPlugin,
+                    fishing::FishingPlugin,
+                    woodcutting::WoodcuttingPlugin,
+                ),
                 content::ContentPlugin,
             ));
     }

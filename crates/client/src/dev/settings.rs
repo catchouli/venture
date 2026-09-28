@@ -38,6 +38,9 @@
 //!   in hand (if none is), and cast at `(x, y)`.
 //! - `VENTURE_FISH_AUTO=1`: and strike at the bite, and reel while the fish
 //!   rests (to see a fight).
+//! - `VENTURE_CHOP=1`: once loaded, take the first axe in the bag in hand,
+//!   select the nearest tree, and fell it (with `/setskill woodworking 99`
+//!   and `--admin` for any tree).
 //! - `VENTURE_TRAP=1`: once loaded, set the first fishing trap in the bag in
 //!   the nearest water.
 //!
@@ -89,6 +92,8 @@ pub struct DevSettings {
     pub fish_at: Option<Point>,
     /// Whether to play the fish once it bites.
     pub fish_auto: bool,
+    /// Whether to fell the nearest tree once loaded (see [`crate::woodcutting`]).
+    pub chop: bool,
     /// Whether to set a trap once loaded.
     pub trap: bool,
 }
@@ -127,6 +132,7 @@ impl DevSettings {
             choose: numbers("VENTURE_CHOOSE").unwrap_or_default().into_iter().map(|n| n as u32).collect(),
             fish_at: numbers("VENTURE_FISH").filter(|n| n.len() == 2).map(|n| (n[0], n[1])),
             fish_auto: std::env::var_os("VENTURE_FISH_AUTO").is_some(),
+            chop: std::env::var_os("VENTURE_CHOP").is_some(),
             trap: std::env::var_os("VENTURE_TRAP").is_some(),
         }
     }

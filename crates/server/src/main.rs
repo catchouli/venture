@@ -87,6 +87,7 @@ fn main() {
         item_cooldown: config.player.item_cooldown,
         party: config.party.clone(),
         fishing: config.fishing.clone(),
+        woodcutting: config.woodcutting.clone(),
         content,
         spawn_override: None,
         admins,

@@ -18,6 +18,10 @@ const BITE_AT_LEVEL: f32 = 0.3;
 /// How much each level above the tree's adds to the chance.
 const BITE_PER_LEVEL: f32 = 0.015;
 
+/// How long a fallen tree's trunk is, by size (young, mature, old), in
+/// metres: a player can cut it up anywhere along it.
+pub const FALLEN_LENGTHS: [f32; 3] = [7.0, 15.0, 20.0];
+
 /// How big a tree is (the tree generator's variants).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]

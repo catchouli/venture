@@ -58,6 +58,7 @@ fn load_character_models(mut commands: Commands, project: Res<crate::Project>) {
     }
     store.tree_species = trees.species;
     store.tree_drawing = trees.drawing;
+    store.tree_woodcutting = trees.woodcutting;
     store.tree_photos = trees
         .files
         .into_iter()

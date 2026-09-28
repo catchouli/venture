@@ -1,7 +1,8 @@
 //! The mouse cursor: an ornate gold pointer normally; with a trailing arrow
 //! when a click would follow the (selected) player under it; with a speech
-//! bubble when a click would talk to the (selected) NPC under it; and a sword
-//! when a click would attack (for when monsters exist).
+//! bubble when a click would talk to the (selected) NPC under it; a sword
+//! when a click would attack; and an axe when a click would chop the
+//! (selected) tree under it.
 //!
 //! Both are original placeholder art drawn in code. On the web they become
 //! CSS cursors, so they move as smoothly as the system cursor.
@@ -41,6 +42,8 @@ pub enum CursorStyle {
     Talk,
     /// A sword: clicking again will attack the selected target.
     Attack,
+    /// An axe: clicking again will chop the selected tree.
+    Chop,
 }
 
 #[derive(Resource)]
@@ -49,6 +52,7 @@ struct CursorImages {
     follow: Handle<Image>,
     talk: Handle<Image>,
     attack: Handle<Image>,
+    chop: Handle<Image>,
 }
 
 fn create_cursors(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
@@ -57,6 +61,7 @@ fn create_cursors(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         follow: images.add(draw(follow_pixel)),
         talk: images.add(draw(talk_pixel)),
         attack: images.add(draw(sword_pixel)),
+        chop: images.add(draw(axe_pixel)),
     });
 }
 
@@ -73,6 +78,7 @@ fn choose_cursor_style(
         Some(Targetable { kind: TargetKind::Player, .. }) => CursorStyle::Follow,
         Some(Targetable { kind: TargetKind::Npc, .. }) => CursorStyle::Talk,
         Some(Targetable { kind: TargetKind::Enemy, .. }) => CursorStyle::Attack,
+        Some(Targetable { kind: TargetKind::Tree | TargetKind::FallenTree, .. }) => CursorStyle::Chop,
         _ => CursorStyle::Pointer,
     };
     if *style != wanted {
@@ -96,6 +102,7 @@ fn apply_cursor_style(
         CursorStyle::Follow => images.follow.clone(),
         CursorStyle::Talk => images.talk.clone(),
         CursorStyle::Attack => images.attack.clone(),
+        CursorStyle::Chop => images.chop.clone(),
     };
     // Both cursors point from their top-left corner.
     let cursor = CustomCursorImage { handle, hotspot: (1, 1), ..default() };
@@ -221,4 +228,30 @@ fn sword_pixel(p: Vec2) -> [f32; 4] {
         }
     }
     if parts.iter().any(|(distance, half_width, _)| *distance < *half_width + 0.3) { OUTLINE } else { CLEAR }
+}
+
+/// The axe: a wooden haft from the bottom right up to a grey stone head at
+/// the top left, its cutting edge the point that clicks.
+fn axe_pixel(p: Vec2) -> [f32; 4] {
+    let (top, bottom) = (Vec2::new(9.0, 6.0), Vec2::new(28.0, 29.0));
+    let haft = distance_to_segment(p, top, bottom);
+    let head =
+        [Vec2::new(2.0, 3.0), Vec2::new(11.0, 1.5), Vec2::new(15.0, 9.5), Vec2::new(8.5, 14.0), Vec2::new(2.5, 11.0)];
+    let shade = (p.x + p.y) / 56.0;
+    if inside_polygon(p, &head) {
+        let edge = distance_to_polygon_edge(p, &head);
+        if edge < 1.2 {
+            return OUTLINE;
+        }
+        // A pale knapped edge on the blade's left.
+        return if p.x < 4.5 {
+            [0.86, 0.86, 0.88, 1.0]
+        } else {
+            [0.62 - 0.2 * shade, 0.62 - 0.2 * shade, 0.66 - 0.2 * shade, 1.0]
+        };
+    }
+    if haft < 1.4 {
+        return [0.55 - 0.2 * shade, 0.36 - 0.15 * shade, 0.2 - 0.1 * shade, 1.0];
+    }
+    if haft < 2.4 || distance_to_polygon_edge(p, &head) < 0.8 && !inside_polygon(p, &head) { OUTLINE } else { CLEAR }
 }

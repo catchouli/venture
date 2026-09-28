@@ -348,7 +348,11 @@ impl CharacterAssets {
         for look in looks {
             let shape = worn(materials, look);
             match (look.style, hand, forearm) {
-                (LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Rod, Some(hand), _) => {
+                (
+                    LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Rod | LookStyle::Axe,
+                    Some(hand),
+                    _,
+                ) => {
                     commands
                         .spawn((HAND_FRAME, Visibility::default(), ChildOf(hand)))
                         .with_children(|frame| spawn_weapon(frame, &self.meshes, &shape));
@@ -502,10 +506,9 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
     let robe = look.wearing(LookStyle::Robe);
     let plates = look.wearing(LookStyle::Plates);
     let leg_plates = look.wearing(LookStyle::LegPlates);
-    let weapon = look
-        .worn
-        .iter()
-        .find(|item| matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Rod));
+    let weapon = look.worn.iter().find(|item| {
+        matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Rod | LookStyle::Axe)
+    });
     let shield = look.wearing(LookStyle::Buckler);
     let joint = |kind| Joint { owner, kind };
 
@@ -688,8 +691,8 @@ pub struct RodTip;
 pub struct RodGrip;
 
 /// Puts a weapon in the hand at the end of a forearm (the elbow's space).
-/// Swords point forward, as if ready; staves stand upright; rods reach up
-/// and out, over the water.
+/// Swords, clubs and axes point forward, as if ready; staves stand upright;
+/// rods reach up and out, over the water.
 fn spawn_weapon(elbow: &mut ChildSpawnerCommands, m: &CharacterMeshes, weapon: &Worn) {
     let hand = Vec3::new(0.0, -0.29, 0.0);
     let part = |mesh: &Handle<Mesh>, material: &Handle<StandardMaterial>, position: Vec3, size: Vec3| {
@@ -740,6 +743,15 @@ fn spawn_weapon(elbow: &mut ChildSpawnerCommands, m: &CharacterMeshes, weapon: &
                 ));
                 // Where a fishing line leaves it.
                 rod.spawn((RodTip, Transform::from_xyz(0.0, 2.5, 0.0), Visibility::default()));
+            });
+        }
+        LookStyle::Axe => {
+            // A haft (the main colour) held out forward like the club, with a
+            // stone head (the trim) across its end, its edge forward.
+            let grip = Transform::from_translation(hand).with_rotation(Quat::from_rotation_x(1.35));
+            elbow.spawn((grip, Visibility::default())).with_children(|axe| {
+                axe.spawn(part(&m.unit_cylinder, &weapon.main, Vec3::new(0.0, 0.18, 0.0), Vec3::new(0.02, 0.5, 0.02)));
+                axe.spawn(part(&m.unit_cube, &weapon.trim, Vec3::new(0.0, 0.38, 0.05), Vec3::new(0.035, 0.1, 0.14)));
             });
         }
         LookStyle::Staff => {

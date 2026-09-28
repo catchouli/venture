@@ -606,6 +606,40 @@ the trap is an entity everyone is told about (`EntityKind::Trap { owner }`);
 `Fishing(CollectTrap)` empties it into the owner's bag (if it's caught
 anything), with the experience, and takes it back. See [plan-fishing.md](plan-fishing.md).
 
+## Woodcutting
+
+Felling trees and cutting them up for logs, part of the Woodworking skill
+(see [plan-trees.md](plan-trees.md)):
+- **Standing trees are the baked world's props,** so the server and every
+  client know them without being told. A tree's id (`TreeId`) is its chunk
+  and its place among the chunk's props.
+- **The server keeps only what changed:** which trees are felled.
+  - Joining players get the list (`TreesFelled`).
+  - Everyone is told as trees fall (`TreeFelled`) and grow back
+    (`TreeGrewBack`).
+  - Clients hide felled trees behind a stump.
+- **Chopping:**
+  - `Woodcutting(Fell { tree })` starts chopping a standing tree, and
+    `Woodcutting(Cut { fallen })` a fallen one (`Stop` stops). The gate
+    only checks the tree is in the world; `woodcutting.rs` checks an axe is
+    in hand (and the player has its level), the tree is within reach
+    (`server.ron`), and their woodworking level is the tree's.
+  - The player is told when they start and stop (`Chopping { at }`).
+  - Each swing, every `swing_seconds`, may bite (`venture_rpg::woodcutting`),
+    and everyone nearby sees it (`Chopped { id, bit }`).
+  - Moving, attacking or dying stops chopping.
+- **A felled tree's trunk is an entity** (`EntityKind::FallenTree { tree,
+  toward, level }`), lying the way it fell (away from the feller), so
+  selecting it and seeing it work as for any entity. Each bite into it
+  gives a log (through `Inventory::apply`) and its experience, until its
+  logs run out. It goes after `fallen_seconds`, and the tree grows back
+  `regrow_seconds` after that.
+- **Selecting:** clients make standing trees (not bushes) selectable, with
+  their name and level from the content (`trees/woodcutting.ron`). Since
+  they aren't the server's entities, their `Targetable` id is
+  `EntityId::NONE`. Clicking a selected tree with an axe in hand runs the
+  player beside it, then asks to chop.
+
 ## Connection problems
 
 The live game always needs the server. If the client can't connect, or loses

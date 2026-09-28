@@ -57,6 +57,8 @@ content/
                        generator (see plan-trees.md; try them with the `tree` tool)
   trees/drawing.ron    how trees are drawn: the fade near the camera, and where the
                        levels of detail change (sent to clients)
+  trees/woodcutting.ron  what felling each species is like: level, logs, experience,
+                       hardness (sent to clients)
   trees/bark/*.jpg,    photographed bark and leaf sets the species use (imported by
   trees/leaves/*.png   `import_tree_texture`; see plan-trees.md)
   sounds/*.wav         sounds (sent to clients)
@@ -444,6 +446,20 @@ own size. Fish have `rods: false` if only traps catch them, a `trap` weight
 `bycatch: true` for critters that fill a quarter of a trap's catches. The
 content check makes sure every fish rods catch has a bait or lure that draws
 and hooks it and a reel that can land it. Levels go to 99.
+
+Items can be **axes**, for felling trees and cutting them up (the
+Woodworking skill; see [plan-trees.md](plan-trees.md)). Like rods, axes are
+held in the `DominantHand` without weapon stats:
+
+```ron
+equip: Some((slots: [DominantHand], look: (style: Axe, main: (0.5, 0.36, 0.24), trim: (0.45, 0.45, 0.47)))),
+woodworking: Some(Axe(power: 1.0, level: 1))     // how well it bites (1 a stone axe); the level to use it
+```
+
+Which tree gives what is `trees/woodcutting.ron`: each species' woodworking
+level, its logs (an item), the experience a log gives, and its hardness (how
+many bites fell a mature one). The content check makes sure every species and
+log exists.
 
 Money is **Miasma**, kept on the character rather than in the inventory. Icons are small PNGs
 (32 × 32 works well, at most 64 KB). The current ones are placeholders drawn

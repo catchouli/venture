@@ -14,11 +14,11 @@ mod messages;
 mod rules;
 
 pub use messages::{
-    AbilityOffer, AdminCommand, AttackResult, BodyType, CharacterSheet, ClassChoice, ClientMessage, DialogueLine,
-    Emote, EntityId, EntityKind, EntityState, EquipSlot, FEATURE_RANGE, Features, FishingCommand, FishingState,
-    HOTBAR_SLOTS, HotbarAction, HotbarEntry, ItemLook, ItemStack, LookStyle, MonsterLook, MonsterShape, PartyCommand,
-    PartyInfo, PartyInvite, PartyMember, PlayerLook, QuestEntry, Refers, ServerMessage, ShopStock, SkillProgress,
-    TeleportTo,
+    AbilityOffer, AdminCommand, AttackResult, BodyType, CharacterSheet, ChopTarget, ClassChoice, ClientMessage,
+    DialogueLine, Emote, EntityId, EntityKind, EntityState, EquipSlot, FEATURE_RANGE, Features, FishingCommand,
+    FishingState, HOTBAR_SLOTS, HotbarAction, HotbarEntry, ItemLook, ItemStack, LookStyle, MonsterLook, MonsterShape,
+    PartyCommand, PartyInfo, PartyInvite, PartyMember, PlayerLook, QuestEntry, Refers, ServerMessage, ShopStock,
+    SkillProgress, TeleportTo, TreeId, WoodcuttingCommand,
 };
 pub use rules::{
     MAX_CHAT_CHARS, MAX_NAME_CHARS, MAX_PARTY_NAME_CHARS, MIN_NAME_CHARS, clean_chat_text, clean_name,
@@ -27,7 +27,7 @@ pub use rules::{
 
 /// The protocol version. Increase it whenever messages change; the server
 /// turns away clients speaking a different version.
-pub const PROTOCOL_VERSION: u32 = 28;
+pub const PROTOCOL_VERSION: u32 = 29;
 
 /// A short fingerprint of a file's bytes (64-bit FNV-1a, in hex), for
 /// telling versions of it apart in web addresses (so browsers can keep a

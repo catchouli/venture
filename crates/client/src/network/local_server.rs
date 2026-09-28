@@ -99,6 +99,7 @@ impl Plugin for LocalServerPlugin {
             item_cooldown,
             party,
             fishing: config.fishing.clone(),
+            woodcutting: config.woodcutting.clone(),
             content,
             spawn_override,
             admins,

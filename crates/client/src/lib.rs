@@ -22,6 +22,7 @@ pub mod map;
 pub mod network;
 pub mod sound;
 pub mod ui;
+pub mod woodcutting;
 pub mod world;
 
 use bevy::prelude::*;
@@ -50,6 +51,7 @@ pub fn run() {
         camera::CameraPlugin,
         interaction::InteractionPlugin,
         fishing::FishingPlugin,
+        woodcutting::WoodcuttingPlugin,
         ui::UiPlugin,
         map::MapPlugin,
         sound::SoundPlugin,

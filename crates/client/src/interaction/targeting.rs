@@ -1,6 +1,9 @@
-//! Selecting a target: a player, an NPC or a monster. Anything that can be
-//! selected has a [`Targetable`] (with its kind); new kinds of things to
-//! select (chests, say) get one too.
+//! Selecting a target: a player, an NPC, a monster, a trap, or a tree
+//! (standing or fallen). Anything that can be selected has a [`Targetable`]
+//! (with its kind); new kinds of things to select (chests, say) get one too.
+//! Things that aren't characters say how they're picked with a
+//! [`PickShape`], and their name with a [`TargetLabel`] (they have no
+//! floating name).
 //!
 //! - Clicking a character selects it (see [`crate::interaction::clicks`]).
 //! - `/target NAME` selects the nearest NPC or monster with that name, and
@@ -64,7 +67,31 @@ pub enum TargetKind {
     Enemy,
     /// A fishing trap: clicking your own again collects it.
     Trap,
+    /// A standing tree: clicking it again fells it (with an axe in hand).
+    /// Trees aren't the server's entities, so their [`Targetable::id`] is
+    /// [`EntityId::NONE`] (see [`crate::world::trees::StandingTree`]).
+    Tree,
+    /// A fallen tree: clicking it again cuts it up for logs.
+    FallenTree,
 }
+
+/// How something is picked by the mouse, if not as a character (an
+/// upright cylinder [`PICK_HEIGHT`] tall and [`PICK_RADIUS`] wide).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PickShape {
+    /// Where its axis starts and ends, from where it stands (its transform), in metres.
+    pub from: Vec3,
+    /// (See [`PickShape::from`].)
+    pub to: Vec3,
+    /// How far round its axis it can be picked, in metres.
+    pub radius: f32,
+    /// It can't be picked from further than this from the player, in metres.
+    pub within: f32,
+}
+
+/// The name shown for a target that has no floating name (a tree).
+#[derive(Component, Clone, Debug)]
+pub struct TargetLabel(pub String);
 
 /// How healthy a monster is, shown in the target frame.
 #[derive(Component, Clone, Copy, Debug)]
@@ -94,56 +121,71 @@ fn update_hovered(
     camera: Single<(&Camera, &GlobalTransform)>,
     store: Res<ChunkStore>,
     ui: Query<&Interaction>,
-    targetables: Query<(Entity, &GlobalTransform), With<Targetable>>,
+    targetables: Query<(Entity, &GlobalTransform, Option<&PickShape>), With<Targetable>>,
+    player: Option<Single<&GlobalTransform, With<LocalPlayer>>>,
     mut hovered: ResMut<Hovered>,
 ) {
     let over_interface = ui.iter().any(|interaction| *interaction != Interaction::None);
     let (camera, camera_transform) = *camera;
     let ray = window.cursor_position().and_then(|cursor| camera.viewport_to_world(camera_transform, cursor).ok());
     hovered.0 = match ray {
-        Some(ray) if !over_interface => pick(ray, &store, &targetables),
+        Some(ray) if !over_interface => pick(ray, &store, &targetables, player.map(|player| player.translation())),
         _ => None,
     };
 }
 
-/// The nearest targetable character the ray passes through, unless the
-/// ground is in the way.
+/// The nearest targetable thing the ray passes through, unless the ground
+/// is in the way.
 fn pick(
     ray: Ray3d,
     store: &ChunkStore,
-    targetables: &Query<(Entity, &GlobalTransform), With<Targetable>>,
+    targetables: &Query<(Entity, &GlobalTransform, Option<&PickShape>), With<Targetable>>,
+    player: Option<Vec3>,
 ) -> Option<Entity> {
     let ground = raycast_ground(store, ray).map(|point| point.distance(ray.origin));
     targetables
         .iter()
-        .filter_map(|(entity, transform)| {
-            let feet = transform.translation();
-            let distance = ray_hits_upright_cylinder(ray, feet, PICK_HEIGHT, PICK_RADIUS)?;
-            ground.is_none_or(|ground| distance <= ground + PICK_RADIUS).then_some((entity, distance))
+        .filter_map(|(entity, transform, shape)| {
+            let place = transform.translation();
+            let (distance, radius) = match shape {
+                Some(shape) => {
+                    if player.is_some_and(|player| player.distance(place) > shape.within) {
+                        return None;
+                    }
+                    let (from, to) = (transform.transform_point(shape.from), transform.transform_point(shape.to));
+                    (ray_hits_capsule(ray, from, to, shape.radius)?, shape.radius)
+                }
+                None => (ray_hits_capsule(ray, place, place + Vec3::Y * PICK_HEIGHT, PICK_RADIUS)?, PICK_RADIUS),
+            };
+            ground.is_none_or(|ground| distance <= ground + radius).then_some((entity, distance))
         })
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(entity, _)| entity)
 }
 
-/// If the ray passes within `radius` of the vertical line from `base` up
-/// `height` metres, how far along the ray that happens.
-fn ray_hits_upright_cylinder(ray: Ray3d, base: Vec3, height: f32, radius: f32) -> Option<f32> {
-    // Closest points between the ray and the (infinite) vertical axis, then clamp to the segment.
+/// If the ray passes within `radius` of the segment from `a` to `b`, how
+/// far along the ray that happens (the closest points between the ray's
+/// line and the segment's).
+fn ray_hits_capsule(ray: Ray3d, a: Vec3, b: Vec3, radius: f32) -> Option<f32> {
     let direction = *ray.direction;
-    let to_base = ray.origin - base;
-    let a = direction.dot(direction);
-    let b = direction.y;
-    let d = direction.dot(to_base);
-    let e = to_base.y;
-    let denominator = a - b * b;
-    let along_ray = if denominator.abs() < 1e-6 { 0.0 } else { (b * e - d) / denominator };
+    let axis = b - a;
+    let to_a = ray.origin - a;
+    let (dd, da, aa) = (direction.dot(direction), direction.dot(axis), axis.dot(axis));
+    let (d_to, a_to) = (direction.dot(to_a), axis.dot(to_a));
+    let denominator = dd * aa - da * da;
+    // Along the segment (0 to 1) nearest the ray's line, then along the ray nearest that point.
+    let along_axis = if denominator.abs() < 1e-6 || aa < 1e-9 {
+        0.0
+    } else {
+        ((dd * a_to - da * d_to) / denominator).clamp(0.0, 1.0)
+    };
+    let on_axis = a + axis * along_axis;
+    let along_ray = (on_axis - ray.origin).dot(direction) / dd;
     if along_ray < 0.0 {
         return None;
     }
-    let up = (e + b * along_ray).clamp(0.0, height);
-    let closest_on_axis = base + Vec3::Y * up;
-    let closest_on_ray = ray.origin + direction * along_ray;
-    (closest_on_ray.distance(closest_on_axis) <= radius).then_some(along_ray)
+    let on_ray = ray.origin + direction * along_ray;
+    (on_ray.distance(on_axis) <= radius).then_some(along_ray)
 }
 
 /// Escape deselects (unless it's being used to stop typing).
@@ -203,14 +245,23 @@ mod tests {
     }
 
     #[test]
-    fn rays_pick_upright_cylinders() {
+    fn rays_pick_upright_and_lying_capsules() {
+        let upright = |base: Vec3| (base, base + Vec3::Y * 1.9);
         let ray = Ray3d::new(Vec3::new(0.0, 1.0, -10.0), Dir3::Z);
-        assert_eq!(ray_hits_upright_cylinder(ray, Vec3::ZERO, 1.9, 0.45), Some(10.0));
-        assert_eq!(ray_hits_upright_cylinder(ray, Vec3::new(1.0, 0.0, 0.0), 1.9, 0.45), None);
+        let (a, b) = upright(Vec3::ZERO);
+        assert!((ray_hits_capsule(ray, a, b, 0.45).unwrap() - 10.0).abs() < 1e-4);
+        let (a, b) = upright(Vec3::new(1.0, 0.0, 0.0));
+        assert_eq!(ray_hits_capsule(ray, a, b, 0.45), None);
         // Passing over the top misses.
         let high = Ray3d::new(Vec3::new(0.0, 3.0, -10.0), Dir3::Z);
-        assert_eq!(ray_hits_upright_cylinder(high, Vec3::ZERO, 1.9, 0.45), None);
+        let (a, b) = upright(Vec3::ZERO);
+        assert_eq!(ray_hits_capsule(high, a, b, 0.45), None);
         // Behind the ray's start misses.
-        assert_eq!(ray_hits_upright_cylinder(ray, Vec3::new(0.0, 0.0, -20.0), 1.9, 0.45), None);
+        let (a, b) = upright(Vec3::new(0.0, 0.0, -20.0));
+        assert_eq!(ray_hits_capsule(ray, a, b, 0.45), None);
+        // A log lying across the ray's path, and one lying along it, off to the side.
+        let down = Ray3d::new(Vec3::new(2.0, 10.0, 0.0), Dir3::NEG_Y);
+        assert!(ray_hits_capsule(down, Vec3::new(0.0, 0.3, 0.0), Vec3::new(5.0, 0.3, 0.0), 0.4).is_some());
+        assert_eq!(ray_hits_capsule(down, Vec3::new(0.0, 0.3, 3.0), Vec3::new(5.0, 0.3, 3.0), 0.4), None);
     }
 }

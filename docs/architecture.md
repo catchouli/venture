@@ -119,6 +119,9 @@ src/
                      (setting a trap from the bag, drawing traps, collecting your own), ripples.rs
                      (rings on the water where a line lands, at nibbles and bites), others.rs
                      (other players' lines and floats)
+  woodcutting/       felling trees and cutting them up: clicking a selected tree with an axe in
+                     hand runs there and asks to chop; everyone's swings (trees themselves,
+                     standing, felled, fallen and tipping over, are drawn by world/trees.rs)
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
     admin_commands.rs  /setlevel, /reset, /setclass, /setgender, /time, /timescale, /give, /setskill, /tp and /setspeed, for admins

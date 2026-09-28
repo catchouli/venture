@@ -25,10 +25,11 @@ use crate::characters::player::LocalPlayer;
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::content::ContentStore;
 use crate::fishing::traps::{TrapAssets, TrapOwner, spawn_trap};
-use crate::interaction::targeting::{Health, Level, TargetKind, Targetable};
+use crate::interaction::targeting::{Health, Level, TargetKind, TargetLabel, Targetable};
 use crate::network::{ClientState, FromServer};
 use crate::world::query::ground_height;
 use crate::world::streaming::ChunkStore;
+use crate::world::trees::Fallen;
 
 /// How far in the past others are shown, in seconds (two server ticks).
 const INTERPOLATION_DELAY: f32 = 0.1;
@@ -120,6 +121,14 @@ fn follow_server_events(
                         commands.entity(entity).insert((TrapOwner(*owner), NameplateHeight(0.6)));
                         (entity, TargetKind::Trap, None)
                     }
+                    EntityKind::FallenTree { tree, toward, level } => {
+                        // (Drawn by `world::trees`, once it knows the tree's species.)
+                        let entity = commands
+                            .spawn((transform, Visibility::default(), Fallen { tree: *tree, toward: *toward }))
+                            .insert(Level(*level))
+                            .id();
+                        (entity, TargetKind::FallenTree, None)
+                    }
                     EntityKind::Monster { look, level } => {
                         let entity = spawn_monster(&mut commands, &assets, &mut materials, transform, look);
                         commands.entity(entity).insert((
@@ -133,9 +142,14 @@ fn follow_server_events(
                 commands.entity(entity).insert((
                     Name::new(name.clone()),
                     RemoteEntity { samples: VecDeque::from([(now, (*x, *y))]), appearance },
-                    Nameplate(name.clone()),
                     Targetable { id: *id, kind: target_kind },
                 ));
+                // Characters' names float over them; a fallen tree's only shows in the target frame.
+                if target_kind == TargetKind::FallenTree {
+                    commands.entity(entity).insert(TargetLabel(name.clone()));
+                } else {
+                    commands.entity(entity).insert(Nameplate(name.clone()));
+                }
                 if let EntityKind::Player { level, look } = kind {
                     commands.entity(entity).insert((Level(*level), PlayerAppearance(look.clone())));
                 }

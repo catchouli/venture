@@ -8,14 +8,17 @@ use bevy::time::TimeUpdateStrategy;
 use venture_content::ContentPack;
 use venture_protocol::{
     AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, Features, FishingCommand, FishingState,
-    HotbarAction, HotbarEntry, PROTOCOL_VERSION, ServerMessage, TeleportTo,
+    HotbarAction, HotbarEntry, PROTOCOL_VERSION, ServerMessage, TeleportTo, TreeId, WoodcuttingCommand,
 };
 use venture_server::content::LoadedContent;
 use venture_server::entities::NetworkId;
 use venture_server::npcs::Npc;
+use venture_server::woodcutting::WoodcuttingRules;
 use venture_server::{ConnectionId, ContentSetup, GameServer, Link, LinkEvent, LinkSender, ProfileStore, ServerWorld};
 use venture_simulation::{FOLLOW_DISTANCE, RUN_SPEED, Rules, TICK_RATE};
-use venture_world::{CHUNK_FORMAT_VERSION, CHUNK_SIZE, Chunk, ChunkPos, Fluid, FluidBody, FluidKind, WorldManifest};
+use venture_world::{
+    CHUNK_FORMAT_VERSION, CHUNK_SIZE, Chunk, ChunkPos, Fluid, FluidBody, FluidKind, Prop, PropKind, WorldManifest,
+};
 
 /// A small flat world, 4 × 4 chunks.
 fn flat_world() -> ServerWorld {
@@ -31,6 +34,29 @@ fn flat_world() -> ServerWorld {
         tree_species: Vec::new(),
     };
     let chunks: Vec<Chunk> = (0..16).map(|i| Chunk::new(ChunkPos::new(i % 4, i / 4))).collect();
+    ServerWorld::from_chunks(manifest, &chunks)
+}
+
+/// The tree in [`wood_world`]: the first prop of chunk (1, 1).
+const BIRCH: TreeId = TreeId { chunk_x: 1, chunk_y: 1, index: 0 };
+
+/// The flat world with a mature birch at (106, 100.5), six metres east of
+/// the spawn point.
+fn wood_world() -> ServerWorld {
+    let manifest = WorldManifest {
+        world_size: 4 * CHUNK_SIZE,
+        chunk_size: CHUNK_SIZE,
+        chunk_format: CHUNK_FORMAT_VERSION,
+        generator_version: 0,
+        seed: 0,
+        spawn_point: (100.0, 100.0),
+        settlements: Vec::new(),
+        map: None,
+        tree_species: vec!["birch".to_string()],
+    };
+    let mut chunks: Vec<Chunk> = (0..16).map(|i| Chunk::new(ChunkPos::new(i % 4, i / 4))).collect();
+    let kind = PropKind::Tree { species: 0, variant: 1 };
+    chunks[5].props.push(Prop { kind, x: 106.0, y: 100.5, ground_height: 0.0, scale: 1.0, rotation: 0.0 });
     ServerWorld::from_chunks(manifest, &chunks)
 }
 
@@ -97,6 +123,17 @@ impl TestServer {
         Self::fishing_with_profiles(profile_folder)
     }
 
+    /// A server with the game's own content, in a flat world with a birch
+    /// tree (see [`wood_world`]).
+    fn woods(name: &str) -> Self {
+        let profile_folder = std::env::temp_dir().join(format!("venture-test-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&profile_folder);
+        let pack = ContentPack::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content")).unwrap();
+        let mut server = Self::start(profile_folder, pack);
+        server.app.insert_resource(wood_world());
+        server
+    }
+
     /// The same, with profiles saved before.
     fn fishing_with_profiles(profile_folder: std::path::PathBuf) -> Self {
         let pack = ContentPack::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content")).unwrap();
@@ -122,6 +159,7 @@ impl TestServer {
             item_cooldown: 1.0,
             party: Default::default(),
             fishing: Default::default(),
+            woodcutting: Default::default(),
             content,
             spawn_override: None,
             admins,
@@ -1757,4 +1795,151 @@ fn others_see_a_line_cast_and_reeled_in() {
     angler.send(&ClientMessage::Fishing(FishingCommand::Stop));
     server.run(2);
     assert_eq!(told(watcher.receive()), Some(None));
+}
+
+/// Everything a client has been sent while the server runs `ticks` ticks.
+fn gather(server: &mut TestServer, client: &TestClient, ticks: u32) -> Vec<ServerMessage> {
+    let mut messages = Vec::new();
+    for _ in 0..ticks {
+        server.run(1);
+        messages.extend(client.receive());
+    }
+    messages
+}
+
+/// Everything a client has been sent until one message matches `wanted`
+/// (or `most_ticks` pass).
+fn gather_until(
+    server: &mut TestServer,
+    client: &TestClient,
+    most_ticks: u32,
+    wanted: impl Fn(&ServerMessage) -> bool,
+) -> Vec<ServerMessage> {
+    let mut messages = Vec::new();
+    for _ in 0..most_ticks {
+        server.run(1);
+        messages.extend(client.receive());
+        if messages.iter().any(&wanted) {
+            break;
+        }
+    }
+    messages
+}
+
+#[test]
+fn trees_are_felled_cut_up_and_grow_back() {
+    let mut server = TestServer::woods("woodcutting");
+    let rules = venture_server::config::WoodcuttingConfig {
+        swing_seconds: 0.25,
+        fallen_seconds: 15.0,
+        regrow_seconds: 1.0,
+        ..Default::default()
+    };
+    server.app.insert_resource(WoodcuttingRules(rules));
+    let (boss, _) = server.join(TOKEN_A, "Boss");
+    let (watcher, _) = server.join(TOKEN_B, "Watcher");
+    let fell = ClientMessage::Woodcutting(WoodcuttingCommand::Fell { tree: BIRCH });
+
+    // New characters carry a stone axe, but it must be in hand.
+    boss.send(&fell);
+    boss.send(&ClientMessage::Admin(AdminCommand::Give { item: "bread".to_string(), count: 1 }));
+    let messages = gather(&mut server, &boss, 2);
+    assert!(notices(&messages).iter().any(|text| text.contains("axe in your hand")), "{:?}", notices(&messages));
+    let axe = slot_of(&messages, "stone_axe").expect("new characters carry a stone axe");
+    boss.send(&ClientMessage::Equip { slot: axe });
+    // Too far away, then too low a level (birch needs 5).
+    boss.send(&fell);
+    let messages = gather(&mut server, &boss, 2);
+    assert!(
+        notices(&messages).iter().any(|text| text.contains("too far from the silver birch")),
+        "{:?}",
+        notices(&messages)
+    );
+    boss.send(&ClientMessage::MoveTo { x: 104.0, y: 100.5 });
+    gather(&mut server, &boss, 40);
+    boss.send(&fell);
+    let messages = gather(&mut server, &boss, 2);
+    assert!(notices(&messages).iter().any(|text| text.contains("woodworking level 5")), "{:?}", notices(&messages));
+
+    // Felling: swings everyone near sees, then it falls, away from the feller (east).
+    boss.send(&ClientMessage::Admin(AdminCommand::SetSkill { skill: "woodworking".to_string(), level: 20 }));
+    boss.send(&fell);
+    let messages = gather_until(
+        &mut server,
+        &boss,
+        20 * 30,
+        |m| matches!(m, ServerMessage::Notice { text } if text.ends_with("falls!")),
+    );
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::Chopping { at: Some(_) })));
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::TreeFelled { tree } if *tree == BIRCH)));
+    assert!(notices(&messages).iter().any(|text| text == "The silver birch falls!"), "{:?}", notices(&messages));
+    let seen = watcher.receive();
+    assert!(seen.iter().any(|m| matches!(m, ServerMessage::Chopped { .. })), "the watcher saw the swings");
+    let fallen = seen
+        .iter()
+        .find_map(|m| match m {
+            ServerMessage::EntityAppeared { id, name, kind: EntityKind::FallenTree { toward, level, .. }, .. } => {
+                assert_eq!((name.as_str(), *level), ("Fallen silver birch", 5));
+                assert!((toward - std::f32::consts::FRAC_PI_2).abs() < 0.1, "it fell east: {toward}");
+                Some(*id)
+            }
+            _ => None,
+        })
+        .expect("everyone sees the fallen tree");
+    // Felled trees can't be felled again.
+    boss.send(&fell);
+    let messages = gather(&mut server, &boss, 2);
+    assert!(!messages.iter().any(|m| matches!(m, ServerMessage::Chopping { at: Some(_) })));
+
+    // Cutting it up: logs and experience, until they run out (a mature tree has four).
+    boss.send(&ClientMessage::Woodcutting(WoodcuttingCommand::Cut { fallen }));
+    let has_logs = |m: &ServerMessage| match m {
+        ServerMessage::Inventory { slots, .. } => slots.iter().flatten().any(|stack| stack.item == "birch_logs"),
+        _ => false,
+    };
+    let messages = gather_until(&mut server, &boss, 20 * 10, has_logs);
+    let logs = messages.iter().rev().find_map(|m| match m {
+        ServerMessage::Inventory { slots, .. } => {
+            slots.iter().flatten().find(|stack| stack.item == "birch_logs").map(|stack| stack.count)
+        }
+        _ => None,
+    });
+    assert!(logs.is_some_and(|count| count >= 1), "some logs: {logs:?} {:?}", notices(&messages));
+    assert!(notices(&messages).iter().any(|text| text.contains("woodworking experience")));
+
+    // It goes, and the birch grows back.
+    let messages = gather_until(&mut server, &watcher, 20 * 20, |m| matches!(m, ServerMessage::TreeGrewBack { .. }));
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::EntityLeft { id } if *id == fallen)));
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::TreeGrewBack { tree } if *tree == BIRCH)));
+}
+
+#[test]
+fn newcomers_are_told_which_trees_are_down() {
+    let mut server = TestServer::woods("felled-list");
+    let (boss, _) = server.join(TOKEN_A, "Boss");
+    boss.send(&ClientMessage::Admin(AdminCommand::SetSkill { skill: "woodworking".to_string(), level: 99 }));
+    boss.send(&ClientMessage::Admin(AdminCommand::Give { item: "bread".to_string(), count: 1 }));
+    let messages = gather(&mut server, &boss, 2);
+    let axe = slot_of(&messages, "stone_axe").expect("a stone axe");
+    boss.send(&ClientMessage::Equip { slot: axe });
+    boss.send(&ClientMessage::MoveTo { x: 104.0, y: 100.5 });
+    gather(&mut server, &boss, 40);
+    boss.send(&ClientMessage::Woodcutting(WoodcuttingCommand::Fell { tree: BIRCH }));
+    let messages = gather_until(&mut server, &boss, 20 * 40, |m| matches!(m, ServerMessage::TreeFelled { .. }));
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::TreeFelled { .. })));
+    // (Joining by hand, to keep every message the newcomer gets.)
+    let newcomer = server.connect();
+    newcomer.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_B.to_string() });
+    server.run(2);
+    newcomer.send(&ClientMessage::CreateCharacter {
+        name: "Late".to_string(),
+        class: "fighter".to_string(),
+        body: BodyType::Androgynous,
+        features: Features::default(),
+    });
+    let messages = gather(&mut server, &newcomer, 4);
+    assert!(messages.iter().any(|m| matches!(m, ServerMessage::TreesFelled { trees } if trees == &vec![BIRCH])));
+    assert!(
+        messages.iter().any(|m| matches!(m, ServerMessage::EntityAppeared { kind: EntityKind::FallenTree { .. }, .. }))
+    );
 }

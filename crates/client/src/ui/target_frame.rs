@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 
 use crate::characters::nameplates::Nameplate;
-use crate::interaction::targeting::{Health, Level, Target, TargetKind, Targetable};
+use crate::interaction::targeting::{Health, Level, Target, TargetKind, TargetLabel, Targetable};
 use crate::ui::theme::{Piece, Themed};
 use crate::ui::widgets::{BORDER_COLOUR, HEALTH_BAR, WINDOW_BACKGROUND, bar, spawn_close_button};
 
@@ -98,7 +98,7 @@ fn spawn_frame(mut commands: Commands) {
 /// Shows or hides the frame, and fills it in for the current target.
 fn update_frame(
     target: Res<Target>,
-    targets: Query<(&Targetable, &Nameplate, Option<&Health>, Option<&Level>)>,
+    targets: Query<(&Targetable, Option<&Nameplate>, Option<&TargetLabel>, Option<&Health>, Option<&Level>)>,
     mut frame: Single<&mut Visibility, (With<TargetFrame>, Without<HealthBar>)>,
     mut name: Single<&mut Text, (With<TargetName>, Without<TargetLevel>)>,
     level_text: Single<
@@ -108,15 +108,18 @@ fn update_frame(
     bar: Single<(&mut Node, &mut Visibility), (With<HealthBar>, Without<HealthFill>, Without<TargetFrame>)>,
     mut fill: Single<&mut Node, (With<HealthFill>, Without<HealthBar>)>,
 ) {
-    let Some((&Targetable { kind, .. }, nameplate, health, level)) =
+    let Some((&Targetable { kind, .. }, nameplate, label, health, level)) =
         target.0.and_then(|entity| targets.get(entity).ok())
     else {
         **frame = Visibility::Hidden;
         return;
     };
     **frame = Visibility::Inherited;
-    if name.0 != nameplate.0 {
-        name.0.clone_from(&nameplate.0);
+    let shown = nameplate.map(|nameplate| &nameplate.0).or(label.map(|label| &label.0));
+    if let Some(shown) = shown
+        && name.0 != *shown
+    {
+        name.0.clone_from(shown);
     }
     let (mut level_text, mut level_node) = level_text.into_inner();
     match level {
