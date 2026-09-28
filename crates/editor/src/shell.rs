@@ -14,6 +14,7 @@ use venture_content::ContentError;
 use crate::Project;
 use venture_client::common::coords::{from_bevy, to_bevy};
 
+use crate::buildings::{BuildingTool, building_buttons, buildings_list};
 use crate::camera::EditorCamera;
 use crate::document::Document;
 use crate::fields::{Choices, Fields, referred_as, rename_everywhere, users};
@@ -220,35 +221,35 @@ fn save_all(shell: &mut Shell, document: &mut Document) {
 
 fn top_bar(root: &mut egui::Ui, shell: &mut Shell, document: &mut Document, now: f64) {
     egui::Panel::top("tabs").show_inside(root, |ui| {
+        // Saving and undoing first, then the tabs (which wrap onto more rows when there are many).
         ui.horizontal_wrapped(|ui| {
+            let unsaved = document.unsaved();
+            let label = if unsaved.is_empty() { "Save".to_string() } else { format!("Save ({})", unsaved.len()) };
+            let save = ui.add_enabled(!unsaved.is_empty(), egui::Button::new(label));
+            let save = save.on_hover_text(if unsaved.is_empty() {
+                "Everything is saved.".to_string()
+            } else {
+                unsaved.iter().map(|path| path.display().to_string()).collect::<Vec<_>>().join("\n")
+            });
+            if save.clicked() {
+                save_all(shell, document);
+            }
+            if ui.add_enabled(document.can_undo(), egui::Button::new("Undo")).clicked()
+                && let Some(place) = document.undo()
+            {
+                after_undo(shell, document, place, "Undone.", now);
+            }
+            if ui.add_enabled(document.can_redo(), egui::Button::new("Redo")).clicked()
+                && let Some(place) = document.redo()
+            {
+                after_undo(shell, document, place, "Redone.", now);
+            }
+            ui.separator();
             ui.selectable_value(&mut shell.tab, Tab::World, "World");
             ui.separator();
             for (index, collection) in document.collections.iter().enumerate() {
                 ui.selectable_value(&mut shell.tab, Tab::Content(index), collection.title());
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let unsaved = document.unsaved();
-                let label = if unsaved.is_empty() { "Save".to_string() } else { format!("Save ({})", unsaved.len()) };
-                let save = ui.add_enabled(!unsaved.is_empty(), egui::Button::new(label));
-                let save = save.on_hover_text(if unsaved.is_empty() {
-                    "Everything is saved.".to_string()
-                } else {
-                    unsaved.iter().map(|path| path.display().to_string()).collect::<Vec<_>>().join("\n")
-                });
-                if save.clicked() {
-                    save_all(shell, document);
-                }
-                if ui.add_enabled(document.can_redo(), egui::Button::new("Redo")).clicked()
-                    && let Some(place) = document.redo()
-                {
-                    after_undo(shell, document, place, "Redone.", now);
-                }
-                if ui.add_enabled(document.can_undo(), egui::Button::new("Undo")).clicked()
-                    && let Some(place) = document.undo()
-                {
-                    after_undo(shell, document, place, "Undone.", now);
-                }
-            });
         });
     });
 }
@@ -572,6 +573,7 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
     let mut cameras = world.query::<&EditorCamera>();
     let focus = cameras.single(world).map(|camera| from_bevy(camera.focus)).unwrap_or_default();
     let mut wall_go_to = None;
+    world.resource_scope(|world, mut buildings: Mut<BuildingTool>| {
     world.resource_scope(|world, mut tool: Mut<WallTool>| {
         world.resource_scope(|world, mut selection: Mut<Selection>| {
             let places = world.resource::<Places>();
@@ -633,6 +635,7 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                                     if ui.selectable_label(selection.is(place), &place.label).clicked() {
                                         selection.0 = Some((place.kind, place.key.clone()));
                                         tool.choose(None);
+                                        buildings.choose(None);
                                         go_to = Some(place.position);
                                     }
                                 }
@@ -640,9 +643,19 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                     }
                     if let Some(at) = walls_list(ui, &mut tool, document, nearby, focus, now) {
                         selection.0 = None;
+                        buildings.choose(None);
+                        buildings.drawing = None;
                         wall_go_to = Some(at);
                     }
-                    if tool.drawing || tool.chosen.is_some() {
+                    if let Some(at) = buildings_list(ui, &mut buildings, document, nearby, focus, now) {
+                        selection.0 = None;
+                        tool.choose(None);
+                        wall_go_to = Some(at);
+                    }
+                    if buildings.drawing.is_some() {
+                        tool.choose(None);
+                    }
+                    if tool.drawing || tool.chosen.is_some() || buildings.drawing.is_some() || buildings.chosen.is_some() {
                         selection.0 = None;
                     }
                     ui.separator();
@@ -663,25 +676,38 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
             // change size as things are chosen; what's in it scrolls sideways rather than widening it.
             let chosen = places.list.iter().find(|place| selection.is(place)).map(|place| place.entry);
             let wall = if chosen.is_none() { chosen_wall(document, &tool) } else { None };
+            let building = if chosen.is_none() && wall.is_none() { chosen_building(document, &buildings) } else { None };
             let before = wall
                 .and_then(|_| tool.chosen.clone())
                 .and_then(|id| wall_defs(document).into_iter().find(|def| def.id == id));
             let mut changed = None;
             egui::Panel::right("properties").resizable(true).default_size(380.0).show_inside(root, |ui| {
-                egui::ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| match (chosen, wall) {
-                    (Some(entry), _) => {
+                egui::ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| match (chosen, wall, building) {
+                    (Some(entry), _, _) => {
                         if edit_entry(ui, world, document, entry) {
                             changed = Some(entry);
                         }
                     }
-                    (None, Some(entry)) => {
+                    (None, Some(entry), _) => {
                         wall_buttons(ui, &mut tool, document, now);
                         ui.separator();
                         if edit_entry(ui, world, document, entry) {
                             changed = Some(entry);
                         }
                     }
-                    (None, None) => {
+                    (None, None, Some(entry)) => {
+                        {
+                            let mut cameras = world.query::<&mut EditorCamera>();
+                            if let Ok(mut camera) = cameras.single_mut(world) {
+                                building_buttons(ui, &mut buildings, document, &mut camera, now);
+                            }
+                        }
+                        ui.separator();
+                        if edit_entry(ui, world, document, entry) {
+                            changed = Some(entry);
+                        }
+                    }
+                    (None, None, None) => {
                         ui.heading("Nothing chosen");
                         ui.weak("Click something in the view, or in the list on the left, to see and change it here.");
                     }
@@ -695,11 +721,15 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                 document.changed(entry.0, entry.1, now);
                 shell.check_due = Some(now + CHECK_DELAY);
             }
-            // (Renaming a wall, or undoing, can leave the choice naming nothing.)
+            // (Renaming a wall or building, or undoing, can leave the choice naming nothing.)
             if tool.chosen.is_some() && !tool.drawing && chosen_wall(document, &tool).is_none() {
                 tool.choose(None);
             }
+            if buildings.chosen.is_some() && chosen_building(document, &buildings).is_none() {
+                buildings.choose(None);
+            }
         });
+    });
     });
     if wall_go_to.is_some() {
         shell.check_due = Some(now + CHECK_DELAY);
@@ -749,6 +779,17 @@ enum WorldAction {
 const BAKE_HELP: &str = "Saves, then bakes the world again (in the background, about a second: only the chunks \
 walls touch), with the walls as they are: they block the ground they stand on and clear trees from their way. \
 A game or server that's running loads the new world by itself.";
+
+/// The chosen building's entry in the document, if there is one.
+fn chosen_building(document: &Document, tool: &BuildingTool) -> Option<EntryRef> {
+    let id = tool.chosen.as_ref()?;
+    let (collection, plans) = document.find::<venture_world::BuildingPlan>()?;
+    plans
+        .files()
+        .iter()
+        .enumerate()
+        .find_map(|(f, file)| file.entries.iter().position(|plan| &plan.id == id).map(|i| (collection, f, i)))
+}
 
 /// The chosen wall's entry in the document, if there is one.
 fn chosen_wall(document: &Document, tool: &WallTool) -> Option<EntryRef> {

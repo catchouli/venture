@@ -233,9 +233,31 @@ As for walls:
 ## Status
 
 - [x] 1. The plan
-- [ ] 2. The generator
-- [ ] 3. Baking
-- [ ] 4. In the game
-- [ ] 5. The editor
-- [ ] 6. A village
+- [x] 2. The generator: `crates/structures/src/buildings/`: `plan.rs` (the
+  frame, checks, wings, openings), `faces.rs` (walls: stone courses and
+  quoins, or weatherboards; the plinth; plaster inside), `details.rs`
+  (reveals, lintels and sills or frames, windows with bars and shutters,
+  doors standing open inward, floors, inner walls), `roof.rs` (gable or hip
+  thatch over each wing, reaching into its neighbours so they make
+  valleys; rolled ridges and hips; gable walls; chimney with pots),
+  `bake.rs` (floor level, levelled ground, blocked cells, clearing). A
+  cottage is 20 to 40 thousand triangles close up, a tenth of that far away.
+  No preview tool yet: the game and editor have been enough.
+- [x] 3. Baking: `world_authoring/buildings.ron`; the ground under a
+  building is levelled to its floor (the average ground under it),
+  blending back into the land over 2.5 m, and turned to trodden earth; its
+  walls block cells except its doorways; trees and rocks within 2 m go.
+  `bake --structures` (was `--walls`) bakes only the chunks walls and
+  buildings touch.
+- [x] 4. In the game: `crates/client/src/world/buildings.rs` (built in the
+  background, full detail to 80 m then far to 600 m; a material a surface;
+  the roof and floors above hidden while you're inside);
+  `world/surfaces.rs` (textures shared with walls). Textures: Rock051
+  (stone), Wood035 (weatherboards), Wood059 (woodwork, floors),
+  ThatchedRoof001A (thatch). Buildings are on the map, in thatch colour.
+- [x] 5. The editor (see [editor.md](editor.md)): drawing outlines with
+  right angles, choosing, moving and turning, style, New seed, and the
+  plan editor (corners, inner walls, doors, deleting). Styles are a tab of
+  their own. Each style has a `scale` multiplying all its sizes.
+- [ ] 6. A village: four test cottages so far; next, homes for the NPCs, a big stone smithy and a fishing guild, in a bigger ring of wall
 - [ ] 7. Later

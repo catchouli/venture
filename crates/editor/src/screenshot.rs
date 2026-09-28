@@ -10,6 +10,8 @@
 //!   tab (by id, or name for respawn points), and look at it.
 //! - `VENTURE_EDITOR_WALL=start_village_wall`: choose this wall on the World
 //!   tab, and look at its first point.
+//! - `VENTURE_EDITOR_BUILDING=id`: choose this building on the World tab,
+//!   and look at it (with `VENTURE_EDITOR_PLAN=1`, in its plan).
 //! - `VENTURE_EDITOR_DISTANCE=metres`: how far the camera is from where it looks.
 //! - `VENTURE_SCREENSHOT_DELAY=seconds`: wait longer before the picture.
 
@@ -17,6 +19,7 @@ use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use venture_client::world::streaming::StreamingProgress;
 
+use crate::buildings::{BuildingTool, building_plans, enter_plan, middle};
 use crate::camera::EditorCamera;
 use crate::document::Document;
 use crate::places::{Places, Selection};
@@ -35,7 +38,7 @@ impl Plugin for ScreenshotPlugin {
         let delay = std::env::var("VENTURE_SCREENSHOT_DELAY").ok().and_then(|value| value.parse().ok()).unwrap_or(1.0);
         app.insert_resource(Pending { path, frames: 0, taken: false, delay })
             .add_systems(PostStartup, choose_view)
-            .add_systems(Update, (choose_place, choose_wall, take_when_loaded));
+            .add_systems(Update, (choose_place, choose_wall, choose_building, take_when_loaded));
     }
 }
 
@@ -106,6 +109,29 @@ fn choose_wall(
     if let Some(&(x, y)) = wall_defs(&document).iter().find(|def| def.id == id).and_then(|def| def.points.first()) {
         tool.choose(Some(id));
         camera.go_to(Vec3::new(x, 0.0, y));
+    }
+}
+
+fn choose_building(
+    time: Res<Time>,
+    document: Res<Document>,
+    mut tool: ResMut<BuildingTool>,
+    mut camera: Single<&mut EditorCamera>,
+    mut done: Local<bool>,
+) {
+    let Ok(id) = std::env::var("VENTURE_EDITOR_BUILDING") else { return };
+    // (After a moment, once the camera's been put where the world starts.)
+    if *done || time.elapsed_secs() < 0.5 {
+        return;
+    }
+    *done = true;
+    if let Some(plan) = building_plans(&document).into_iter().find(|plan| plan.id == id) {
+        tool.choose(Some(id));
+        let centre = middle(&plan);
+        camera.go_to(Vec3::new(centre.x, 0.0, centre.y));
+        if std::env::var_os("VENTURE_EDITOR_PLAN").is_some() {
+            enter_plan(&mut tool, &document, &mut camera);
+        }
     }
 }
 

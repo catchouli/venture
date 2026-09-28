@@ -172,6 +172,7 @@ pub fn quad_facing(mesh: &mut MeshPart, corners: [Vec3; 4], uvs: [[f32; 2]; 4], 
 /// Builds a baked building in its style. `None` if its plan can't be built
 /// (see [`check_plan`]).
 pub fn build_building(building: &BakedBuilding, style: &BuildingStyle) -> Option<BuildingMeshes> {
+    let style = &style.scaled();
     let plan = &building.plan;
     if !check_plan(plan, Some(style)).is_empty() {
         return None;

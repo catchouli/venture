@@ -12,6 +12,7 @@ use venture_client::content::{CONTENT_SOURCE, ContentStore, SkyFiles};
 use venture_content::characters::{CharacterModels, parse_character_models};
 use venture_content::sky::{SKY_CYCLE_FILE, SkyLight, parse_sky, parse_sky_cycle};
 use venture_content::{AppearanceDef, ItemDef};
+use venture_structures::buildings::BuildingStyle;
 
 use crate::document::Document;
 
@@ -103,5 +104,12 @@ fn keep_appearances(document: Res<Document>, store: Option<ResMut<ContentStore>>
     if let Some((_, appearances)) = document.find::<AppearanceDef>() {
         store.appearances =
             appearances.files().iter().flat_map(|file| &file.entries).map(|a| (a.id.clone(), a.clone())).collect();
+    }
+    // Building styles as they are now (buildings are built again when they change).
+    if let Some((_, styles)) = document.find::<BuildingStyle>() {
+        let styles: Vec<BuildingStyle> = styles.files().iter().flat_map(|file| file.entries.clone()).collect();
+        if styles != store.building_styles {
+            store.building_styles = styles;
+        }
     }
 }
