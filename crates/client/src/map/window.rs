@@ -1,12 +1,14 @@
 //! The full map (**M**, or the minimap's button): a big window in the middle
 //! of the screen. It opens on the player; the mouse wheel zooms towards the
 //! mouse, all the way out to the whole world, and dragging moves the map
-//! (it then stays put, rather than following the player).
+//! (it then stays put, rather than following the player). The bottom right
+//! says where the mouse is, in the numbers `/tp` takes.
 
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
 
 use crate::dev::settings::DevSettings;
-use crate::map::view::{MapView, map_view};
+use crate::map::view::{MapView, map_view, point_under_mouse};
 use crate::network::ClientState;
 use crate::ui::text_input::KeyboardFocus;
 use crate::ui::theme::{Piece, Themed};
@@ -25,7 +27,7 @@ impl Plugin for MapWindowPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<OpenMap>()
             .add_systems(Startup, spawn_window)
-            .add_systems(Update, (toggle, show_window).chain())
+            .add_systems(Update, ((toggle, show_window).chain(), show_coordinates))
             .add_systems(OnExit(ClientState::Playing), |mut open: ResMut<OpenMap>| open.0 = false);
     }
 }
@@ -45,6 +47,10 @@ struct CloseButton;
 /// The window's map.
 #[derive(Component)]
 struct WindowMap;
+
+/// Where the mouse is on the map.
+#[derive(Component)]
+struct Coordinates;
 
 fn spawn_window(mut commands: Commands) {
     let view = MapView {
@@ -108,11 +114,19 @@ fn spawn_window(mut commands: Commands) {
                         WindowMap,
                         map_view(view, Node { width: px(MAP_SIZE.x), height: px(MAP_SIZE.y), ..default() }),
                     ));
-                    window.spawn((
-                        Text::new("Scroll to zoom, drag to move the map."),
-                        TextFont { font_size: FontSize::Px(11.0), ..default() },
-                        TextColor(Color::srgb(0.6, 0.6, 0.56)),
-                    ));
+                    let small = |text: &str| {
+                        (
+                            Text::new(text),
+                            TextFont { font_size: FontSize::Px(11.0), ..default() },
+                            TextColor(Color::srgb(0.6, 0.6, 0.56)),
+                        )
+                    };
+                    window
+                        .spawn(Node { width: percent(100), justify_content: JustifyContent::SpaceBetween, ..default() })
+                        .with_children(|footer| {
+                            footer.spawn(small("Scroll to zoom, drag to move the map."));
+                            footer.spawn((Coordinates, small("")));
+                        });
                 });
         });
 }
@@ -156,5 +170,18 @@ fn show_window(
     window.set_if_neq(if showing { Visibility::Inherited } else { Visibility::Hidden });
     if open.is_changed() && open.0 {
         map.follow = true;
+    }
+}
+
+/// Shows the world point under the mouse (as `x, y` in metres, which `/tp`
+/// takes), or nothing when the mouse is off the map.
+fn show_coordinates(
+    map: Single<(&MapView, &ComputedNode, &RelativeCursorPosition), With<WindowMap>>,
+    mut text: Single<&mut Text, With<Coordinates>>,
+) {
+    let (view, node, relative) = *map;
+    let said = point_under_mouse(view, node, relative).map_or(String::new(), |at| format!("{:.0}, {:.0}", at.x, at.y));
+    if text.0 != said {
+        text.0 = said;
     }
 }
