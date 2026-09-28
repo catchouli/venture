@@ -62,17 +62,22 @@ impl Plugin for WallToolsPlugin {
                 (make_generator, show_walls, watch_bake),
                 // Handles and drawing come before placed things' markers; picking a wall after.
                 wall_clicks.before(crate::places::PickPlaces),
-                pick_wall.after(crate::places::PickPlaces),
+                pick_wall.after(crate::places::PickPlaces).in_set(PickWalls),
                 (wall_keys, draw_wall_guides),
             ),
         );
     }
 }
 
-/// The world generator, for baking walls as the bake does.
+/// Where clicks pick walls (buildings are picked after).
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PickWalls;
+
+/// The world generator, for baking walls (and buildings) as the bake does.
 #[derive(Resource, Default)]
-struct WallGenerator {
-    world: Option<Arc<WorldGenerator>>,
+pub struct WallGenerator {
+    /// The generator, once it's built.
+    pub world: Option<Arc<WorldGenerator>>,
     building: Option<Task<WorldGenerator>>,
 }
 
@@ -183,7 +188,7 @@ fn show_walls(
 }
 
 /// The pointer's ray into the world, if it's over the 3D view.
-fn pointer_ray(window: &Window, view: &ViewRect, camera: (&Camera, &GlobalTransform)) -> Option<(Ray3d, Vec2)> {
+pub fn pointer_ray(window: &Window, view: &ViewRect, camera: (&Camera, &GlobalTransform)) -> Option<(Ray3d, Vec2)> {
     let cursor = window.cursor_position()?;
     if !view.0?.contains(cursor) {
         return None;
@@ -192,7 +197,7 @@ fn pointer_ray(window: &Window, view: &ViewRect, camera: (&Camera, &GlobalTransf
 }
 
 /// How near a ray passes a point in front of it, and how far along it that is.
-fn ray_miss(ray: Ray3d, point: Vec3) -> Option<(f32, f32)> {
+pub fn ray_miss(ray: Ray3d, point: Vec3) -> Option<(f32, f32)> {
     let along = (point - ray.origin).dot(*ray.direction);
     (along > 0.0).then(|| ((ray.origin + *ray.direction * along).distance(point), along))
 }
@@ -303,7 +308,7 @@ fn end_handles(def: &WallDef, store: &ChunkStore) -> Vec<(bool, Vec3)> {
 }
 
 /// Rounds a point to the centimetre (so it saves as tidy numbers).
-fn tidy(at: Vec3) -> (f32, f32) {
+pub fn tidy(at: Vec3) -> (f32, f32) {
     let (x, y) = from_bevy(at);
     ((x * 100.0).round() / 100.0, (y * 100.0).round() / 100.0)
 }

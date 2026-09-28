@@ -18,7 +18,9 @@ use venture_content::{
     AbilityDef, AppearanceDef, ClassDef, ContentError, ContentPack, ItemDef, MonsterDef, NewCharacterDef, NpcDef,
     QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef,
 };
+use venture_structures::buildings::{BUILDINGS_FILE, BuildingStyle, STYLES_FILE, check_buildings};
 use venture_structures::{WALLS_FILE, WallDef, check_walls};
+use venture_world::BuildingPlan;
 
 /// Changes to the same file this close together (seconds) undo as one (so
 /// typing a name is one step, not one per letter).
@@ -58,6 +60,24 @@ entries_with_ids!(
 );
 
 impl Entry for WallDef {
+    fn key(&self) -> String {
+        self.id.clone()
+    }
+    fn set_key(&mut self, key: String) {
+        self.id = key;
+    }
+}
+
+impl Entry for BuildingPlan {
+    fn key(&self) -> String {
+        self.id.clone()
+    }
+    fn set_key(&mut self, key: String) {
+        self.id = key;
+    }
+}
+
+impl Entry for BuildingStyle {
     fn key(&self) -> String {
         self.id.clone()
     }
@@ -394,10 +414,14 @@ impl Document {
                 "Character models",
                 Place::Single("characters/characters.ron"),
             )?),
+            Box::new(Collection::<BuildingStyle>::load(root, "Building styles", Place::List(STYLES_FILE))?),
         ];
         if let Some(folder) = authoring {
             collections
                 .push(Box::new(Collection::<WallDef>::load(folder, "Walls", Place::List(WALLS_FILE))?.authored()));
+            collections.push(Box::new(
+                Collection::<BuildingPlan>::load(folder, "Buildings", Place::List(BUILDINGS_FILE))?.authored(),
+            ));
         }
         let mut document = Self {
             root: root.to_path_buf(),
@@ -567,6 +591,19 @@ impl Document {
         };
         if let Some((_, walls)) = self.find::<WallDef>() {
             for file in walls.files() {
+                let styles: Vec<BuildingStyle> = self
+                    .find::<BuildingStyle>()
+                    .map(|(_, styles)| styles.files().iter().flat_map(|file| file.entries.clone()).collect())
+                    .unwrap_or_default();
+                if let Some((_, buildings)) = self.find::<BuildingPlan>() {
+                    for file in buildings.files() {
+                        problems.extend(
+                            check_buildings(&file.entries, &styles)
+                                .into_iter()
+                                .map(|message| ContentError { file: file.path.clone(), message }),
+                        );
+                    }
+                }
                 problems.extend(
                     check_walls(&file.entries)
                         .into_iter()

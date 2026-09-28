@@ -48,6 +48,23 @@ as for `--local`.
     Walls are shown exactly as the bake will make them (the editor bakes
     them itself, against the same world generator), with gaps where roads
     cross.
+  - **Buildings** (`world_authoring/buildings.ron`, baked into the world;
+    see [plan-buildings.md](plan-buildings.md)) are listed too. **Add**
+    (with the style beside it) draws a new one: click its corners on the
+    ground, each squared up to the last wall, and click the first again
+    (or press Enter) to close it; its last corner is found for you. Click
+    a building to choose it: drag the handle in its middle to move it, and
+    on the right are its style, **Edit plan**, **New seed**, turning (15°
+    either way, or 90°), **Delete building**, and its fields (floors,
+    roof, chimney, and the rest).
+  - **Edit plan** hides the building and looks straight down on it. Its
+    tools: **Corners** (drag one: the walls either side follow, so every
+    corner stays square), **Inner walls** (click where one starts, then
+    where it ends), **Doors** (click a wall, outer or inner) and
+    **Choose** (click a door or inner wall; Delete removes it). **Done**
+    (or Escape) leaves it, and the building is made again.
+  - Building styles are a tab of their own (`content/buildings/styles.ron`):
+    changes show on the buildings at once.
   - **Save and bake** saves, then bakes the world again in the background
     (`bake --walls`: only the chunks walls touch, about a second), so walls
     block the ground they stand on and clear trees from their way. The
@@ -114,6 +131,9 @@ aren't kept, so notes about an entry go in its `notes` field (see
 - `document.rs`: the content in memory, one list of entries per file, as
   the content crate's own types. It loads, writes, undoes (by keeping each
   changed file's text before and after), and checks.
+- `buildings.rs`: the World tab's buildings: drawing (corners squared up,
+  the last found), choosing, moving, turning, the plan editor, and the live
+  bake (as walls are), handed to the game's building drawing (`ShownBuildings`).
 - `walls.rs`: the World tab's walls and fences: drawing, handles, the
   live bake (a `WorldGenerator` built in the background from the world's
   seed, and `venture_worldgen::structures`, as `bake` uses), handing them to
@@ -147,7 +167,8 @@ aren't kept, so notes about an entry go in its `notes` field (see
   `VENTURE_EDITOR_TABLE=1` for tables), `VENTURE_EDITOR_PLACE=town_guard`
   chooses a placed thing, and `VENTURE_EDITOR_FOCUS=x,y` and
   `VENTURE_EDITOR_DISTANCE=metres` set the camera. `VENTURE_EDITOR_WALL=id`
-  chooses a wall.
+  chooses a wall, and `VENTURE_EDITOR_BUILDING=id` a building (in its plan
+  with `VENTURE_EDITOR_PLAN=1`).
 
 Tests (`cargo test -p venture_editor`) check that saving everything gives the
 game the same content, that awkward text survives, that undo works, that

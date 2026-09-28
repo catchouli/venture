@@ -15,6 +15,10 @@ pub struct BuildingStyle {
     pub name: String,
     /// How its walls are built.
     pub walls: WallConstruction,
+    /// How big it is: every size below (storeys, doors, windows, walls,
+    /// roof, chimney) is multiplied by this (1 as written).
+    #[serde(default = "defaults::scale")]
+    pub scale: f32,
     /// How thick its outer walls are, in metres.
     #[serde(default = "defaults::wall_thickness")]
     pub wall_thickness: f32,
@@ -86,7 +90,7 @@ pub struct DoorStyle {
 
 impl Default for DoorStyle {
     fn default() -> Self {
-        Self { size: (1.15, 2.05) }
+        Self { size: (1.5, 2.35) }
     }
 }
 
@@ -111,7 +115,7 @@ pub struct WindowStyle {
 
 impl Default for WindowStyle {
     fn default() -> Self {
-        Self { size: (0.75, 0.95), sill: 0.9, gap: 1.4, corner: 0.9, chance: 0.8, shutters: false }
+        Self { size: (0.85, 1.05), sill: 1.0, gap: 1.5, corner: 0.9, chance: 0.8, shutters: false }
     }
 }
 
@@ -164,7 +168,35 @@ impl Default for StyleColours {
     }
 }
 
+impl BuildingStyle {
+    /// The style with its sizes multiplied by its [`scale`](Self::scale)
+    /// (what the generator and the bake use).
+    pub fn scaled(&self) -> BuildingStyle {
+        let k = if self.scale > 0.0 { self.scale } else { 1.0 };
+        let mut style = self.clone();
+        style.scale = 1.0;
+        style.wall_thickness *= k;
+        style.inner_thickness *= k;
+        style.storey *= k;
+        style.roof.eaves *= k;
+        style.roof.verge *= k;
+        style.roof.thickness *= k;
+        style.door.size = (style.door.size.0 * k, style.door.size.1 * k);
+        let window = &mut style.window;
+        window.size = (window.size.0 * k, window.size.1 * k);
+        window.sill *= k;
+        window.gap *= k;
+        window.corner *= k;
+        style.chimney.size = (style.chimney.size.0 * k, style.chimney.size.1 * k);
+        style.chimney.above_ridge *= k;
+        style
+    }
+}
+
 mod defaults {
+    pub fn scale() -> f32 {
+        1.0
+    }
     pub fn wall_thickness() -> f32 {
         0.5
     }
@@ -172,7 +204,7 @@ mod defaults {
         0.2
     }
     pub fn storey() -> f32 {
-        2.7
+        3.0
     }
 }
 
@@ -198,6 +230,9 @@ pub fn check_styles(styles: &[BuildingStyle]) -> Vec<String> {
         let (low, high) = style.roof.pitch;
         if !(10.0..=70.0).contains(&low) || !(low..=70.0).contains(&high) {
             problems.push(format!("{name}: its roof's pitch must be from 10 to 70 degrees, the least first"));
+        }
+        if !(0.25..=4.0).contains(&style.scale) {
+            problems.push(format!("{name}: its scale must be from 0.25 to 4"));
         }
         if style.door.size.1 >= style.storey || style.window.sill + style.window.size.1 >= style.storey {
             problems.push(format!("{name}: its doors and windows must fit in a storey"));

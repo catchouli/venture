@@ -171,9 +171,10 @@ pub fn snap_inner(footprint: &Footprint, style: &BuildingStyle, point: Vec2) -> 
 pub fn check_plan(plan: &BuildingPlan, style: Option<&BuildingStyle>) -> Vec<String> {
     let mut problems = Vec::new();
     let name = format!("building \"{}\"", plan.id);
-    let Some(style) = style else {
+    let Some(style) = style.map(BuildingStyle::scaled) else {
         return vec![format!("{name}: there's no style \"{}\"", plan.style)];
     };
+    let style = &style;
     let points: Vec<Vec2> = plan.outline.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
     if points.len() < 4 || points.len() % 2 == 1 {
         problems.push(format!("{name} needs at least four corners, and an even number (they're all right angles)"));
