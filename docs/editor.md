@@ -38,7 +38,11 @@ as for `--local`.
     drag it), or the green + past either end (or **At the start** / **At
     the end** on the right) to add one a metre past it, and Delete removes
     the chosen point. A point added with the fields' **+ Add** starts a
-    metre past the end too, rather than on the last point. On the right are **New
+    metre past the end too, rather than on the last point.
+    **Split here…** (after choosing a point that isn't an end, and saying
+    you're sure) splits the wall in two there, removing that point (a part
+    left with one point is too short to be a wall, so it goes); on a ring,
+    it opens the ring there. It's one undo. On the right are **New
     seed** (the same wall, its stones laid differently), **Delete wall**,
     and its fields (kind, points, whether it's a ring, height, seed).
     Walls are shown exactly as the bake will make them (the editor bakes
