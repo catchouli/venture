@@ -84,8 +84,8 @@ with server authority**, and it avoids trusting the client:
 
 **As implemented:** the client and server share the movement code
 (`venture_simulation`) and the baked obstacle data. When the prediction and the
-server's position differ by more than a few metres while moving, the client
-snaps to the server. Once both have stopped, it glides the last few
+server's position differ by more than a few metres while moving (more, running
+faster than usual), the client snaps to the server. Once both have stopped, it glides the last few
 centimetres. On a LAN this is invisible. For play over the internet,
 the standard next step is numbering each command, so the client can replay its
 unacknowledged inputs on top of each server update.
@@ -400,11 +400,24 @@ looks (`worn`, the placeholder shapes), and the outfit parts it puts on them
 (`outfit`).
 
 **Admins** are listed by character name in `server.ron`. Their commands
-(`Admin(SetLevel | Reset | SetClass | SetBody | SetTime | SetTimescale | Give | SetSkill)`:
-`/setlevel`, `/reset`, `/setclass`, `/setgender`, `/time`, `/timescale`, `/give ITEM [COUNT]`
-and `/setskill SKILL LEVEL`) go through the gate like any other,
+(`Admin(SetLevel | Reset | SetClass | SetBody | SetTime | SetTimescale | Give | SetSkill | Teleport | SetSpeed)`:
+`/setlevel`, `/reset`, `/setclass`, `/setgender`, `/time`, `/timescale`, `/give ITEM [COUNT]`,
+`/setskill SKILL LEVEL`, `/tp` and `/setspeed N`) go through the gate like any other,
 then to `admin.rs`, which checks the player really is an admin before doing
 anything; anyone else is told only admins can use them.
+
+`/tp` moves a player (yourself, or a player named first) to another player
+(`/tp Wynra`, `/tp Tam Wynra`) or to a place (`/tp 2340 2176`, `/tp Tam 2340 2176`;
+the full map shows the point under the mouse in these numbers). It lands on the
+nearest ground that can be stood on, within 40 m, so aiming at a river puts you on
+its bank. The moved player's client sees a big jump in the next snapshot and snaps
+to it, as with `/town`; being moved away from a fishing line ends fishing.
+
+`/setspeed N` makes you run N times the usual speed (0.1 to 20), until you leave
+the game. The server keeps it as a `RunSpeed` on the player (movement's `step` takes a
+speed), and tells your client (`ServerMessage::RunSpeed`) so its prediction runs just
+as fast; steering moves in half-metre hops, so even at 100 m/s nothing thin is
+crossed.
 
 ## Monsters and fighting
 

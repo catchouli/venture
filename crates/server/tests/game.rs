@@ -8,7 +8,7 @@ use bevy::time::TimeUpdateStrategy;
 use venture_content::ContentPack;
 use venture_protocol::{
     AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, Features, FishingCommand, FishingState,
-    HotbarAction, HotbarEntry, PROTOCOL_VERSION, ServerMessage,
+    HotbarAction, HotbarEntry, PROTOCOL_VERSION, ServerMessage, TeleportTo,
 };
 use venture_server::content::LoadedContent;
 use venture_server::entities::NetworkId;
@@ -1024,6 +1024,66 @@ fn only_admins_can_use_admin_commands() {
     assert!(
         visitor.receive().iter().any(|m| matches!(m, ServerMessage::PlayerChanged { level: 1, celebrate: false, .. }))
     );
+}
+
+#[test]
+fn admins_teleport_players_and_change_their_speed() {
+    let mut server = TestServer::with_content("teleport", content_with("[]", ""));
+    server.app.insert_resource(river_world());
+    let (boss, messages) = create(&mut server, TOKEN_A, "Boss", "fighter");
+    let boss_id = welcome_id(&messages);
+    let (visitor, messages) = create(&mut server, TOKEN_B, "Visitor", "fighter");
+    let visitor_id = welcome_id(&messages);
+    let teleport = |who: Option<&str>, to: TeleportTo| {
+        ClientMessage::Admin(AdminCommand::Teleport { who: who.map(str::to_string), to })
+    };
+    let place = |x, y| TeleportTo::Place { x, y };
+    boss.receive();
+
+    visitor.send(&teleport(None, place(20.0, 20.0)));
+    server.run(2);
+    assert_eq!(notices(&visitor.receive()), ["Only admins can use that command."]);
+
+    boss.send(&teleport(None, place(20.0, 30.0)));
+    server.run(2);
+    assert_eq!(notices(&boss.receive()), ["You teleport to 20, 30."]);
+    server.run(1);
+    assert_eq!(boss.latest_position(boss_id), Some((20.0, 30.0)));
+
+    // Into the river: onto the nearest bank instead.
+    boss.send(&teleport(Some("VISITOR"), place(108.2, 50.3)));
+    server.run(2);
+    assert_eq!(notices(&boss.receive()), ["You moved Visitor to 108, 50."]);
+    assert_eq!(notices(&visitor.receive()), ["An admin moved you to 108, 50."]);
+    server.run(1);
+    assert_eq!(visitor.latest_position(visitor_id), Some((103.5, 50.5)));
+
+    // To a player (and nowhere that isn't one, or is off the world).
+    boss.send(&teleport(None, TeleportTo::Player("visitor".to_string())));
+    boss.send(&teleport(None, TeleportTo::Player("Nobody".to_string())));
+    boss.send(&teleport(None, place(-5.0, 10.0)));
+    server.run(2);
+    let said = notices(&boss.receive());
+    assert_eq!(said[0], "You teleport to Visitor.");
+    assert_eq!(said[1], "There's nobody called \"Nobody\" in the game.");
+    assert!(said[2].starts_with("That's outside the world"), "{said:?}");
+    server.run(1);
+    assert_eq!(boss.latest_position(boss_id), Some((103.5, 50.5)));
+
+    // Running five times as fast, then back to the usual.
+    boss.send(&ClientMessage::Admin(AdminCommand::SetSpeed { scale: 5.0 }));
+    server.run(2);
+    assert!(boss.receive().contains(&ServerMessage::RunSpeed { speed: RUN_SPEED * 5.0 }));
+    boss.send(&ClientMessage::MoveTo { x: 103.5, y: 150.0 });
+    server.run(20);
+    let (_, y) = boss.latest_position(boss_id).unwrap();
+    assert!(y > 50.5 + RUN_SPEED * 4.0 && y <= 50.5 + RUN_SPEED * 5.05, "ran to {y}");
+    boss.send(&ClientMessage::Admin(AdminCommand::SetSpeed { scale: 50.0 }));
+    boss.send(&ClientMessage::Admin(AdminCommand::SetSpeed { scale: 1.0 }));
+    server.run(2);
+    let messages = boss.receive();
+    assert!(notices(&messages)[0].starts_with("Speeds go from"));
+    assert!(messages.contains(&ServerMessage::RunSpeed { speed: RUN_SPEED }));
 }
 
 #[test]

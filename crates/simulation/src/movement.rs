@@ -11,6 +11,10 @@ pub const RUN_SPEED: f32 = 5.0;
 /// How many times per second the server simulates the world.
 pub const TICK_RATE: f32 = 20.0;
 
+/// The furthest a steered character moves before checking what's in the
+/// way again, in metres (less than a cell, so nothing is hopped over).
+const MOST_STEERED_AT_ONCE: f32 = 0.5;
+
 /// The most terrain cells the pathfinder may explore when planning one route.
 const MAX_ROUTE_SEARCH_CELLS: usize = 40_000;
 
@@ -60,14 +64,25 @@ pub fn steering_direction((x, y): Point) -> Option<Point> {
     (length.is_finite() && length > 1e-6).then(|| (x / length, y / length))
 }
 
-/// Moves a character for `dt` seconds from `position`, and returns where it
-/// ends up. Routes shorten as waypoints are reached, and become `Idle` at
-/// the end.
-pub fn step(position: Point, movement: &mut Movement, dt: f32, is_blocked: impl Fn(i32, i32) -> bool) -> Point {
-    let distance = RUN_SPEED * dt.max(0.0);
+/// Moves a character running at `speed` (metres per second; usually
+/// [`RUN_SPEED`]) for `dt` seconds from `position`, and returns where it ends
+/// up. Routes shorten as waypoints are reached, and become `Idle` at the end.
+pub fn step(
+    position: Point,
+    movement: &mut Movement,
+    speed: f32,
+    dt: f32,
+    is_blocked: impl Fn(i32, i32) -> bool,
+) -> Point {
+    let distance = speed.max(0.0) * dt.max(0.0);
     match movement {
         Movement::Idle => position,
-        Movement::Steer(direction) => steer(position, (direction.0 * distance, direction.1 * distance), is_blocked),
+        Movement::Steer(direction) => {
+            // In short hops, so fast characters can't hop over a thin wall.
+            let hops = (distance / MOST_STEERED_AT_ONCE).ceil().max(1.0);
+            let hop = (direction.0 * distance / hops, direction.1 * distance / hops);
+            (0..hops as u32).fold(position, |at, _| steer(at, hop, &is_blocked))
+        }
         Movement::Route(route) => {
             let end = follow_route(position, distance, route);
             if route.is_empty() {
@@ -115,7 +130,7 @@ mod tests {
     #[test]
     fn routes_are_followed_at_running_speed() {
         let mut movement = Movement::Route(VecDeque::from([(10.0, 0.0)]));
-        let position = step((0.0, 0.0), &mut movement, 1.0, OPEN);
+        let position = step((0.0, 0.0), &mut movement, RUN_SPEED, 1.0, OPEN);
         assert_eq!(position, (RUN_SPEED, 0.0));
         assert!(movement.is_moving());
     }
@@ -123,7 +138,7 @@ mod tests {
     #[test]
     fn routes_end_idle_at_the_destination() {
         let mut movement = Movement::Route(VecDeque::from([(1.0, 0.0), (1.0, 1.0)]));
-        let position = step((0.0, 0.0), &mut movement, 1.0, OPEN);
+        let position = step((0.0, 0.0), &mut movement, RUN_SPEED, 1.0, OPEN);
         assert_eq!(position, (1.0, 1.0));
         assert_eq!(movement, Movement::Idle);
     }
@@ -133,8 +148,16 @@ mod tests {
         // A wall along x = 5: moving diagonally into it slides along y.
         let wall = |x: i32, _: i32| x == 5;
         let mut movement = Movement::Steer(steering_direction((1.0, 1.0)).unwrap());
-        let position = step((4.9, 0.5), &mut movement, 0.1, wall);
+        let position = step((4.9, 0.5), &mut movement, RUN_SPEED, 0.1, wall);
         assert!(position.0 < 5.0 && position.1 > 0.5);
+    }
+
+    #[test]
+    fn fast_steering_does_not_cross_walls() {
+        let wall = |x: i32, _: i32| x == 5;
+        let mut movement = Movement::Steer((1.0, 0.0));
+        let position = step((4.5, 0.5), &mut movement, RUN_SPEED * 20.0, 0.05, wall);
+        assert!(position.0 < 5.0, "stopped at the wall, not past it: {position:?}");
     }
 
     #[test]

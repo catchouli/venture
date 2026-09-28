@@ -138,4 +138,22 @@ impl ServerWorld {
         let size = self.manifest.world_size as f32;
         (0.0..size).contains(&x) && (0.0..size).contains(&y)
     }
+
+    /// The nearest point to `at` that can be stood on, at most `reach`
+    /// metres away (`at` itself if it's open; otherwise the middle of the
+    /// nearest open cell), or `None` if there's none.
+    pub fn open_ground_near(&self, at: (f32, f32), reach: f32) -> Option<(f32, f32)> {
+        let open = |(x, y): (f32, f32)| self.contains((x, y)) && !self.is_blocked(x.floor() as i32, y.floor() as i32);
+        if open(at) {
+            return Some(at);
+        }
+        let cells = reach.ceil() as i32;
+        let (centre_x, centre_y) = (at.0.floor() as i32, at.1.floor() as i32);
+        let distance = |point: (f32, f32)| (point.0 - at.0).hypot(point.1 - at.1);
+        (-cells..=cells)
+            .flat_map(|dy| (-cells..=cells).map(move |dx| (centre_x + dx, centre_y + dy)))
+            .map(|(x, y)| (x as f32 + 0.5, y as f32 + 0.5))
+            .filter(|&point| distance(point) <= reach && open(point))
+            .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
+    }
 }

@@ -5,12 +5,13 @@
 use bevy::prelude::*;
 use venture_protocol::{EntityId, EntityState, ServerMessage};
 use venture_simulation::{
-    Follow, FollowOutcome, INTERACT_DISTANCE, JUMP_SECONDS, MELEE_RANGE, Movement, clamp_move_goal, plan_route, step,
+    Follow, FollowOutcome, INTERACT_DISTANCE, JUMP_SECONDS, MELEE_RANGE, Movement, RUN_SPEED, clamp_move_goal,
+    plan_route, step,
 };
 
 use crate::abilities::PendingAbility;
 use crate::combat::{Attacking, Health, Resting};
-use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position};
+use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position, RunSpeed};
 use crate::link::Link;
 use crate::monsters::{Dead, Monster};
 use crate::npcs::{Npc, NpcInteraction};
@@ -293,10 +294,15 @@ fn update_casters(
 }
 
 /// Moves everything for one tick.
-fn simulate(time: Res<Time>, world: Res<ServerWorld>, mut movers: Query<(&mut Position, &mut Mover)>) {
+fn simulate(
+    time: Res<Time>,
+    world: Res<ServerWorld>,
+    mut movers: Query<(&mut Position, &mut Mover, Option<&RunSpeed>)>,
+) {
     let dt = time.delta_secs();
-    for (mut position, mut mover) in &mut movers {
-        position.0 = step(position.0, &mut mover.0, dt, |x, y| world.is_blocked(x, y));
+    for (mut position, mut mover, speed) in &mut movers {
+        let speed = speed.map_or(RUN_SPEED, |speed| speed.0);
+        position.0 = step(position.0, &mut mover.0, speed, dt, |x, y| world.is_blocked(x, y));
     }
 }
 

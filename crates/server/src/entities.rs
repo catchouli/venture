@@ -42,6 +42,11 @@ pub struct Position(pub Point);
 #[derive(Component, Default)]
 pub struct Mover(pub Movement);
 
+/// How fast an entity runs, in metres per second, if not the usual
+/// [`venture_simulation::RUN_SPEED`] (set by admins with `/setspeed`; not saved).
+#[derive(Component, Clone, Copy)]
+pub struct RunSpeed(pub f32);
+
 /// A player in the game.
 #[derive(Component)]
 pub struct Player {
