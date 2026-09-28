@@ -151,8 +151,11 @@ pub struct TreeTemplates {
 pub struct Template {
     /// How tall it is, in metres.
     height: f32,
-    full: (Handle<Mesh>, Handle<Mesh>),
-    reduced: (Handle<Mesh>, Handle<Mesh>),
+    /// The full tree's bark and leaves (either may be missing: a dead tree
+    /// has no leaves, and Bevy mustn't be given empty meshes).
+    full: (Option<Handle<Mesh>>, Option<Handle<Mesh>>),
+    /// The reduced tree's.
+    reduced: (Option<Handle<Mesh>>, Option<Handle<Mesh>>),
     impostor: Handle<Mesh>,
     bark: Handle<TreeMaterial>,
     leaves: Handle<TreeMaterial>,
@@ -315,8 +318,8 @@ fn finish_growing(
                 let impostor_image = images.add(texture(&variant.impostor.texture, false, Some(ALPHA_CUTOFF)));
                 Template {
                     height: variant.height,
-                    full: (meshes.add(mesh(&variant.full.bark)), meshes.add(mesh(&variant.full.leaves))),
-                    reduced: (meshes.add(mesh(&variant.reduced.bark)), meshes.add(mesh(&variant.reduced.leaves))),
+                    full: (part(&mut meshes, &variant.full.bark), part(&mut meshes, &variant.full.leaves)),
+                    reduced: (part(&mut meshes, &variant.reduced.bark), part(&mut meshes, &variant.reduced.leaves)),
                     impostor: meshes.add(mesh(&variant.impostor.mesh)),
                     bark: bark.clone(),
                     leaves: leaves.clone(),
@@ -408,6 +411,12 @@ fn texture(picture: &image::RgbaImage, repeats: bool, cutoff: Option<f32>) -> Im
         ..default()
     });
     image
+}
+
+/// A generator mesh as a Bevy mesh asset, unless it's empty (Bevy's mesh
+/// allocator can't hold an empty one, and says so every frame).
+fn part(meshes: &mut Assets<Mesh>, part: &MeshPart) -> Option<Handle<Mesh>> {
+    (!part.indices.is_empty()).then(|| meshes.add(mesh(part)))
 }
 
 /// A generator mesh as a Bevy mesh.
@@ -558,9 +567,10 @@ fn plant_chunk(
             (template.full.1.clone(), template.leaves.clone(), 0),
             (template.reduced.0.clone(), template.bark.clone(), 1),
             (template.reduced.1.clone(), template.leaves.clone(), 1),
-            (template.impostor.clone(), template.impostor_material.clone(), 2),
+            (Some(template.impostor.clone()), template.impostor_material.clone(), 2),
         ];
         for (mesh, material, level) in pieces {
+            let Some(mesh) = mesh else { continue };
             commands.spawn((
                 TreeBody,
                 Mesh3d(mesh),
@@ -699,6 +709,7 @@ fn dress_fallen(
             ),
         ];
         for (mesh, material, range) in pieces {
+            let Some(mesh) = mesh else { continue };
             commands.spawn((Mesh3d(mesh), MeshMaterial3d(material), Transform::IDENTITY, range, ChildOf(pivot)));
         }
         commands.entity(entity).insert(PickShape {
