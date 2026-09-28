@@ -1659,3 +1659,37 @@ fn traps_are_seen_by_everyone_and_kept_while_their_owner_is_away() {
     server.run(2);
     assert!(notices(&owner.receive()).iter().any(|text| text.contains("Nothing in it yet")));
 }
+
+#[test]
+fn others_see_a_line_cast_and_reeled_in() {
+    let mut server = TestServer::fishing("anglers");
+    let (angler, angler_id) = server.join(TOKEN_A, "Boss");
+    let (watcher, _) = server.join(TOKEN_B, "Watcher");
+    angler.send(&ClientMessage::Admin(AdminCommand::Give { item: "ledger_rod".to_string(), count: 1 }));
+    server.run(2);
+    let slot = angler
+        .receive()
+        .into_iter()
+        .rev()
+        .find_map(|m| match m {
+            ServerMessage::Inventory { slots, .. } => {
+                slots.iter().position(|slot| slot.as_ref().is_some_and(|stack| stack.item == "ledger_rod"))
+            }
+            _ => None,
+        })
+        .expect("a rod in the bag");
+    angler.send(&ClientMessage::Equip { slot: slot as u32 });
+    angler.send(&ClientMessage::Fishing(FishingCommand::Cast { x: 106.0, y: 100.0, tackle: "worm".to_string() }));
+    server.run(2);
+    let told = |messages: Vec<ServerMessage>| {
+        messages.into_iter().find_map(|m| match m {
+            ServerMessage::Angler { id, at } if id == angler_id => Some(at),
+            _ => None,
+        })
+    };
+    assert_eq!(told(watcher.receive()), Some(Some((106.0, 100.0))));
+    assert_eq!(told(angler.receive()), None, "the angler isn't told about themselves");
+    angler.send(&ClientMessage::Fishing(FishingCommand::Stop));
+    server.run(2);
+    assert_eq!(told(watcher.receive()), Some(None));
+}

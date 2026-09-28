@@ -112,7 +112,8 @@ src/
                      fight's tension, line out and the fish's strength), shadows.rs (the fish
                      shoaling in the water round the player, solid or faint by level), traps.rs
                      (setting a trap from the bag, drawing traps, collecting your own), ripples.rs
-                     (rings on the water where a line lands, at nibbles and bites)
+                     (rings on the water where a line lands, at nibbles and bites), others.rs
+                     (other players' lines and floats)
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
     admin_commands.rs  /setlevel, /reset, /setclass, /setgender, /time, /timescale, /give and /setskill, for admins
