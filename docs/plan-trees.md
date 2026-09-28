@@ -172,6 +172,62 @@ over 10,000 trees. The plan:
   The affected chunks are re-made at once, since generation is chunk by
   chunk.
 
+## Woodcutting: trees you can select, fell and cut up
+
+Asked for on 2026-09-28, while the trees were being built. The Woodcutting
+skill (in the content already: "Felling trees for logs and timber") works
+like this:
+1. **Select a tree** (the ones near you): the target frame names it ("Yew
+   tree") with its Woodcutting level.
+2. **Fell it:** with an axe in hand, click the selected tree (the cursor
+   becomes an axe). You run to it and chop. Each swing may bite, by your
+   level against the tree's and your axe's power. After enough bites it
+   falls, cut near its foot. There's no physics: it tips over (a short
+   animation) and lies where it fell, away from you, leaving a stump.
+3. **Cut up the fallen tree:** select it and chop again. Each bite gives
+   logs and experience, until its logs run out.
+4. **After a while** the fallen tree goes, and the tree grows back.
+
+**Different woods:** each species has a Woodcutting level, and its own
+logs, with a wood (soft to hard) for making things later. Soft woods come
+from smaller, quicker trees and need a lower level:
+
+| Tree | Level | Wood |
+| --- | --- | --- |
+| Hazel | 1 | soft (coppice rods) |
+| Birch | 5 | soft |
+| Willow | 10 | soft |
+| Scots pine | 15 | soft, resinous |
+| Hawthorn | 20 | hard, small |
+| Sycamore | 25 | medium |
+| Ash | 30 | hard, springy |
+| Beech | 40 | hard |
+| Oak | 50 | very hard |
+| Yew | 60 | very hard, prized for bows |
+
+(Making things from wood, perhaps a Woodworking skill, comes later.)
+
+**How it fits the world, which is baked:**
+- **Standing trees stay world props.** They're baked with their species
+  and variant (step 4), so every client and the server know every tree
+  without sending anything. A tree's id is its chunk and its place in the
+  chunk's props, stable for a bake.
+- **The server only keeps what changed:** which trees are felled (and
+  when they grow back). Clients get the felled list when they join, and
+  each change as it happens, and hide those trees behind a stump.
+- **A fallen tree is an ordinary server entity** (like a fishing trap):
+  its place, its species, which way it fell and how many logs are left.
+  So selecting it, the target frame and other players seeing it all work
+  as for any entity.
+- **The rules** (bite chances, logs, experience) are small tested
+  functions in `venture_rpg::woodcutting`. **The numbers** (swing time,
+  how long a fallen tree lasts, regrowth) are in `server.ron`. **Which
+  tree is which** (level, logs, experience) is content
+  (`trees/woodcutting.ron`), and **axes** are items with a woodcutting
+  part (their power and the level to use them).
+- **On the server,** a player's woodcutting (felling, cutting, trees
+  falling and growing back) only changes in `woodcutting.rs`.
+
 ## Steps
 
 1. **The generator crate** (`crates/trees`): species data, skeleton, bark and
@@ -198,6 +254,11 @@ over 10,000 trees. The plan:
    (for woodcutting). The distances are tunable in `trees/drawing.ron`.
 8. **Seasons and health** (autumn colours, bare winter branches, dead
    trees), blossom on hawthorn, more species.
+9. **Woodcutting** (see above), in parts:
+   a. selecting trees (standing and fallen), with the target frame naming them;
+   b. the rules, content (levels, logs, axes) and the server's felling and cutting;
+   c. the client: the axe cursor, chopping, trees falling, stumps, fallen trees;
+   d. fallen trees going and trees growing back; tuning in `server.ron`.
 
 ## Status
 
@@ -210,6 +271,7 @@ over 10,000 trees. The plan:
 - [ ] 7. Impostors and wind (impostors are in; no wind yet)
 - [x] 7½. Trees fade close to the camera
 - [ ] 8. Seasons, health, more species
+- [ ] 9. Woodcutting
 
 ## Where it stands
 
