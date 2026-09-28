@@ -87,7 +87,12 @@ pub fn bake_wall(def: &WallDef, ground: impl Fn(f32, f32) -> f32, opens: impl Fn
 /// can't be walked through: those within its half-width of its line,
 /// except where it's open.
 pub fn wall_cells(wall: &BakedWall) -> Vec<(i32, i32)> {
-    let reach = wall.kind.half_width();
+    cells_near(wall, wall.kind.half_width())
+}
+
+/// The cells (by their corner) within `reach` metres of a baked wall's line,
+/// except where it's open (for clearing trees and rocks from its way).
+pub fn cells_near(wall: &BakedWall, reach: f32) -> Vec<(i32, i32)> {
     let mut cells: Vec<(i32, i32)> = Vec::new();
     for pair in wall.samples.windows(2) {
         let (a, b) = (pair[0], pair[1]);
