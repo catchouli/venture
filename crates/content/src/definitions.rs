@@ -612,12 +612,36 @@ pub struct GameSounds {
     /// The player reaching a new level.
     #[serde(default, skip_serializing_if = "is_default")]
     pub level_up: Option<String>,
+    /// The player casting a fishing line.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub cast: Option<String>,
+    /// Something nibbling the player's bait.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub nibble: Option<String>,
+    /// A fish biting (time to strike).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub bite: Option<String>,
+    /// The player landing a fish.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub catch: Option<String>,
 }
 
 impl GameSounds {
     /// Every sound file named.
     pub fn files(&self) -> impl Iterator<Item = &String> {
-        [&self.hit, &self.critical, &self.miss, &self.death, &self.level_up].into_iter().flatten()
+        [
+            &self.hit,
+            &self.critical,
+            &self.miss,
+            &self.death,
+            &self.level_up,
+            &self.cast,
+            &self.nibble,
+            &self.bite,
+            &self.catch,
+        ]
+        .into_iter()
+        .flatten()
     }
 }
 

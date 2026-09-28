@@ -1,13 +1,14 @@
 //! Sound: playing the content's sounds for what the server reports. An ability
 //! plays its own sound when used; hits, misses, critical hits, deaths and the
-//! player's level-ups play the game's sounds (`sounds.ron`). Sounds further
+//! player's level-ups play the game's sounds (`sounds.ron`), and so does
+//! the player's fishing (casting, nibbles, bites and catches). Sounds further
 //! from the player's character are quieter.
 //!
 //! Automated runs (screenshots) are silent.
 
 use bevy::audio::Volume;
 use bevy::prelude::*;
-use venture_protocol::{AttackResult, EntityId, ServerMessage};
+use venture_protocol::{AttackResult, EntityId, FishingState, ServerMessage};
 
 use crate::characters::player::LocalPlayer;
 use crate::content::ContentStore;
@@ -71,6 +72,16 @@ fn play_sounds(
             }
             ServerMessage::Died { id } => (sounds.death.as_ref(), *id),
             ServerMessage::PlayerChanged { id, celebrate: true, .. } if *id == me => (sounds.level_up.as_ref(), *id),
+            ServerMessage::Fishing(state) => {
+                let file = match state {
+                    FishingState::Waiting { .. } => &sounds.cast,
+                    FishingState::Nibble => &sounds.nibble,
+                    FishingState::Bite => &sounds.bite,
+                    FishingState::Caught { .. } => &sounds.catch,
+                    _ => continue,
+                };
+                (file.as_ref(), me)
+            }
             _ => continue,
         };
         let Some(sound) = file.and_then(|file| content.sounds.get(file)) else { continue };

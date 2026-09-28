@@ -149,6 +149,29 @@ def rest():
     return mix(swell(noise(0.6, 0.93, 0.97, curve=1.5, seed=13)), volume=0.3)
 
 
+def cast():
+    """A rod's whoosh, then the plop of the line going in."""
+    return mix((swell(noise(0.3, 0.75, 0.4, curve=1.5, seed=14)), 0.7, 0), (tone(0.12, 520, 180), 0.5, 0.42),
+               (noise(0.2, 0.93, seed=15), 0.5, 0.42), volume=0.55)
+
+
+def nibble():
+    """A tiny plip."""
+    return mix((tone(0.06, 900, 500, curve=4), 0.5, 0), (noise(0.05, 0.9, seed=16), 0.2, 0), volume=0.4)
+
+
+def bite():
+    """A splash, and a bell's tink to say: now!"""
+    return mix((noise(0.25, 0.85, seed=17), 0.9, 0), (tone(0.15, 300, 120), 0.6, 0),
+               (tone(0.5, 2349, 2349, curve=5), 0.35, 0.02), volume=0.7)
+
+
+def catch():
+    """A splash out of the water, and two happy notes."""
+    return mix((noise(0.3, 0.8, seed=18), 0.8, 0), (tone(0.35, 659, 659, curve=2.5), 0.4, 0.12),
+               (tone(0.5, 988, 988, curve=2.5), 0.4, 0.24), volume=0.6)
+
+
 SOUNDS = {
     "hit": hit,
     "critical": critical,
@@ -162,6 +185,10 @@ SOUNDS = {
     "arcane_bolt": arcane_bolt,
     "heal": heal,
     "rest": rest,
+    "cast": cast,
+    "nibble": nibble,
+    "bite": bite,
+    "catch": catch,
 }
 
 
