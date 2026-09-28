@@ -12,7 +12,10 @@
 //! further-away detail. `--content FOLDER` reads the species (and their
 //! photographs) from somewhere other than `content`. For galleries, `--only oak,ash` picks
 //! some species, and `--seed` still applies. `--textures FOLDER` also saves
-//! a tree's bark, sprig and impostor pictures.
+//! a tree's bark, sprig and impostor pictures. `--foliage FOLDER` saves a
+//! foliage texture from the species' sprigs instead (a leafy surface that
+//! tiles, a metre across: `colour.jpg`, `normal.jpg` and `surface.jpg`, as
+//! content textures are), such as the hedges' `content/textures/hedge`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -44,6 +47,7 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
     let mut params = TreeParams::default();
     let (mut out, mut preview, mut name, mut detail, mut only) = (None, None, None, Detail::Full, None);
     let mut textures_folder: Option<PathBuf> = None;
+    let mut foliage_folder: Option<PathBuf> = None;
     let mut words = arguments.into_iter();
     while let Some(word) = words.next() {
         let mut value = |what: &str| words.next().ok_or_else(|| format!("{word} needs {what} after it"));
@@ -64,6 +68,7 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
             "--reduced" => detail = Detail::Reduced,
             "--textures" => textures_folder = Some(PathBuf::from(value("a folder")?)),
             "--only" => only = Some(value("species ids, separated by commas")?),
+            "--foliage" => foliage_folder = Some(PathBuf::from(value("a folder")?)),
             "--help" | "-h" => {
                 println!("{}", include_str!("tree.rs").lines().take(15).collect::<Vec<_>>().join("\n"));
                 return Ok(());
@@ -90,6 +95,9 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
         format!("There's no species \"{name}\". There are: {}.", ids.join(", "))
     })?;
     let textures = textures::paint(species, &Photos::load(species, &content)?);
+    if let Some(folder) = foliage_folder {
+        return save_foliage(species, &textures, params.seed, &folder);
+    }
     let tree = grow(species, &params, detail, &textures);
     println!(
         "{}: {:.1} m tall, trunk {:.2} m across, crown {:.1} m across; {} bark and {} leaf triangles.",
@@ -112,6 +120,28 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
     }
     if let Some(preview) = preview {
         save_picture(&picture(&[(&tree, &textures, 0.0)], tree.crown_radius * 2.0 + 4.0, tree.height + 2.0), &preview)?;
+    }
+    Ok(())
+}
+
+/// Saves a foliage texture made from a species' sprigs, as a content texture.
+fn save_foliage(species: &Species, textures: &TreeTextures, seed: u64, folder: &std::path::Path) -> Result<(), String> {
+    // Between the leaves: the species' darkest leaf colour, in deep shade.
+    let shade = species.leaves.colours.1.scaled(0.3).to_bytes();
+    let settings = venture_trees::foliage::FoliageSettings { seed, ..Default::default() };
+    let foliage = venture_trees::foliage::foliage(&textures.leaves, shade, settings);
+    std::fs::create_dir_all(folder).map_err(|error| format!("Can't make {}: {error}", folder.display()))?;
+    for (name, picture) in
+        [("colour.jpg", &foliage.colour), ("normal.jpg", &foliage.normal), ("surface.jpg", &foliage.surface)]
+    {
+        let path = folder.join(name);
+        let rgb = image::DynamicImage::ImageRgba8(picture.clone()).to_rgb8();
+        let mut file =
+            std::fs::File::create(&path).map_err(|error| format!("Can't write {}: {error}", path.display()))?;
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 90)
+            .encode_image(&rgb)
+            .map_err(|error| format!("Can't write {}: {error}", path.display()))?;
+        println!("Wrote {}.", path.display());
     }
     Ok(())
 }

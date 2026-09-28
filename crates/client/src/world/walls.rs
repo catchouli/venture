@@ -123,11 +123,10 @@ fn load_materials(
             handle
         });
         let material = materials.add(match kind {
-            // Leaves: rough all over, with little sheen, and some light through
-            // them. (Its roughness picture reads too smooth for leaves, and its
-            // normal map adds more fine noise than shape.)
+            // Leaves: rough all over, with little sheen, and some light through them.
             WallKind::Hedge => StandardMaterial {
                 base_color_texture: Some(colour),
+                normal_map_texture: Some(normal),
                 occlusion_texture: Some(surface),
                 perceptual_roughness: 0.95,
                 metallic: 0.0,

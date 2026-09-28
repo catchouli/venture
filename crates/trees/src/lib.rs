@@ -16,6 +16,7 @@
 //! Then [`gltf`] writes it as a `.glb`, [`preview`] draws it, and
 //! [`impostor`] makes the crossed cards it's drawn as far away.
 
+pub mod foliage;
 pub mod gltf;
 pub mod impostor;
 pub mod mesh;
