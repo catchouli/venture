@@ -145,6 +145,28 @@ pub fn inset(outline: &[Vec2], by: f32) -> Vec<Vec2> {
         .collect()
 }
 
+/// An inner wall's end (in the frame) near an outer wall, moved onto that
+/// wall's inside (and a little into it, so no gap shows).
+pub fn snap_inner(footprint: &Footprint, style: &BuildingStyle, point: Vec2) -> Vec2 {
+    let inside = &footprint.inside;
+    let reach = style.wall_thickness + 0.6;
+    let mut best: Option<(f32, Vec2, Vec2)> = None;
+    for i in 0..inside.len() {
+        let (a, b) = (inside[i], inside[(i + 1) % inside.len()]);
+        let run = b - a;
+        let t = ((point - a).dot(run) / run.length_squared().max(1e-6)).clamp(0.0, 1.0);
+        let nearest = a + run * t;
+        let distance = nearest.distance(point);
+        if best.is_none_or(|(d, _, _)| distance < d) {
+            best = Some((distance, nearest, -run.normalize_or(Vec2::X).perp()));
+        }
+    }
+    match best {
+        Some((distance, nearest, outward)) if distance < reach => nearest + outward * 0.05,
+        _ => point,
+    }
+}
+
 /// Problems with a plan (the empty list if it's fine), given its style.
 pub fn check_plan(plan: &BuildingPlan, style: Option<&BuildingStyle>) -> Vec<String> {
     let mut problems = Vec::new();

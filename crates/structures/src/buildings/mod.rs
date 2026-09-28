@@ -20,6 +20,7 @@
 //! a player's inside. Positions are relative to [`BuildingMeshes::origin`]
 //! (the building's first corner, at its floor), in the world's directions.
 
+pub mod bake;
 pub mod details;
 pub mod faces;
 pub mod plan;
@@ -31,6 +32,9 @@ use std::collections::BTreeMap;
 use glam::{Vec2, Vec3};
 use venture_world::{BakedBuilding, WallRef};
 
+pub use bake::{
+    bake_building, building_cells, building_clearing, cell_bounds, check_buildings, levelled, parse_buildings,
+};
 pub use plan::{Footprint, Opening, OpeningKind, check_plan};
 pub use style::{BuildingStyle, WallConstruction, check_styles, parse_styles};
 
@@ -279,7 +283,7 @@ fn openings(builder: &mut Builder, building: &BakedBuilding) -> Openings {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use venture_world::{BuildingPlan, DoorPlan, RoofShape};
 
