@@ -33,7 +33,9 @@ use venture_content::{FishDef, FishingPart, ItemDef, fish_living_in};
 use venture_navigation::Point;
 use venture_protocol::{EntityId, EntityKind, FishingState, ServerMessage};
 use venture_rpg::fishing::{self, Method};
-use venture_simulation::fishing::{Fight, FightEnd, FightSetup, most_common_water, region_cells, shoal_region, shoals};
+use venture_simulation::fishing::{
+    Fight, FightEnd, FightSetup, FightTimeline, most_common_water, region_cells, shoal_region, shoals,
+};
 use venture_world::{Biome, FluidBody};
 
 use crate::character::Character;
@@ -267,7 +269,7 @@ enum Stage {
     /// A fish bit at `since`: strike now.
     Biting { fish: String, since: f32 },
     /// A fish is hooked.
-    Fighting { fish: String, fight: Box<Fight>, reeling: bool },
+    Fighting { fish: String, fight: Box<FightTimeline> },
 }
 
 /// Checks a cast and works out its line. `hand` is the item in the
@@ -396,9 +398,9 @@ fn plan_bite(candidates: &[(&str, &FishDef, f32)], method: Method, now: f32, pat
 }
 
 /// A fight with a fish, hooked on a line.
-fn hook(line: &Line, fish: &FishDef) -> Fight {
+fn hook(line: &Line, fish: &FishDef) -> Box<FightTimeline> {
     let size = fish.traits.size;
-    Fight::new(FightSetup {
+    Box::new(FightTimeline::new(FightSetup {
         pull: fishing::pull(size),
         run: fishing::run(size),
         stamina: fishing::stamina(size),
@@ -406,7 +408,7 @@ fn hook(line: &Line, fish: &FishDef) -> Fight {
         capacity: line.reel.1,
         distance: line.distance.max(venture_simulation::fishing::LAND_DISTANCE + 1.0),
         seed: fastrand::u64(..),
-    })
+    }))
 }
 
 fn act_on_requests(
@@ -490,8 +492,8 @@ fn act_on_requests(
                             let Some(Some(FishingPart::Fish(def))) = items.get(fish).map(|item| &item.fishing) else {
                                 continue;
                             };
-                            let fight = Box::new(hook(&fishing.line, def));
-                            fishing.stage = Stage::Fighting { fish: fish.clone(), fight, reeling: false };
+                            let fight = hook(&fishing.line, def);
+                            fishing.stage = Stage::Fighting { fish: fish.clone(), fight };
                         }
                         // (Too late is noticed by `run_lines`.)
                     }
@@ -507,11 +509,11 @@ fn act_on_requests(
                     Stage::Fighting { .. } => {}
                 }
             }
-            FishingAction::Reel(reel) => {
+            FishingAction::Reel { reeling, tick } => {
                 if let Some(mut fishing) = fishing
-                    && let Stage::Fighting { reeling, .. } = &mut fishing.stage
+                    && let Stage::Fighting { fight, .. } = &mut fishing.stage
                 {
-                    *reeling = *reel;
+                    fight.reel(*reeling, *tick);
                 }
             }
             FishingAction::SetTrap { at, trap, bait } => {
@@ -680,7 +682,7 @@ fn run_lines(
                 if method == Method::Lure {
                     // Fish strike lures hard enough to hook themselves.
                     let Some(def) = fish_def(&fish) else { continue };
-                    fishing.stage = Stage::Fighting { fight: Box::new(hook(&line, def)), fish, reeling: false };
+                    fishing.stage = Stage::Fighting { fight: hook(&line, def), fish };
                 } else {
                     fishing.stage = Stage::Biting { fish, since: now };
                 }
@@ -693,16 +695,16 @@ fn run_lines(
                     end(&mut commands, &mut link, entity, connection, text);
                 }
             }
-            Stage::Fighting { fish, fight, reeling } => {
-                let outcome = fight.step(*reeling);
-                send(&mut link, FishingState::Fight(**fight));
+            Stage::Fighting { fish, fight } => {
+                let outcome = fight.step();
+                send(&mut link, FishingState::Fight(*fight.now()));
                 let Some(outcome) = outcome else { continue };
                 let what = match outcome {
                     FightEnd::Landed => "landed",
                     FightEnd::Snapped => "snapped the line on",
                     FightEnd::SpooledOut => "was spooled out by",
                 };
-                log(what, fish, Some(fight));
+                log(what, fish, Some(fight.now()));
                 let fish_name = format!("the {}", named(fish, items));
                 let text = match outcome {
                     FightEnd::Landed => {

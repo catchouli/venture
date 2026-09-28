@@ -569,16 +569,19 @@ how it goes with `Fishing(state)`: `Waiting` (the line is in), `Nibble`s,
 the server within the strike window plus an allowance for the network
 (`fishing.strike_allowance` in `server.ron`); a lure's fish hooks itself.
 Then the fight (`venture_simulation::fishing`) runs on the server, stepped
-each tick from whether the player is reeling (`Reel(true)` and
-`Reel(false)` when they start and stop), and the server sends its state
-(`Fight`) every tick for the client to show. It ends `Caught` (the fish in
+each tick from whether the player is reeling, and the server sends its state
+(`Fight`) every tick. The client runs the fight ahead from the player's own
+reeling (like movement), so reeling shows at once: each start and stop is
+sent as `Reel { reeling, tick }`, the fight's tick it counts from, and the
+server replays the fight from that tick (`FightTimeline`) if it arrives up
+to half a second late, so both agree exactly. When the server's state
+arrives, the client replays its own changes on top. It ends `Caught` (the fish in
 the bag, its experience to the fishing skill) or with the fish lost, then
 `Ended` and a notice saying why. Everyone else is told when a player casts
 (`Angler { id, at: Some(point) }`) and stops (`at: None`), to draw their
 line and float. `Stop` reels in; moving, attacking or
 dying ends fishing too. The fight is deterministic, from a seed the server
-sends with it, so the client can later run it ahead to make reeling feel
-instant. Fish shadows take no messages at all: which fish shoal where is
+sends with it, which is what lets the client run it ahead. Fish shadows take no messages at all: which fish shoal where is
 worked out from the world's seed, the region of water and the hour, the
 same way on both sides (so casting where a shadow swims is what the server
 rewards), and each client shows them as its own player's level sees them.

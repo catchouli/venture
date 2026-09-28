@@ -293,8 +293,14 @@ pub enum FishingCommand {
     /// Strike: when a fish bites (with a ledger or float) it must be struck
     /// in time to hook it.
     Strike,
-    /// Start (`true`) or stop reeling in a fight.
-    Reel(bool),
+    /// Start or stop reeling in a fight, from a tick of the fight (the
+    /// client runs the fight ahead: see `venture_simulation::fishing::FightTimeline`).
+    Reel {
+        /// Whether reeling.
+        reeling: bool,
+        /// The fight's tick it's from (the next one the client stepped).
+        tick: u32,
+    },
     /// Reel in and stop fishing.
     Stop,
     /// Set a trap from the bag in the water, with bait from the bag if any.
