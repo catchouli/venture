@@ -8,10 +8,11 @@
 //! - once one's hooked, holding the mouse button or Space reels, and
 //!   letting go lets it run; the float comes in as the line does.
 //!
-//! [`panel`] shows how it's going: what's happening, and in a fight the
+//! [`shadows`] shows the fish in the water, and [`panel`] shows how it's going: what's happening, and in a fight the
 //! line's tension and how much is out.
 
 pub mod panel;
+pub mod shadows;
 
 use bevy::prelude::*;
 use venture_content::FishingPart;
@@ -54,7 +55,7 @@ impl Plugin for FishingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Angling>()
             .add_message::<CastAt>()
-            .add_plugins(panel::PanelPlugin)
+            .add_plugins((panel::PanelPlugin, shadows::ShadowsPlugin))
             .add_systems(Startup, make_float)
             .add_systems(
                 Update,
@@ -299,6 +300,8 @@ fn make_float(
         // A unit-long cylinder, stretched between the rod tip and the float.
         Mesh3d(meshes.add(Cylinder::new(LINE_RADIUS, 1.0).mesh().resolution(4))),
         MeshMaterial3d(line),
+        // (A shadow of a line this thin would only be a dotted streak.)
+        bevy::light::NotShadowCaster,
         Transform::default(),
         Visibility::Hidden,
     ));

@@ -20,15 +20,15 @@
 use std::collections::BTreeMap;
 
 use bevy::prelude::*;
-use venture_content::{FishDef, FishingPart, ItemDef};
+use venture_content::{FishDef, FishingPart, ItemDef, fish_living_in};
 use venture_navigation::Point;
 use venture_protocol::{FishingState, ServerMessage};
 use venture_rpg::fishing::{self, Method};
-use venture_simulation::fishing::{Fight, FightEnd, FightSetup};
+use venture_simulation::fishing::{Fight, FightEnd, FightSetup, most_common_water, region_cells, shoal_region, shoals};
 use venture_world::{Biome, FluidBody};
 
-use crate::ServerSystems;
 use crate::character::Character;
+use crate::clock::WorldClock;
 use crate::combat::{Attacking, Health};
 use crate::config::FishingConfig;
 use crate::content::LoadedContent;
@@ -38,9 +38,13 @@ use crate::inventory::{Change, Inventory, describe_items};
 use crate::link::Link;
 use crate::requests::{FishingAction, FishingRequest};
 use crate::world::ServerWorld;
+use crate::{GameRules, ServerSystems};
 
 /// The fishing skill's id (in the content's skills).
 pub const SKILL: &str = "fishing";
+
+/// How much likelier a fish is to bite a line cast where it's shoaling.
+const SHOAL_BONUS: f32 = 3.0;
 
 /// How much further than a rod's reach a cast may land (for where the
 /// player stands being a little off on the server).
@@ -181,6 +185,29 @@ pub fn candidates<'a>(
         .collect()
 }
 
+/// The kind of water most of a shoaling region is (as the client works it
+/// out, to show the shadows there).
+pub fn region_water(world: &ServerWorld, region: (i32, i32)) -> Option<(FluidBody, Biome)> {
+    let kinds: Vec<_> =
+        region_cells(region).filter_map(|(x, y)| world.water_at((x as f32 + 0.5, y as f32 + 0.5))).collect();
+    most_common_water(&kinds)
+}
+
+/// The fish shoaling where a line goes in (in the same shoaling region, of
+/// the water most of the region is), by id, at an hour of the day (see
+/// `venture_simulation::fishing::shoals`).
+pub fn shoaling_at(
+    items: &BTreeMap<String, ItemDef>,
+    (body, biome): (FluidBody, Biome),
+    at: Point,
+    world_seed: u32,
+    hour: u32,
+) -> Vec<&str> {
+    let living = fish_living_in(items.values(), body, biome);
+    let weights = vec![1.0; living.len()];
+    shoals(u64::from(world_seed), shoal_region(at), hour, &weights).iter().map(|shoal| living[shoal.fish].0).collect()
+}
+
 /// What bites a line (if anything), when, and the nibbles before, from
 /// three rolls (0 to 1) and the time it's cast.
 fn plan_bite(candidates: &[(&str, &FishDef, f32)], method: Method, now: f32, patience: f32, rolls: [f32; 3]) -> Stage {
@@ -220,6 +247,8 @@ fn act_on_requests(
     world: Res<ServerWorld>,
     rules: Res<FishingRules>,
     time: Res<Time>,
+    clock: Res<WorldClock>,
+    game_rules: Res<GameRules>,
     mut players: Query<(&Player, &Position, &Equipment, &Character, &mut Inventory, Option<&mut Fishing>)>,
 ) {
     let now = time.elapsed_secs();
@@ -248,7 +277,15 @@ fn act_on_requests(
                     continue;
                 }
                 let Some(water) = water else { continue };
-                let candidates = candidates(items, &line, water, skill);
+                let hour = clock.hour(&game_rules) as u32 % 24;
+                let region = region_water(&world, shoal_region(line.at)).unwrap_or(water);
+                let shoaling = shoaling_at(items, region, line.at, world.manifest.seed, hour);
+                let mut candidates = candidates(items, &line, water, skill);
+                for (id, _, weight) in &mut candidates {
+                    if shoaling.contains(id) {
+                        *weight *= SHOAL_BONUS;
+                    }
+                }
                 let rolls = [fastrand::f32(), fastrand::f32(), fastrand::f32()];
                 let stage = plan_bite(&candidates, line.method, now, rules.0.patience, rolls);
                 link.send(
@@ -483,6 +520,22 @@ mod tests {
         assert_eq!(ids(&paste, RIVER.unwrap(), 20), ["bream"], "paste is on a medium hook, too big for gudgeon");
         assert!(ids(&worm, RIVER.unwrap(), 3).contains(&"gudgeon".to_string()), "worms take them");
         assert!(!ids(&paste, RIVER.unwrap(), 20).contains(&"signal_crayfish".to_string()), "crayfish are for traps");
+    }
+
+    #[test]
+    fn fish_shoal_in_the_water_they_live_in() {
+        let items = items();
+        let river = RIVER.unwrap();
+        let everywhere: Vec<&str> =
+            (0..100).flat_map(|x| shoaling_at(&items, river, (x as f32 * 12.0, 0.0), 1, 9)).collect();
+        assert!(everywhere.len() > 30, "most river regions have fish shoaling");
+        let living = fish_living_in(items.values(), river.0, river.1);
+        assert!(everywhere.iter().all(|id| living.iter().any(|(fish, _)| fish == id)));
+        assert!(everywhere.contains(&"dace") && everywhere.contains(&"signal_crayfish"), "rod and trap fish alike");
+        let sea: Vec<&str> = (0..100)
+            .flat_map(|x| shoaling_at(&items, (FluidBody::Sea, Biome::Grassland), (x as f32 * 12.0, 0.0), 1, 9))
+            .collect();
+        assert!(!sea.contains(&"dace"));
     }
 
     #[test]

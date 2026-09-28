@@ -576,7 +576,10 @@ the bag, its experience to the fishing skill) or with the fish lost, then
 `Ended` and a notice saying why. `Stop` reels in; moving, attacking or
 dying ends fishing too. The fight is deterministic, from a seed the server
 sends with it, so the client can later run it ahead to make reeling feel
-instant. See [plan-fishing.md](plan-fishing.md).
+instant. Fish shadows take no messages at all: which fish shoal where is
+worked out from the world's seed, the region of water and the hour, the
+same way on both sides (so casting where a shadow swims is what the server
+rewards), and each client shows them as its own player's level sees them. See [plan-fishing.md](plan-fishing.md).
 
 ## Connection problems
 

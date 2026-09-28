@@ -331,6 +331,27 @@ pub struct FishDef {
     pub bycatch: bool,
 }
 
+/// The fish that live in a body of water in a biome (everything that can be
+/// caught there, by rod or trap), sorted by id, so every machine lists them
+/// in the same order (for `venture_simulation::fishing::shoals`).
+pub fn fish_living_in<'a>(
+    items: impl IntoIterator<Item = &'a ItemDef>,
+    body: FluidBody,
+    biome: Biome,
+) -> Vec<(&'a str, &'a FishDef)> {
+    let mut living: Vec<(&str, &FishDef)> = items
+        .into_iter()
+        .filter_map(|item| match &item.fishing {
+            Some(FishingPart::Fish(fish)) if fish.waters.contains(&body) && fish.biomes.contains(&biome) => {
+                Some((item.id.as_str(), fish))
+            }
+            _ => None,
+        })
+        .collect();
+    living.sort_by_key(|(id, _)| *id);
+    living
+}
+
 fn yes() -> bool {
     true
 }

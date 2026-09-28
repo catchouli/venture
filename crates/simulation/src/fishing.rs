@@ -9,7 +9,14 @@
 //! snaps) or the fish takes more line than the reel holds (it spools out),
 //! and won when the fish is drawn in to the bank.
 //!
-//! It's deterministic: the same setup (with its seed) and the same inputs
+//! It also says which fish are shoaling where ([`shoals`]): the water is
+//! divided into square regions, and which fish gather in each changes with
+//! the hour of the day. Both sides work it out the same way from the world's
+//! seed, so no messages are needed: each client shows the shadows (as its
+//! player can see them), and the server makes a fish that's shoaling where a
+//! line goes in likelier to bite.
+//!
+//! The fight is deterministic: the same setup (with its seed) and the same inputs
 //! give the same fight on the server (which decides) and the client (which
 //! can run it ahead, so reeling feels instant). It uses only arithmetic, no
 //! functions whose results could differ between machines.
@@ -175,6 +182,87 @@ impl Fight {
     }
 }
 
+/// The side of a shoaling region, in metres.
+pub const SHOAL_REGION: f32 = 12.0;
+/// The most shoals a region has at once.
+const MOST_SHOALS: u64 = 3;
+/// The most fish in a shoal.
+const MOST_IN_SHOAL: u64 = 4;
+
+/// Some fish of one kind gathered in a region.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Shoal {
+    /// Which fish (an index into the list given to [`shoals`]).
+    pub fish: usize,
+    /// How many.
+    pub count: u32,
+    /// A number to vary how they look and move by.
+    pub seed: u64,
+}
+
+/// The region a point (in metres) is in.
+pub fn shoal_region((x, y): (f32, f32)) -> (i32, i32) {
+    ((x / SHOAL_REGION).floor() as i32, (y / SHOAL_REGION).floor() as i32)
+}
+
+/// The cells (their `(x, y)`) of a region.
+pub fn region_cells((rx, ry): (i32, i32)) -> impl Iterator<Item = (i32, i32)> {
+    let side = SHOAL_REGION as i32;
+    (ry * side..(ry + 1) * side).flat_map(move |y| (rx * side..(rx + 1) * side).map(move |x| (x, y)))
+}
+
+/// The kind of water (body and biome, or whatever pairs are given) most of a
+/// region's water cells are, ties going to the pair that comes first in the
+/// list. `None` for a region with no water.
+pub fn most_common_water<T: Copy + PartialEq>(kinds: &[T]) -> Option<T> {
+    let mut best: Option<(T, usize)> = None;
+    for &kind in kinds {
+        let count = kinds.iter().filter(|&&other| other == kind).count();
+        if best.is_none_or(|(_, most)| count > most) {
+            best = Some((kind, count));
+        }
+    }
+    best.map(|(kind, _)| kind)
+}
+
+/// The fish shoaling in a region of water at an hour of the day (0 to 23),
+/// chosen from the fish that live there (their relative numbers in
+/// `weights`, in an order both sides agree on, such as by id). Only integer
+/// arithmetic and sums decide it, so every machine gets the same answer.
+pub fn shoals(world_seed: u64, (x, y): (i32, i32), hour: u32, weights: &[f32]) -> Vec<Shoal> {
+    let total: f32 = weights.iter().map(|weight| weight.max(0.0)).sum();
+    if total <= 0.0 {
+        return Vec::new();
+    }
+    let mut state = world_seed
+        ^ (x as i64 as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (y as i64 as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+        ^ u64::from(hour).wrapping_mul(0x1656_67B1_9E37_79F9);
+    let count = mix(&mut state) % (MOST_SHOALS + 1);
+    (0..count)
+        .filter_map(|_| {
+            let roll = (mix(&mut state) >> 40) as f32 / (1u64 << 24) as f32;
+            let mut left = roll * total;
+            let fish = weights.iter().position(|&weight| {
+                left -= weight.max(0.0);
+                left < 0.0
+            });
+            let fish = fish.or_else(|| weights.iter().rposition(|&weight| weight > 0.0))?;
+            let count = 1 + (mix(&mut state) % MOST_IN_SHOAL) as u32;
+            Some(Shoal { fish, count, seed: mix(&mut state) })
+        })
+        .collect()
+}
+
+/// The next number from a SplitMix64 generator.
+fn mix(state: &mut u64) -> u64 {
+    *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +326,31 @@ mod tests {
             let seconds = ticks as f32 / TICK_RATE;
             assert!((10.0..90.0).contains(&seconds), "seed {seed}: {seconds} s");
         }
+    }
+
+    #[test]
+    fn shoals_are_the_same_everywhere_and_change_with_the_hour() {
+        let weights = [1.0, 1.0, 1.0];
+        assert_eq!(shoals(7, (3, 4), 12, &weights), shoals(7, (3, 4), 12, &weights));
+        let mut differ = 0;
+        let mut shoaling = 0;
+        for x in 0..50 {
+            let now = shoals(7, (x, 4), 12, &weights);
+            differ += usize::from(now != shoals(7, (x, 4), 13, &weights));
+            shoaling += now.len();
+            assert!(now.iter().all(|shoal| shoal.fish < 3 && (1..=4).contains(&shoal.count)));
+        }
+        assert!(differ > 25, "the fish move on with the hours");
+        assert!((50..=100).contains(&shoaling), "one or two shoals a region: {shoaling}");
+        assert!(shoals(7, (3, 4), 12, &[]).is_empty());
+        let only_second = [0.0, 1.0];
+        assert!((0..50).flat_map(|x| shoals(1, (x, 0), 0, &only_second)).all(|shoal| shoal.fish == 1));
+        assert_eq!(shoal_region((13.0, -1.0)), (1, -1));
+        assert_eq!(region_cells((1, -1)).count(), 144);
+        assert!(region_cells((1, -1)).all(|cell| shoal_region((cell.0 as f32 + 0.5, cell.1 as f32 + 0.5)) == (1, -1)));
+        assert_eq!(most_common_water(&['a', 'b', 'b', 'a', 'c']), Some('a'), "ties go to the first");
+        assert_eq!(most_common_water(&['a', 'b', 'b']), Some('b'));
+        assert_eq!(most_common_water::<char>(&[]), None);
     }
 
     #[test]
