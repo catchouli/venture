@@ -5,10 +5,17 @@
 //! woodland noise (which groups trees into woods and clearings), the slope
 //! and the ground. Every choice comes from a hash of the spot's grid
 //! coordinates, so the same spot always gets the same prop.
+//!
+//! A tree's species comes from its biome's mix (willows near water), and
+//! it's young, mature or old at random. Bushes are young trees of the
+//! biome's bush species, small. The client grows them all with the tree
+//! generator (see `docs/plan-trees.md`).
 
 use std::f32::consts::TAU;
 
 use venture_world::{Biome, CHUNK_SIZE, Chunk, Ground, Prop, PropKind};
+
+use crate::config::BiomeTerrain;
 
 use crate::WorldGenerator;
 use crate::grid::point_hash;
@@ -24,7 +31,14 @@ mod salt {
     pub const SPECIES: u32 = 105;
     pub const SCALE: u32 = 106;
     pub const ROTATION: u32 = 107;
+    pub const VARIANT: u32 = 108;
+    pub const WATERSIDE: u32 = 109;
 }
+
+/// How likely a tree is to be young, mature or old.
+const VARIANT_SHARES: [f32; 3] = [0.25, 0.55, 0.2];
+/// Water within this many cells makes a spot waterside (for willows).
+const WATERSIDE_CELLS: i32 = 4;
 
 /// Trees don't grow on ground steeper than this (height change across a cell).
 const MAX_TREE_SLOPE: f32 = 1.2;
@@ -39,6 +53,7 @@ pub fn scatter_props(generator: &WorldGenerator, chunk: &Chunk, overlay: &LocalO
     let first = |origin: f32| (origin / spacing).ceil() as i32;
     let last = |origin: f32| ((origin + CHUNK_SIZE as f32) / spacing).ceil() as i32;
 
+    let palette = config.tree_species();
     let mut props = Vec::new();
     for gy in first(origin_y)..last(origin_y) {
         for gx in first(origin_x)..last(origin_x) {
@@ -60,17 +75,28 @@ pub fn scatter_props(generator: &WorldGenerator, chunk: &Chunk, overlay: &LocalO
                 - heights.iter().copied().fold(f32::INFINITY, f32::min);
 
             let biome = generator.regions.weights_at(x, y).pick(hash(salt::BIOME));
-            let Some(kind) =
-                choose_kind(generator, biome, cell.ground, slope, x, y, hash(salt::CHOICE), hash(salt::SPECIES))
-            else {
+            let Some(choice) = choose_kind(generator, biome, cell.ground, slope, x, y, hash(salt::CHOICE)) else {
                 continue;
             };
             let size = hash(salt::SCALE);
-            let scale = match kind {
+            let settings = config.biome(biome);
+            let waterside =
+                || near_water(chunk, cx as i32, cy as i32) && hash(salt::WATERSIDE) < config.waterside_share;
+            let (kind, scale) = match choice {
                 // Mostly small rocks, with the odd huge one.
-                PropKind::Boulder => 0.5 + size * size * size * 2.5,
-                _ => 0.75 + size * 0.55,
+                Choice::Boulder => (Some(PropKind::Boulder), 0.5 + size * size * size * 2.5),
+                Choice::DeadTree => (Some(PropKind::DeadTree), 0.75 + size * 0.55),
+                Choice::Tree => {
+                    let id =
+                        if waterside() { config.waterside_tree } else { pick(settings.trees, hash(salt::SPECIES)) };
+                    let variant = pick_variant(hash(salt::VARIANT));
+                    (tree(&palette, id, variant), 0.85 + size * 0.3)
+                }
+                Choice::Bush => {
+                    (tree(&palette, pick(settings.bush_species, hash(salt::SPECIES)), 0), 0.35 + size * 0.2)
+                }
             };
+            let Some(kind) = kind else { continue };
             props.push(Prop {
                 kind,
                 x,
@@ -84,9 +110,15 @@ pub fn scatter_props(generator: &WorldGenerator, chunk: &Chunk, overlay: &LocalO
     props
 }
 
-/// Decides what (if anything) grows at a spot. `choice` and `species` are
-/// independent random numbers in `0.0..1.0`.
-#[allow(clippy::too_many_arguments)]
+/// What grows at a spot.
+enum Choice {
+    Tree,
+    Bush,
+    Boulder,
+    DeadTree,
+}
+
+/// Decides what (if anything) grows at a spot. `choice` is a random number in `0.0..1.0`.
 fn choose_kind(
     generator: &WorldGenerator,
     biome: Biome,
@@ -95,9 +127,8 @@ fn choose_kind(
     x: f32,
     y: f32,
     choice: f32,
-    species: f32,
-) -> Option<PropKind> {
-    let settings = generator.config().biome(biome);
+) -> Option<Choice> {
+    let settings: &BiomeTerrain = generator.config().biome(biome);
     let woodland = generator.noise.forest(x as f64, y as f64);
 
     let can_grow = slope < MAX_TREE_SLOPE && !matches!(ground, Ground::Rock | Ground::Snow | Ground::Sand);
@@ -112,26 +143,56 @@ fn choose_kind(
     let bush_chance = if can_grow { settings.bushes * 0.07 * (0.5 + woodland) } else { 0.0 };
 
     if choice < tree_chance {
-        return Some(tree_species(biome, species));
+        // Volcanic land's trees are dead.
+        return Some(if biome == Biome::Volcanic { Choice::DeadTree } else { Choice::Tree });
     }
     if choice < tree_chance + boulder_chance {
-        return Some(PropKind::Boulder);
+        return Some(Choice::Boulder);
     }
     if choice < tree_chance + boulder_chance + bush_chance {
-        return Some(PropKind::Bush);
+        return Some(Choice::Bush);
     }
     None
 }
 
-/// Which tree grows in a biome, where `t` in `0.0..1.0` is a random number.
-fn tree_species(biome: Biome, t: f32) -> PropKind {
-    match biome {
-        Biome::Grassland if t < 0.8 => PropKind::Oak,
-        Biome::Grassland => PropKind::Birch,
-        Biome::Meadow if t < 0.6 => PropKind::Birch,
-        Biome::Meadow => PropKind::Oak,
-        Biome::Highlands if t < 0.85 => PropKind::Pine,
-        Biome::Highlands => PropKind::Birch,
-        Biome::Volcanic => PropKind::DeadTree,
+/// One of a mix of species (ids with how common each is), where `t` in `0.0..1.0` is a random number.
+fn pick(mix: &[(&'static str, f32)], t: f32) -> &'static str {
+    let total: f32 = mix.iter().map(|(_, weight)| weight).sum();
+    let mut left = t * total;
+    for (id, weight) in mix {
+        left -= weight;
+        if left < 0.0 {
+            return id;
+        }
     }
+    mix.last().map_or("", |(id, _)| id)
+}
+
+/// Young, mature or old (0, 1 or 2), where `t` in `0.0..1.0` is a random number.
+fn pick_variant(t: f32) -> u8 {
+    let mut left = t;
+    for (variant, share) in VARIANT_SHARES.iter().enumerate() {
+        left -= share;
+        if left < 0.0 {
+            return variant as u8;
+        }
+    }
+    VARIANT_SHARES.len() as u8 - 1
+}
+
+/// A tree prop of species `id` (by its place in the world's species), if it's one of them.
+fn tree(palette: &[String], id: &str, variant: u8) -> Option<PropKind> {
+    let species = palette.iter().position(|known| known == id)? as u16;
+    Some(PropKind::Tree { species, variant })
+}
+
+/// Whether there's water within [`WATERSIDE_CELLS`] of a cell (in its chunk).
+fn near_water(chunk: &Chunk, x: i32, y: i32) -> bool {
+    let last = CHUNK_SIZE - 1;
+    (-WATERSIDE_CELLS..=WATERSIDE_CELLS).any(|dy| {
+        (-WATERSIDE_CELLS..=WATERSIDE_CELLS).any(|dx| {
+            let (nx, ny) = ((x + dx).clamp(0, last) as usize, (y + dy).clamp(0, last) as usize);
+            chunk.cell(nx, ny).fluid.is_some_and(|fluid| fluid.kind == venture_world::FluidKind::Water)
+        })
+    })
 }

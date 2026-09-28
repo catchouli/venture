@@ -12,9 +12,8 @@
 //!   with dither. Trees of one template share meshes and materials, so
 //!   their draws batch.
 //! - **Planting:** once a chunk's meshes are shown and the templates are
-//!   ready, its tree props become trees, as children of the chunk.
-//!   (Until the world names species itself, step 4 of the plan, each old
-//!   prop kind stands for a mix of species: see [`species_for`].)
+//!   ready, its tree props become trees, as children of the chunk: each
+//!   names its species (in the world's list of them) and its variant.
 //!
 //! Leaves are alpha-tested and lit from both sides without their normals
 //! flipping (`cull_mode: None` rather than `double_sided`), since their
@@ -40,21 +39,21 @@ use venture_content::trees::{Species, TreeDrawing};
 use venture_trees::impostor::{Impostor, impostor};
 use venture_trees::photos::{LeafPhotos, Photos};
 use venture_trees::{Detail, MeshPart, TreeParams, TreeTextures, grow, textures};
-use venture_world::{Biome, CHUNK_SIZE, Chunk, PropKind};
+use venture_world::{CHUNK_SIZE, Chunk, PropKind};
 
 use crate::common::coords::to_bevy;
 use crate::common::mipmaps::{add_mipmaps, add_mipmaps_keeping_coverage};
 use crate::content::ContentStore;
+use crate::world::source::WorldInfo;
 use crate::world::streaming::{ChunkStore, MeshTask, ShownChunks};
 
-/// Each species' variants: (age, seed). Young, mature and old.
+/// Each species' variants: (age, seed). Young, mature and old (as
+/// [`PropKind::Tree`]'s variant numbers them).
 const VARIANTS: [(f32, u64); 3] = [(0.55, 11), (1.0, 12), (1.4, 13)];
 /// Leaves are see-through below this coverage.
 const ALPHA_CUTOFF: f32 = 0.5;
 /// How far from its middle a trunk's flared base reaches, for sinking it on slopes, in metres.
 const TRUNK_BASE_REACH: f32 = 1.2;
-/// Bushes are young trees of their species, this much smaller than usual.
-const BUSH_SCALE: f32 = 0.45;
 /// A tree's material: the standard one, fading where it's in the way.
 pub type TreeMaterial = ExtendedMaterial<StandardMaterial, TreeFade>;
 
@@ -320,49 +319,6 @@ fn mesh(part: &MeshPart) -> Mesh {
         .with_inserted_indices(Indices::U32(part.indices.clone()))
 }
 
-/// A number from 0 to 1 from a prop's place (the same every time).
-fn place_hash(x: f32, y: f32, salt: u32) -> f32 {
-    let mut h = (x * 97.0) as i32 as u32 ^ ((y * 131.0) as i32 as u32).wrapping_mul(0x9e37_79b9) ^ salt;
-    h ^= h >> 16;
-    h = h.wrapping_mul(0x7feb_352d);
-    h ^= h >> 15;
-    h = h.wrapping_mul(0x846c_a68b);
-    h ^= h >> 16;
-    (h >> 8) as f32 / (1u32 << 24) as f32
-}
-
-/// Which species a tree prop is, and whether it's a bush (a small young one).
-///
-/// The world's props only say "oak", "birch", "pine" or "bush" so far (step
-/// 4 of the plan gives them species), so each stands for a mix, chosen by
-/// its place and biome.
-fn species_for(kind: PropKind, biome: Biome, pick: f32) -> Option<(&'static str, bool)> {
-    let choose = |mix: &[(&'static str, f32)]| {
-        let total: f32 = mix.iter().map(|(_, weight)| weight).sum();
-        let mut left = pick * total;
-        mix.iter()
-            .find(|(_, weight)| {
-                left -= weight;
-                left < 0.0
-            })
-            .or(mix.last())
-            .map(|(id, _)| *id)
-    };
-    match kind {
-        PropKind::Oak => {
-            let mix: &[_] = match biome {
-                Biome::Meadow => &[("beech", 3.0), ("ash", 2.0), ("oak", 2.0), ("sycamore", 1.0), ("willow", 0.5)],
-                _ => &[("oak", 4.0), ("ash", 2.0), ("beech", 1.5), ("sycamore", 1.5), ("yew", 0.3)],
-            };
-            choose(mix).map(|id| (id, false))
-        }
-        PropKind::Birch => choose(&[("birch", 3.0), ("hazel", 1.0)]).map(|id| (id, false)),
-        PropKind::Pine => Some(("scots_pine", false)),
-        PropKind::Bush => choose(&[("hawthorn", 1.0), ("hazel", 1.0)]).map(|id| (id, true)),
-        PropKind::DeadTree | PropKind::Boulder => None,
-    }
-}
-
 /// Plants trees in chunks that are shown and haven't been planted with the
 /// latest templates.
 fn plant_trees(
@@ -370,9 +326,11 @@ fn plant_trees(
     templates: Res<TreeTemplates>,
     shown: Res<ShownChunks>,
     store: Res<ChunkStore>,
+    world: Option<Res<WorldInfo>>,
     chunks: Query<(&GlobalTransform, Option<&Planted>, Option<&Children>), Without<MeshTask>>,
     parts: Query<(), With<TreePart>>,
 ) {
+    let Some(world) = world else { return };
     if templates.species.is_empty() {
         return;
     }
@@ -387,7 +345,7 @@ fn plant_trees(
             commands.entity(*child).despawn();
         }
         commands.entity(entity).insert(Planted(templates.generation));
-        plant_chunk(&mut commands, entity, chunk_place, chunk, &templates);
+        plant_chunk(&mut commands, entity, chunk_place, chunk, &templates, &world.0.tree_species);
     }
 }
 
@@ -397,6 +355,7 @@ fn plant_chunk(
     chunk_place: &GlobalTransform,
     chunk: &Chunk,
     templates: &TreeTemplates,
+    species_ids: &[String],
 ) {
     let (origin_x, origin_y) = chunk.pos.origin_cell();
     let drawing = &templates.drawing;
@@ -415,15 +374,17 @@ fn plant_chunk(
         },
     ];
     for prop in &chunk.props {
+        let PropKind::Tree { species, variant } = prop.kind else { continue };
         let (local_x, local_y) = (prop.x - origin_x as f32, prop.y - origin_y as f32);
-        let cell = chunk
-            .cell((local_x as usize).min(CHUNK_SIZE as usize - 1), (local_y as usize).min(CHUNK_SIZE as usize - 1));
-        let Some((species, bush)) = species_for(prop.kind, cell.biome, place_hash(prop.x, prop.y, 1)) else { continue };
-        let Some(variants) = templates.species.get(species).filter(|variants| !variants.is_empty()) else { continue };
-        // Bushes are the youngest variant, smaller; trees any variant.
-        let variant = if bush { 0 } else { (place_hash(prop.x, prop.y, 2) * variants.len() as f32) as usize };
-        let template = &variants[variant.min(variants.len() - 1)];
-        let scale = if bush { BUSH_SCALE * prop.scale } else { 0.85 + 0.3 * (prop.scale - 0.75) / 0.55 };
+        let Some(variants) = species_ids
+            .get(usize::from(species))
+            .and_then(|id| templates.species.get(id))
+            .filter(|variants| !variants.is_empty())
+        else {
+            continue;
+        };
+        let template = &variants[usize::from(variant).min(variants.len() - 1)];
+        let scale = prop.scale;
         // Sunk into the ground, so the trunk's base stays buried on a slope.
         let sink = ground_slope(chunk, local_x, local_y) * TRUNK_BASE_REACH + 0.1;
         let local = Transform::from_translation(to_bevy(local_x, local_y, prop.ground_height - sink))

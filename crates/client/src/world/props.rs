@@ -36,7 +36,7 @@ impl PropTemplates {
         match kind {
             PropKind::DeadTree => Some(&self.dead_tree),
             PropKind::Boulder => Some(&self.boulder),
-            PropKind::Oak | PropKind::Birch | PropKind::Pine | PropKind::Bush => None,
+            PropKind::Tree { .. } => None,
         }
     }
 }

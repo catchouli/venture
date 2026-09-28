@@ -159,7 +159,10 @@ Any chunk can be generated at any time, in any order. For each chunk:
    noise groups trees into woods and clearings, and the biome decides the
    species (oaks in grassland, birches in meadows, pines in the highlands,
    dead trees in volcanic land). Only `tree_share` of the spots that could
-   have a tree get one, since real trees need room. Boulders favour rocky
+   have a tree get one, since real trees need room. Each biome has a mix of
+   tree species (`trees`) and of bushes (`bush_species`: young trees, small),
+   and trees near water are mostly willows. Each tree is young, mature or
+   old, and the world's manifest lists its species (`tree_species`). Boulders favour rocky
    ground. (The client grows the trees themselves: see
    [plan-trees.md](plan-trees.md).)
 

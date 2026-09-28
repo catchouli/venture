@@ -1,6 +1,6 @@
 //! Which terrain cells can be walked on.
 
-use venture_world::{CHUNK_SIZE, Chunk, FluidKind, PropKind};
+use venture_world::{BUSH_SCALE, CHUNK_SIZE, Chunk, FluidKind, Prop, PropKind};
 
 /// What a character can walk through.
 #[derive(Clone, Debug, PartialEq)]
@@ -46,7 +46,7 @@ impl ChunkObstacles {
 
         let (origin_x, origin_y) = chunk.pos.origin_cell();
         for prop in &chunk.props {
-            let Some(radius) = blocking_radius(prop.kind) else { continue };
+            let Some(radius) = blocking_radius(prop) else { continue };
             let radius = radius * prop.scale;
             let (local_x, local_y) = (prop.x - origin_x as f32, prop.y - origin_y as f32);
             let cells = |centre: f32| {
@@ -74,14 +74,15 @@ impl ChunkObstacles {
     }
 }
 
-/// How far around its base a prop blocks, at scale 1, in metres. Bushes can
-/// be pushed through.
-fn blocking_radius(kind: PropKind) -> Option<f32> {
-    match kind {
-        PropKind::Oak | PropKind::Pine => Some(0.5),
-        PropKind::Birch | PropKind::DeadTree => Some(0.35),
+/// How far around its base a prop blocks, at scale 1, in metres. Bushes
+/// (trees smaller than [`BUSH_SCALE`]) can be pushed through.
+fn blocking_radius(prop: &Prop) -> Option<f32> {
+    match prop.kind {
+        PropKind::Tree { .. } if prop.scale < BUSH_SCALE => None,
+        // Young, mature and old trees' trunks.
+        PropKind::Tree { variant, .. } => Some([0.3, 0.45, 0.6][usize::from(variant.min(2))]),
+        PropKind::DeadTree => Some(0.35),
         PropKind::Boulder => Some(1.1),
-        PropKind::Bush => None,
     }
 }
 
@@ -102,7 +103,8 @@ mod tests {
         let mut chunk = Chunk::new(ChunkPos::new(0, 0));
         chunk.cell_mut(5, 5).fluid = Some(Fluid { kind: FluidKind::Water, body: FluidBody::Lake, level: 2.0 });
         chunk.cell_mut(6, 5).fluid = Some(Fluid { kind: FluidKind::Water, body: FluidBody::Lake, level: 0.3 });
-        chunk.props.push(Prop { kind: PropKind::Oak, x: 20.5, y: 20.5, ground_height: 0.0, scale: 1.0, rotation: 0.0 });
+        let kind = PropKind::Tree { species: 0, variant: 1 };
+        chunk.props.push(Prop { kind, x: 20.5, y: 20.5, ground_height: 0.0, scale: 1.0, rotation: 0.0 });
         let obstacles = ChunkObstacles::from_chunk(&chunk, &WalkingLimits::default());
         assert!(obstacles.is_blocked(5, 5), "deep water");
         assert!(!obstacles.is_blocked(6, 5), "shallow water can be waded");

@@ -174,11 +174,12 @@ over 10,000 trees. The plan:
 
 ## Woodcutting: trees you can select, fell and cut up
 
-Asked for on 2026-09-28, while the trees were being built. The Woodcutting
-skill (in the content already: "Felling trees for logs and timber") works
-like this:
+Asked for on 2026-09-28, while the trees were being built. Felling is part
+of the **Woodworking** skill (which also covers working wood: skills
+gather their own materials and make things from them, so there's no
+separate Woodcutting). It works like this:
 1. **Select a tree** (the ones near you): the target frame names it ("Yew
-   tree") with its Woodcutting level.
+   tree") with its Woodworking level.
 2. **Fell it:** with an axe in hand, click the selected tree (the cursor
    becomes an axe). You run to it and chop. Each swing may bite, by your
    level against the tree's and your axe's power. After enough bites it
@@ -188,7 +189,7 @@ like this:
    logs and experience, until its logs run out.
 4. **After a while** the fallen tree goes, and the tree grows back.
 
-**Different woods:** each species has a Woodcutting level, and its own
+**Different woods:** each species has a Woodworking level, and its own
 logs, with a wood (soft to hard) for making things later. Soft woods come
 from smaller, quicker trees and need a lower level:
 
@@ -205,7 +206,11 @@ from smaller, quicker trees and need a lower level:
 | Oak | 50 | very hard |
 | Yew | 60 | very hard, prized for bows |
 
-(Making things from wood, perhaps a Woodworking skill, comes later.)
+(Making things from wood comes later, in the same skill.)
+
+**Axes:** the first is a **stone axe**: a knapped stone head bound to a
+haft, for the lowest levels. Metal axes come later, made by
+Blacksmithing.
 
 **How it fits the world, which is baked:**
 - **Standing trees stay world props.** They're baked with their species
@@ -220,7 +225,7 @@ from smaller, quicker trees and need a lower level:
   So selecting it, the target frame and other players seeing it all work
   as for any entity.
 - **The rules** (bite chances, logs, experience) are small tested
-  functions in `venture_rpg::woodcutting`. **The numbers** (swing time,
+  functions in `venture_rpg::woodcutting` (felling, as a part of Woodworking). **The numbers** (swing time,
   how long a fallen tree lasts, regrowth) are in `server.ron`. **Which
   tree is which** (level, logs, experience) is content
   (`trees/woodcutting.ron`), and **axes** are items with a woodcutting
@@ -265,7 +270,7 @@ from smaller, quicker trees and need a lower level:
 - [x] 1. The generator crate (first form; see "Where it stands")
 - [x] 2. The ten species (first tuning pass)
 - [x] 3. In the game (first form)
-- [ ] 4. World data (partly: trees are thinned to real spacing; species still come from the old prop kinds)
+- [x] 4. World data (species and variant baked; spacing by `tree_share`, not yet by each crown)
 - [ ] 5. Authored trees
 - [ ] 6. The editor (it shows the new trees; no tree tools yet)
 - [ ] 7. Impostors and wind (impostors are in; no wind yet)
@@ -334,13 +339,13 @@ cargo run --release -p venture_trees --bin tree -- oak --age 1.5 --seed 7 --out 
   the insides of trunks showed. It's fixed, with a test. Leaves and
   impostors are drawn from both sides with their own normals, so they
   weren't affected.
-- Until the world names species (step 4), each old prop kind stands for a
-  mix, chosen by place and biome:
-  - "oak": oak, ash, beech and sycamore, with the odd yew, and willow in
-    meadows;
-  - "birch": birch and hazel;
-  - "pine": Scots pine;
-  - bushes: young hawthorn and hazel.
+- **The world names each tree's species and variant** (step 4, chunk
+  format 3): a tree prop is `Tree { species, variant }`, where `species`
+  indexes the manifest's `tree_species` (content ids) and `variant` is
+  young, mature or old. Worldgen picks species from each biome's mix in
+  its config (`BiomeTerrain::trees`), with willows by water
+  (`waterside_tree`), and bushes are young trees of the biome's
+  `bush_species`, small (below `BUSH_SCALE`, so they don't block).
 - Worldgen plants a tree on only 22% of the spots it used to
   (`tree_share`), so woods have a tree every 8 to 10 m. This is generator
   version 3: rebake the world (`cargo run --release -p venture_worldgen --bin bake`).
