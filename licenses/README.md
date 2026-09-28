@@ -95,7 +95,9 @@ Walls and fences use ambientCG materials too, downloaded (2K PNG) to
 | Texture | What we use it for | Licence |
 | --- | --- | --- |
 | Rock051 | `content/textures/drystone/`: dry stone walls | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
-| Wood059 | `content/textures/fence_wood/`: fences | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Wood035 | `content/textures/boards/`: buildings' weatherboarding | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| ThatchedRoof001A | `content/textures/thatch/`: thatched roofs | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Wood059 | `content/textures/fence_wood/`: fences, and buildings' woodwork | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 
 ## Everything else
 
