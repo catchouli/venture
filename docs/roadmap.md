@@ -55,11 +55,17 @@ that do something, more quests and places).
 - **Terrain level of detail**, so the view distance can grow (distant chunks
   meshed at lower resolution).
 
-## Next: fishing
+## Fishing: the slice is in, playtesting next
 
 The first playable slice of the fishing skill (levels 1–20, in the
-grassland round the starting town): see [plan-fishing.md](plan-fishing.md)
-and the design in `design_docs/fishing_skill/`.
+grassland round the starting town) is in: see [plan-fishing.md](plan-fishing.md)
+and the design in `design_docs/fishing_skill/`. Ledger, float and lure
+fishing with bites, strikes and a fight the client runs ahead; each
+player's own fish shadows; traps that soak while you're away; the slice's
+fish, bait, gear, starter kit and a tackle seller (Wendel); placeholder
+icons and sounds; a log line for each catch; the numbers in `server.ron`.
+Next: playtest against the slice's questions and tune; then cooking fish,
+activity windows (night fish), and the other biomes' waters.
 
 ## Next: the world
 
