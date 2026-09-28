@@ -30,7 +30,7 @@ as for `--local`.
     the view doesn't change size; wide fields scroll sideways.
   - **Walls and fences** (`world_authoring/walls.ron`, baked into the
     world; see [plan-walls.md](plan-walls.md)) are listed too. **Draw**
-    (with the kind beside it: dry-stone wall or fence) starts a new one:
+    (with the kind beside it: dry-stone wall, fence or hedge) starts a new one:
     click points on the ground and it's built as you go; double-click,
     Enter or Escape finishes, and clicking its first point closes it into a
     ring. Click a wall to choose it: its points show as handles. Drag one

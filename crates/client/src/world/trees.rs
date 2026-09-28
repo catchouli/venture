@@ -164,6 +164,13 @@ pub struct Template {
     impostor_material: Handle<TreeMaterial>,
 }
 
+impl Template {
+    /// Its leaves' material (hedges use it too).
+    pub fn leaf_material(&self) -> &Handle<TreeMaterial> {
+        &self.leaves
+    }
+}
+
 /// A species grown in the background (plain data, made into assets after).
 struct GrownSpecies {
     id: String,

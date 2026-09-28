@@ -214,7 +214,6 @@ fn leaves(skeleton: &Skeleton, detail: Detail) -> MeshPart {
     let Some((low, high)) = crown_bounds(skeleton) else { return mesh };
     let centre = (low + high) / 2.0;
     let half = ((high - low) / 2.0).max(Vec3::splat(0.1));
-    let columns = SPRIG_PICTURES.div_ceil(2);
     for (index, leaf) in skeleton.leaves.iter().enumerate() {
         let (scale, keep) = match detail {
             Detail::Full => (1.0, true),
@@ -237,10 +236,7 @@ fn leaves(skeleton: &Skeleton, detail: Detail) -> MeshPart {
         let shade = (CROWN_HEART + (1.0 - CROWN_HEART) * depth) * underneath;
         let colour = [shade, shade, shade, 1.0];
         // The sprig's picture: a cell of the atlas, the twig's base at the bottom middle.
-        let (column, row) = (leaf.picture % columns, leaf.picture / columns);
-        let cell = 1.0 / columns as f32;
-        let (u0, u1) = (column as f32 * cell, (column + 1) as f32 * cell);
-        let (v_top, v_bottom) = (row as f32 * cell, (row + 1) as f32 * cell);
+        let [u0, u1, v_top, v_bottom] = sprig_cell(leaf.picture);
         let base = leaf.position;
         let tip = base + leaf.along * length;
         let half_width = right * width / 2.0;
@@ -251,6 +247,17 @@ fn leaves(skeleton: &Skeleton, detail: Detail) -> MeshPart {
         mesh.indices.extend([a, a + 1, a + 2, a, a + 2, a + 3]);
     }
     mesh
+}
+
+/// Where sprig picture `picture` (0 to [`SPRIG_PICTURES`] - 1) is in a
+/// species' leaf atlas: `[left, right, top, bottom]` texture coordinates.
+/// The twig's base is at the bottom middle.
+pub fn sprig_cell(picture: u32) -> [f32; 4] {
+    let columns = SPRIG_PICTURES.div_ceil(2);
+    let picture = picture % SPRIG_PICTURES;
+    let (column, row) = (picture % columns, picture / columns);
+    let cell = 1.0 / columns as f32;
+    [column as f32 * cell, (column + 1) as f32 * cell, row as f32 * cell, (row + 1) as f32 * cell]
 }
 
 /// The box round every leaf.

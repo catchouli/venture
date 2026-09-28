@@ -334,12 +334,10 @@ fn add_wall(document: &mut Document, kind: WallKind, first: (f32, f32), now: f64
     let prefix = match kind {
         WallKind::DryStone => "wall",
         WallKind::Fence => "fence",
+        WallKind::Hedge => "hedge",
     };
     let id = (1..).map(|n| format!("{prefix}_{n}")).find(|id| !taken.contains(id))?;
-    let height = match kind {
-        WallKind::DryStone => 1.3,
-        WallKind::Fence => 1.2,
-    };
+    let height = kind.usual_height();
     let def = WallDef { id: id.clone(), kind, points: vec![first], closed: false, height, seed: new_seed(now) };
     walls.files_mut().first_mut()?.entries.push(def);
     document.changed(collection, 0, now);
@@ -747,7 +745,7 @@ pub fn walls_list(
                     egui::ComboBox::from_id_salt("new wall kind").selected_text(tool.new_kind.name()).show_ui(
                         ui,
                         |ui| {
-                            for kind in [WallKind::DryStone, WallKind::Fence] {
+                            for kind in WallKind::ALL {
                                 ui.selectable_value(&mut tool.new_kind, kind, kind.name());
                             }
                         },

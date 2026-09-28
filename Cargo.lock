@@ -7063,6 +7063,7 @@ dependencies = [
  "glam",
  "ron",
  "serde",
+ "venture_trees",
  "venture_world",
 ]
 
