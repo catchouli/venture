@@ -549,19 +549,40 @@ fn hedge(path: &Path, height: f32, builder: &mut Builder, random: &mut Random) {
         if run.capped_end {
             rings.extend((0..DOME_RINGS).rev().map(|k| (run.end, dome(k))));
         }
-        let mut previous = ring(rings[0].0, rings[0].1);
-        for pair in rings.windows(2) {
-            let ((from, from_past), (to, to_past)) = (pair[0], pair[1]);
-            let next = ring(to, to_past);
-            let (u_from, u_to) = (from + from_past, to + to_past);
-            let (stretch, _) = builder.place((from + to) / 2.0, Vec3::ZERO);
+        // Each ring's points, with their texture's `u`: metres along the hedge,
+        // and round a dome, the distance over its surface from where the
+        // hedge ends (so the leaves keep their size as it curves round), with
+        // `around` measured from the top (so rings that shrink do so evenly).
+        let mut built: Vec<Vec<(Vec3, Vec3, f32, f32)>> = rings
+            .iter()
+            .map(|&(distance, past)| {
+                let points = ring(distance, past);
+                let middle = points.last().map_or(0.0, |point| point.2) / 2.0;
+                points.into_iter().map(|(place, normal, around)| (place, normal, around - middle, distance)).collect()
+            })
+            .collect();
+        let first_body = if run.capped_start { DOME_RINGS } else { 0 };
+        let last_body = built.len() - 1 - if run.capped_end { DOME_RINGS } else { 0 };
+        for k in (0..first_body).rev() {
+            for i in 0..built[k].len() {
+                let (next, here) = (built[k + 1][i], built[k][i]);
+                built[k][i].3 = next.3 - here.0.distance(next.0);
+            }
+        }
+        for k in last_body + 1..built.len() {
+            for i in 0..built[k].len() {
+                let (before, here) = (built[k - 1][i], built[k][i]);
+                built[k][i].3 = before.3 + here.0.distance(before.0);
+            }
+        }
+        for (k, pair) in built.windows(2).enumerate() {
+            let (previous, next) = (&pair[0], &pair[1]);
+            let (stretch, _) = builder.place((rings[k].0 + rings[k + 1].0) / 2.0, Vec3::ZERO);
             let origin = Vec3::from(stretch.origin);
             let body = &mut stretch.full;
             for i in 0..previous.len() - 1 {
                 let first = body.positions.len() as u32;
-                for (&(place, normal, around), u) in
-                    [(&previous[i], u_from), (&next[i], u_to), (&next[i + 1], u_to), (&previous[i + 1], u_from)]
-                {
+                for (place, normal, around, u) in [previous[i], next[i], next[i + 1], previous[i + 1]] {
                     // Darker low down, where less light gets in, and patchy over a metre or two.
                     let height_share = ((place.y - origin.y) / height.max(0.1)).clamp(0.0, 1.0);
                     let patches =
@@ -574,7 +595,6 @@ fn hedge(path: &Path, height: f32, builder: &mut Builder, random: &mut Random) {
                 }
                 body.indices.extend([first, first + 1, first + 2, first, first + 2, first + 3]);
             }
-            previous = next;
         }
 
         // Sprigs of leaves along its shoulders and top, lying close, to soften its outline.

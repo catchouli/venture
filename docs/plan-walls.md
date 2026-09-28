@@ -153,8 +153,10 @@ In the World tab:
   (`content/textures/hedge/`, made from hawthorn's own sprigs by
   `cargo run --release -p venture_trees --bin tree -- hawthorn --foliage content/textures/hedge`:
   sprigs overlapping at every angle, layered darker inwards, with a normal
-  map and ambient occlusion from the layers; it tiles a metre across, laid
-  in metres along the hedge and round its outline; matte), lumpy (each point of its outline wobbles in and out on its
+  map and ambient occlusion from the layers; it tiles two metres across,
+  dense enough that no gaps repeat; laid in metres along the hedge, round
+  its outline, and over its domed ends by distance over the surface, so the
+  leaves keep their size as it curves; matte), lumpy (each point of its outline wobbles in and out on its
   own), full at the shoulders, rounded over a clipped top, and closed by a
   rounded dome where it ends; drawn at any distance. Small sprigs of hawthorn's leaves
   (cards from the tree's own leaf atlas and material, drawn to 110 m) lie
