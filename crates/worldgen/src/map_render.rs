@@ -77,13 +77,14 @@ fn draw_world(folder: &Path, manifest: &WorldManifest) -> std::io::Result<(RgbIm
 }
 
 /// Draws walls and fences as lines along their samples (leaving their gaps):
-/// dry stone grey and as wide as it is, fences brown and thin.
+/// dry stone grey and as wide as it is, fences brown and thin, hedges dark green.
 fn draw_walls(picture: &mut RgbImage, walls: &[BakedWall]) {
     let (width, height) = (picture.width() as i32, picture.height() as i32);
     for wall in walls {
         let (colour, reach) = match wall.kind {
             WallKind::DryStone => (Rgb([84, 80, 74]), 0.7),
             WallKind::Fence => (Rgb([96, 70, 44]), 0.45),
+            WallKind::Hedge => (Rgb([40, 66, 28]), 0.9),
         };
         for pair in wall.samples.windows(2) {
             let (a, b) = (pair[0], pair[1]);

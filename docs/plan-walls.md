@@ -149,4 +149,9 @@ In the World tab:
   `walls.ron` tidily, so its comments go.
 - [x] Rebaking only the chunks walls touch (`bake --walls`), and a running
   server (and clients, and the editor) loading the new world by itself.
-- [ ] 7. Later: gates, stiles, hedges, walls meeting buildings.
+- [x] Hedges (`kind: Hedge`): a lumpy leafy body (drawn at any distance)
+  with sprigs of hawthorn's leaves all over it (cards from the tree's own
+  leaf atlas and material, drawn to 110 m), 1.7 m tall by default, 1.2 m
+  wide. A test hedgerow runs south of the village, open where the road
+  crosses. On the map, dark green.
+- [ ] 7. Later: gates, stiles, walls meeting buildings.

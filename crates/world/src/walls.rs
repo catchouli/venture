@@ -17,14 +17,29 @@ pub enum WallKind {
     DryStone,
     /// Posts driven into the ground, with rails between them.
     Fence,
+    /// A hedge: a hedgerow of leafy shrubs, cut flat along the top.
+    Hedge,
 }
 
 impl WallKind {
+    /// Every kind, in the order they're offered.
+    pub const ALL: [WallKind; 3] = [WallKind::DryStone, WallKind::Fence, WallKind::Hedge];
+
+    /// How tall a new one is, in metres.
+    pub fn usual_height(self) -> f32 {
+        match self {
+            WallKind::DryStone => 1.3,
+            WallKind::Fence => 1.2,
+            WallKind::Hedge => 1.7,
+        }
+    }
+
     /// Its name, for people.
     pub fn name(self) -> &'static str {
         match self {
             WallKind::DryStone => "Dry-stone wall",
             WallKind::Fence => "Fence",
+            WallKind::Hedge => "Hedge",
         }
     }
 
@@ -33,6 +48,7 @@ impl WallKind {
         match self {
             WallKind::DryStone => 0.4,
             WallKind::Fence => 0.15,
+            WallKind::Hedge => 0.55,
         }
     }
 }

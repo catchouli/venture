@@ -14,7 +14,9 @@
 //!   (`textures/drystone/` and `fence_wood/`: colour, normal map, and
 //!   ambient occlusion and roughness), multiplied by each piece's vertex
 //!   colour. Bevy doesn't make mipmaps for JPEGs, so they're added once the
-//!   pictures load.
+//!   pictures load. A hedge's body is its vertex colour; its leaves are
+//!   [`HEDGE_SPECIES`]' own leaves (the trees' material, fading near the
+//!   camera as trees do), added once the trees have grown.
 
 use std::collections::HashMap;
 
@@ -30,6 +32,7 @@ use venture_structures::{BakedWall, MeshPart, Stretch, WallKind, build_wall};
 use crate::common::mipmaps::add_mipmaps;
 use crate::content::{CONTENT_SOURCE, ContentStore};
 use crate::world::source::WorldInfo;
+use crate::world::trees::TreeTemplates;
 
 /// Each kind's texture (a folder in the content's `textures/`), and how
 /// many metres it covers before it repeats.
@@ -37,6 +40,10 @@ const TEXTURES: [(WallKind, &str, f32); 2] =
     [(WallKind::DryStone, "drystone", 1.6), (WallKind::Fence, "fence_wood", 1.2)];
 /// The pictures of each texture, and whether each is sRGB.
 const PICTURES: [(&str, bool); 3] = [("colour.jpg", true), ("normal.jpg", false), ("surface.jpg", false)];
+/// The tree species whose leaves hedges wear.
+pub const HEDGE_SPECIES: &str = "hawthorn";
+/// Hedges' leaves are drawn up to this far from the camera, in metres.
+const HEDGE_LEAVES_UNTIL: f32 = 110.0;
 /// Walls are every stone up to this far from the camera, in metres...
 const FULL_UNTIL: f32 = 60.0;
 /// ...crossfading to (and from) their far look over this distance...
@@ -51,7 +58,8 @@ impl Plugin for WallsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Walls>().init_resource::<ShownWalls>().add_systems(
             Update,
-            (load_materials, finish_textures, take_manifest_walls, start_building, finish_building).chain(),
+            (load_materials, finish_textures, take_manifest_walls, start_building, finish_building, dress_hedges)
+                .chain(),
         );
     }
 }
@@ -72,8 +80,11 @@ type Built = Vec<(WallKind, Stretch)>;
 /// The walls: their materials, and what's built.
 #[derive(Resource, Default)]
 pub struct Walls {
-    /// Each kind's material (in the order of [`TEXTURES`]), once asked for.
-    materials: Option<[Handle<StandardMaterial>; 2]>,
+    /// Each kind's material, once asked for.
+    materials: Option<HashMap<WallKind, Handle<StandardMaterial>>>,
+    /// Hedges' leaves waiting for the trees to grow (for their material):
+    /// the stretch they're on, and their mesh.
+    bare_hedges: Vec<(Entity, Handle<Mesh>)>,
     /// Each kind's pictures, until they've been given mipmaps.
     pictures: Vec<Handle<Image>>,
     /// Each wall shown, by its key: what it was built from, and its stretches.
@@ -101,7 +112,8 @@ fn load_materials(
         return;
     }
     let mut pictures = Vec::new();
-    let made = TEXTURES.map(|(_, texture, metres)| {
+    let mut made: HashMap<WallKind, Handle<StandardMaterial>> = HashMap::new();
+    for (kind, texture, metres) in TEXTURES {
         let [colour, normal, surface] = PICTURES.map(|(picture, srgb)| {
             let handle = asset_server
                 .load_builder()
@@ -110,7 +122,7 @@ fn load_materials(
             pictures.push(handle.clone());
             handle
         });
-        materials.add(StandardMaterial {
+        let material = materials.add(StandardMaterial {
             base_color_texture: Some(colour),
             normal_map_texture: Some(normal),
             // Ambient occlusion in red, roughness in green (and no metal: blue is 0).
@@ -121,8 +133,12 @@ fn load_materials(
             reflectance: 0.3,
             uv_transform: Affine2::from_scale(Vec2::splat(1.0 / metres)),
             ..default()
-        })
-    });
+        });
+        made.insert(kind, material);
+    }
+    // A hedge's body: leafy dark, rough and a little translucent, as leaves are.
+    let body = StandardMaterial { perceptual_roughness: 0.9, reflectance: 0.2, diffuse_transmission: 0.2, ..default() };
+    made.insert(WallKind::Hedge, materials.add(body));
     walls.materials = Some(made);
     walls.pictures = pictures;
 }
@@ -232,10 +248,8 @@ fn finish_building(mut commands: Commands, mut walls: ResMut<Walls>, mut meshes:
             }
         }
     }
-    let material = |kind: WallKind| {
-        let index = TEXTURES.iter().position(|(of, ..)| *of == kind).unwrap_or(0);
-        materials[index].clone()
-    };
+    let material =
+        |kind: WallKind| materials.get(&kind).or_else(|| materials.values().next()).cloned().unwrap_or_default();
     let range = |from: f32, to: f32| VisibilityRange {
         start_margin: from..if from > 0.0 { from + CROSSFADE } else { 0.0 },
         end_margin: to..to + CROSSFADE,
@@ -260,9 +274,44 @@ fn finish_building(mut commands: Commands, mut walls: ResMut<Walls>, mut meshes:
                     }
                 })
                 .id();
+            if !stretch.leaves.is_empty() {
+                walls.bare_hedges.push((parent, meshes.add(to_mesh(&stretch.leaves))));
+            }
             entities.push(parent);
         }
         walls.built.insert(key, (wall, entities));
+    }
+}
+
+/// Gives hedges their leaves, once the trees have grown (their material is
+/// the hedge species' leaves).
+fn dress_hedges(
+    mut commands: Commands,
+    mut walls: ResMut<Walls>,
+    templates: Res<TreeTemplates>,
+    stretches: Query<(), With<WallStretch>>,
+) {
+    if walls.bare_hedges.is_empty() {
+        return;
+    }
+    let Some(leaves) = templates
+        .species
+        .get(HEDGE_SPECIES)
+        .or_else(|| templates.species.values().next())
+        .and_then(|variants| variants.first())
+        .map(|template| template.leaf_material().clone())
+    else {
+        return;
+    };
+    let range = VisibilityRange {
+        start_margin: 0.0..0.0,
+        end_margin: HEDGE_LEAVES_UNTIL..HEDGE_LEAVES_UNTIL + CROSSFADE,
+        use_aabb: false,
+    };
+    for (stretch, mesh) in walls.bare_hedges.drain(..) {
+        if stretches.contains(stretch) {
+            commands.entity(stretch).with_child((Mesh3d(mesh), MeshMaterial3d(leaves.clone()), range.clone()));
+        }
     }
 }
 

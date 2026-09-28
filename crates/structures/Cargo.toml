@@ -11,6 +11,7 @@ rust-version.workspace = true
 reflect = ["dep:bevy_reflect", "bevy_reflect/reflect_documentation", "venture_world/reflect"]
 
 [dependencies]
+venture_trees.workspace = true
 bevy_reflect = { workspace = true, optional = true }
 glam.workspace = true
 ron.workspace = true
