@@ -354,6 +354,7 @@ mod tests {
             settlements,
             map: None,
             tree_species: Vec::new(),
+            walls: Vec::new(),
         }
     }
 

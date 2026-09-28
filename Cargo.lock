@@ -7053,6 +7053,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "venture_structures"
+version = "0.1.0"
+dependencies = [
+ "bevy_reflect",
+ "glam",
+ "ron",
+ "serde",
+ "venture_world",
+]
+
+[[package]]
 name = "venture_tools"
 version = "0.1.0"
 dependencies = [
@@ -7078,6 +7089,7 @@ dependencies = [
 name = "venture_world"
 version = "0.1.0"
 dependencies = [
+ "bevy_reflect",
  "postcard",
  "ron",
  "serde",

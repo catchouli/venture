@@ -13,6 +13,7 @@ members = [
     "crates/editor",
     "crates/tools",
     "crates/trees",
+    "crates/structures",
 ]
 
 [workspace.package]
@@ -30,6 +31,7 @@ venture_rpg = { path = "crates/rpg" }
 venture_protocol = { path = "crates/protocol" }
 venture_content = { path = "crates/content" }
 venture_trees = { path = "crates/trees" }
+venture_structures = { path = "crates/structures" }
 venture_server = { path = "crates/server", default-features = false }
 serde = { version = "1", features = ["derive"] }
 postcard = { version = "1", default-features = false, features = ["use-std"] }
@@ -67,6 +69,10 @@ opt-level = 3
 
 # So is growing trees (the client grows its tree templates as it loads).
 [profile.dev.package.venture_trees]
+opt-level = 3
+
+# And building walls.
+[profile.dev.package.venture_structures]
 opt-level = 3
 
 # Small, fast WebAssembly builds: `trunk build --release --cargo-profile wasm-release`.

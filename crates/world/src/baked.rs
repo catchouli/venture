@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// The version of the chunk file layout. Increase it whenever the layout changes.
-pub const CHUNK_FORMAT_VERSION: u16 = 3;
+pub const CHUNK_FORMAT_VERSION: u16 = 4;
 
 /// Name of the manifest file in a baked world folder.
 pub const MANIFEST_FILE: &str = "manifest.ron";
@@ -49,6 +49,9 @@ pub struct WorldManifest {
     /// `trees/species.ron`), which [`crate::PropKind::Tree`] refers to by index.
     #[serde(default)]
     pub tree_species: Vec<String>,
+    /// The world's walls and fences (authored, then baked: see `docs/plan-walls.md`).
+    #[serde(default)]
+    pub walls: Vec<crate::BakedWall>,
 }
 
 /// A settlement site in a baked world.
@@ -132,6 +135,7 @@ struct ChunkFile {
     heights: Vec<i16>,
     cells: Vec<CellRecord>,
     props: Vec<Prop>,
+    structure_cells: Vec<u16>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -166,7 +170,14 @@ pub fn encode_chunk(chunk: &Chunk) -> Vec<u8> {
             }
         })
         .collect();
-    let file = ChunkFile { format: CHUNK_FORMAT_VERSION, pos: chunk.pos, heights, cells, props: chunk.props.clone() };
+    let file = ChunkFile {
+        format: CHUNK_FORMAT_VERSION,
+        pos: chunk.pos,
+        heights,
+        cells,
+        props: chunk.props.clone(),
+        structure_cells: chunk.structure_cells.clone(),
+    };
     postcard::to_stdvec(&file).expect("a chunk always serialises")
 }
 
@@ -192,6 +203,7 @@ pub fn decode_chunk(bytes: &[u8]) -> Result<Chunk, BakedWorldError> {
         };
     }
     chunk.props = file.props;
+    chunk.structure_cells = file.structure_cells;
     Ok(chunk)
 }
 
@@ -216,6 +228,7 @@ mod tests {
         assert!((decoded.cell(1, 2).fluid.unwrap().level - 40.004).abs() <= 0.005);
         assert_eq!(decoded.cell(1, 2).fluid.unwrap().body, FluidBody::Lake);
         assert_eq!(decoded.props, chunk.props);
+        assert_eq!(decoded.structure_cells, chunk.structure_cells);
     }
 
     #[test]
@@ -230,6 +243,7 @@ mod tests {
             settlements: vec![SettlementInfo { position: (10.0, 20.0), biome: Biome::Meadow }],
             map: Some(crate::MapInfo::for_world(4096)),
             tree_species: Vec::new(),
+            walls: Vec::new(),
         };
         assert_eq!(WorldManifest::from_ron(&manifest.to_ron()).unwrap(), manifest);
     }

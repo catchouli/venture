@@ -1,0 +1,21 @@
+[package]
+name = "venture_structures"
+description = "Generated structures: dry stone walls and fences along drawn paths, as meshes (see docs/plan-walls.md)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+# Reflection (for the editor's property panels).
+reflect = ["dep:bevy_reflect", "bevy_reflect/reflect_documentation", "venture_world/reflect"]
+
+[dependencies]
+bevy_reflect = { workspace = true, optional = true }
+glam.workspace = true
+ron.workspace = true
+serde.workspace = true
+venture_world.workspace = true
+
+[lints]
+workspace = true

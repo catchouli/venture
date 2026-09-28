@@ -47,6 +47,7 @@ fn main() -> std::io::Result<()> {
             .collect(),
         map: None,
         tree_species: world.config().tree_species(),
+        walls: Vec::new(),
     };
     std::fs::create_dir_all(output.join("chunks"))?;
 
