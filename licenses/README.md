@@ -89,6 +89,14 @@ opacity as alpha). The tree generator arranges the leaves into sprigs:
 | LeafSet019 | Yew foliage | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 | LeafSet024 | Hazel leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 
+Walls and fences use ambientCG materials too, downloaded (2K PNG) to
+`~/assets/structures/` and imported into `content/textures/` by `import_texture`:
+
+| Texture | What we use it for | Licence |
+| --- | --- | --- |
+| Rock051 | `content/textures/drystone/`: dry stone walls | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Wood059 | `content/textures/fence_wood/`: fences | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+
 ## Everything else
 
 Everything else in the repository (code, content, placeholder icons, sounds

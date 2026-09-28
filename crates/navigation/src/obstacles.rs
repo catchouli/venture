@@ -44,6 +44,12 @@ impl ChunkObstacles {
             }
         }
 
+        // Walls and fences.
+        for &cell in &chunk.structure_cells {
+            if let Some(blocked) = blocked.get_mut(usize::from(cell)) {
+                *blocked = true;
+            }
+        }
         let (origin_x, origin_y) = chunk.pos.origin_cell();
         for prop in &chunk.props {
             let Some(radius) = blocking_radius(prop) else { continue };

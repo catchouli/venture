@@ -15,6 +15,7 @@ mod coords;
 mod ground;
 mod map;
 mod prop;
+mod walls;
 
 pub use baked::{
     BakedWorldError, CHUNK_FORMAT_VERSION, MANIFEST_FILE, SettlementInfo, WorldManifest, chunk_file_path, decode_chunk,
@@ -26,6 +27,7 @@ pub use coords::{CellPos, ChunkPos};
 pub use ground::{Fluid, FluidBody, FluidKind, Ground, TerrainCell};
 pub use map::{LabelKind, MAP_LABELS_FILE, MapInfo, MapLabel, MapLabels, map_tile_path};
 pub use prop::{BUSH_SCALE, Prop, PropKind, TREE_VARIANTS};
+pub use walls::{BakedWall, WALL_SAMPLE_SPACING, WallKind, WallSample};
 
 /// Width of one terrain cell, in metres.
 pub const CELL_SIZE: f32 = 1.0;
