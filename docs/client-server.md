@@ -606,6 +606,27 @@ the trap is an entity everyone is told about (`EntityKind::Trap { owner }`);
 `Fishing(CollectTrap)` empties it into the owner's bag (if it's caught
 anything), with the experience, and takes it back. See [plan-fishing.md](plan-fishing.md).
 
+## The world, baked again
+
+When the world is baked again while the server runs (from the editor, or
+by hand), nobody needs to restart:
+- **The server** (`world.rs`) looks at the manifest's time every second.
+  Once it has changed and stayed the same for a second (the bake writes
+  it last), it loads the world again on a thread of its own and swaps it
+  in. Each chunk file's hash tells it which chunks changed.
+  - Players are told (`WorldChanged { chunks }`).
+  - Woodcutting forgets trees felled in those chunks (their props may be
+    different trees now): they grow back at once (`TreeGrewBack`), and
+    their fallen trees go.
+  - The web server's world version (the manifest's fingerprint, which world
+    addresses carry as `?v=`) follows the new manifest, so browsers fetch
+    the new files rather than keeping the old ones.
+- **Clients** (`world/source.rs`) read the manifest again first (so they
+  ask for files with its new fingerprint), then forget those chunks (and
+  draw their neighbours again, whose edges they shape), so they stream in
+  again, and read the map again. The editor does the same after its own
+  bake.
+
 ## Woodcutting
 
 Felling trees and cutting them up for logs, part of the Woodworking skill

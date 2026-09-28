@@ -20,7 +20,7 @@ use venture_world::{Chunk, ChunkPos, FluidKind, decode_chunk};
 use crate::common::coords::to_bevy;
 use crate::common::palette;
 use crate::world::props::{PropTemplates, props_mesh};
-use crate::world::source::{WorldInfo, WorldSource};
+use crate::world::source::{WorldInfo, WorldReloaded, WorldSource};
 use crate::world::terrain_material::{TerrainExtension, TerrainMaterial};
 use crate::world::terrain_mesh::{Neighbourhood, fluid_mesh, terrain_mesh};
 use crate::world::water_material::{WaterMaterial, water_material};
@@ -54,6 +54,7 @@ impl Plugin for ChunkStreamingPlugin {
             .add_systems(
                 Update,
                 (
+                    reload_changed_chunks,
                     unload_distant_chunks,
                     start_data_tasks,
                     finish_data_tasks,
@@ -167,6 +168,33 @@ fn chunks_around(centre: ChunkPos, radius: i32) -> Vec<ChunkPos> {
         .collect();
     positions.sort_by_key(|pos| chunk_distance(*pos, centre));
     positions
+}
+
+/// Forgets chunks that were baked again (every chunk, if which isn't
+/// known), so they're read and shown again.
+fn reload_changed_chunks(
+    mut commands: Commands,
+    mut reloaded: MessageReader<WorldReloaded>,
+    mut store: ResMut<ChunkStore>,
+    mut obstacles: ResMut<ObstacleStore>,
+    mut shown: ResMut<ShownChunks>,
+    mut data_tasks: ResMut<DataTasks>,
+) {
+    for reload in reloaded.read() {
+        let changed = |pos: &ChunkPos| reload.chunks.as_ref().is_none_or(|chunks| chunks.contains(pos));
+        store.0.retain(|pos, _| !changed(pos));
+        obstacles.0.retain(|pos, _| !changed(pos));
+        data_tasks.running.retain(|pos, _| !changed(pos));
+        data_tasks.retry_at.retain(|pos, _| !changed(pos));
+        // (Their neighbours' edges are drawn from them too, so those are shown again as well.)
+        shown.0.retain(|&pos, &mut entity| {
+            let near = chunks_around(pos, 1).iter().any(changed);
+            if near {
+                commands.entity(entity).despawn();
+            }
+            !near
+        });
+    }
 }
 
 fn unload_distant_chunks(
@@ -328,4 +356,39 @@ fn measure_progress(
         .count();
     progress.waiting = not_started + building.iter().count();
     progress.measured = true;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chunks_baked_again_are_forgotten_with_their_neighbours_shown_again() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_message::<WorldReloaded>()
+            .init_resource::<ChunkStore>()
+            .init_resource::<ObstacleStore>()
+            .init_resource::<ShownChunks>()
+            .init_resource::<DataTasks>()
+            .add_systems(Update, reload_changed_chunks);
+        let positions: Vec<ChunkPos> = (0..16).map(|i| ChunkPos::new(i % 4, i / 4)).collect();
+        for &pos in &positions {
+            app.world_mut().resource_mut::<ChunkStore>().0.insert(pos, Arc::new(Chunk::new(pos)));
+            let entity = app.world_mut().spawn_empty().id();
+            app.world_mut().resource_mut::<ShownChunks>().0.insert(pos, entity);
+        }
+        app.world_mut().write_message(WorldReloaded { chunks: Some(vec![ChunkPos::new(0, 0)]) });
+        app.update();
+        let store = app.world().resource::<ChunkStore>();
+        assert!(!store.0.contains_key(&ChunkPos::new(0, 0)));
+        assert_eq!(store.0.len(), 15, "only the changed chunk's data goes");
+        let shown = app.world().resource::<ShownChunks>();
+        assert!(!shown.0.contains_key(&ChunkPos::new(1, 1)), "its neighbours are drawn again");
+        assert!(shown.0.contains_key(&ChunkPos::new(2, 2)));
+
+        app.world_mut().write_message(WorldReloaded { chunks: None });
+        app.update();
+        assert!(app.world().resource::<ChunkStore>().0.is_empty(), "every chunk, if which isn't known");
+    }
 }

@@ -45,7 +45,8 @@ use crate::equipment::Equipment;
 use crate::inventory::{Change, Inventory};
 use crate::link::Link;
 use crate::requests::WoodcuttingRequest;
-use crate::world::{ServerWorld, WorldTree};
+use crate::world::{ServerWorld, WorldReloaded, WorldTree};
+use venture_world::ChunkPos;
 
 /// The skill woodcutting is part of.
 pub const SKILL: &str = "woodworking";
@@ -59,7 +60,7 @@ impl Plugin for WoodcuttingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FelledTrees>().add_systems(
             FixedUpdate,
-            (welcome_newcomers, act_on_requests, stop_when_busy, chop, clear_away_and_grow_back)
+            (welcome_newcomers, act_on_requests, stop_when_busy, chop, forget_rebaked, clear_away_and_grow_back)
                 .chain()
                 .in_set(ServerSystems::Woodcutting),
         );
@@ -428,6 +429,19 @@ fn tell_nearby(link: &mut Link, everyone: &Query<(&Player, &Position)>, at: (f32
         .filter(|(_, Position(other))| (other.0 - at.0).hypot(other.1 - at.1) <= SWINGS_SEEN)
         .map(|(player, _)| player.connection);
     link.broadcast(near, message);
+}
+
+/// When the world's baked again, trees felled in chunks that changed (whose
+/// trees may be different ones now) go and grow back straight away.
+fn forget_rebaked(mut reloads: MessageReader<WorldReloaded>, mut felled: ResMut<FelledTrees>) {
+    for reload in reloads.read() {
+        for (tree, state) in &mut felled.0 {
+            if reload.changed.contains(&ChunkPos::new(tree.chunk_x, tree.chunk_y)) {
+                state.fallen_until = 0.0;
+                state.grows_back_at = 0.0;
+            }
+        }
+    }
 }
 
 /// Fallen trees go when their time's up, and felled trees grow back after that.

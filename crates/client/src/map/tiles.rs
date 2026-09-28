@@ -15,7 +15,7 @@ use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 use venture_world::{MAP_LABELS_FILE, MapInfo, MapLabels, map_tile_path};
 
-use crate::world::source::{WorldInfo, WorldSource};
+use crate::world::source::{WorldInfo, WorldReloaded, WorldSource};
 
 /// Tiles downloading at once.
 const PARALLEL_DOWNLOADS: usize = 6;
@@ -29,7 +29,7 @@ impl Plugin for MapTilesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MapTiles>()
             .init_resource::<PlaceNames>()
-            .add_systems(Update, (load_place_names, receive_tiles, forget_old_tiles));
+            .add_systems(Update, (redraw_when_rebaked, load_place_names, receive_tiles, forget_old_tiles).chain());
     }
 }
 
@@ -104,6 +104,19 @@ fn receive_tiles(mut tiles: ResMut<MapTiles>, mut images: ResMut<Assets<Image>>)
                 TileState::Failed
             }
         };
+    }
+}
+
+/// When the world's been baked again, its map was drawn again: every tile
+/// and the place names are read again.
+fn redraw_when_rebaked(
+    mut reloaded: MessageReader<WorldReloaded>,
+    mut tiles: ResMut<MapTiles>,
+    mut names: ResMut<PlaceNames>,
+) {
+    if reloaded.read().count() > 0 {
+        tiles.tiles.clear();
+        *names = PlaceNames::default();
     }
 }
 

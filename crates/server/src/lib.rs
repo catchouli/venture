@@ -225,7 +225,7 @@ impl GameServer {
                     fishing::FishingPlugin,
                     woodcutting::WoodcuttingPlugin,
                 ),
-                content::ContentPlugin,
+                (content::ContentPlugin, world::WorldReloadPlugin),
             ));
     }
 }

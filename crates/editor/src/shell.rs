@@ -746,9 +746,9 @@ enum WorldAction {
     Bake,
 }
 
-const BAKE_HELP: &str = "Saves, then bakes the world again (in the background, about ten seconds), with the \
-walls as they are: they block the ground they stand on and clear trees from their way. Restart the game (or \
-the server) to play in it.";
+const BAKE_HELP: &str = "Saves, then bakes the world again (in the background, about a second: only the chunks \
+walls touch), with the walls as they are: they block the ground they stand on and clear trees from their way. \
+A game or server that's running loads the new world by itself.";
 
 /// The chosen wall's entry in the document, if there is one.
 fn chosen_wall(document: &Document, tool: &WallTool) -> Option<EntryRef> {

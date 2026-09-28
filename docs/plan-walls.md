@@ -147,5 +147,6 @@ In the World tab:
   `venture_worldgen::structures::bake_authored_wall`, the same function
   `bake` uses, and rebuilds only the walls that changed. Saving rewrites
   `walls.ron` tidily, so its comments go.
-- [ ] 7. Later: gates, stiles, hedges, walls meeting buildings, rebaking only
-  the chunks a change touches.
+- [x] Rebaking only the chunks walls touch (`bake --walls`), and a running
+  server (and clients, and the editor) loading the new world by itself.
+- [ ] 7. Later: gates, stiles, hedges, walls meeting buildings.

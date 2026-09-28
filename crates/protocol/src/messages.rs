@@ -781,6 +781,13 @@ pub enum ServerMessage {
         /// Which.
         tree: TreeId,
     },
+    /// The world has been baked again (and the server has loaded it): the
+    /// manifest may have changed, and these chunks have. Clients read the
+    /// manifest and map again, and load these chunks again.
+    WorldChanged {
+        /// The chunks that changed, as (x, y).
+        chunks: Vec<(i32, i32)>,
+    },
     /// Someone nearby swung an axe (sent to everyone nearby, them too).
     Chopped {
         /// Who.

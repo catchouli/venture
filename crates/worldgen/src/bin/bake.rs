@@ -4,11 +4,16 @@
 //! world already baked.)
 //!
 //! ```text
-//! cargo run --release -p venture_worldgen --bin bake -- [output folder] [seed] [authoring folder]
+//! cargo run --release -p venture_worldgen --bin bake -- [--walls] [output folder] [seed] [authoring folder]
 //! ```
 //!
 //! The output folder defaults to `world`, the seed to the default config's,
 //! and the authoring folder to `world_authoring`.
+//!
+//! With `--walls`, only the chunks walls touch (as they were, and as they
+//! are now) are baked again, and the map redrawn: about a second, rather than
+//! several. It bakes everything if the world there was baked differently
+//! (another seed, generator or chunk format), or isn't there.
 //!
 //! Authored world data (`world_authoring/`, see `docs/world-authoring.md`)
 //! is baked in too: walls and fences (`walls.ron`, see `docs/plan-walls.md`)
@@ -30,7 +35,10 @@ use venture_worldgen::structures::bake_authored_wall;
 use venture_worldgen::{GENERATOR_VERSION, WorldGenConfig, WorldGenerator};
 
 fn main() -> std::io::Result<()> {
-    let mut args = std::env::args().skip(1);
+    let (flags, positional): (Vec<String>, Vec<String>) =
+        std::env::args().skip(1).partition(|arg| arg.starts_with("--"));
+    let only_walls = flags.iter().any(|flag| flag == "--walls");
+    let mut args = positional.into_iter();
     let output = PathBuf::from(args.next().unwrap_or_else(|| "world".to_string()));
     let mut config = WorldGenConfig::default();
     if let Some(seed) = args.next() {
@@ -64,9 +72,26 @@ fn main() -> std::io::Result<()> {
     let structures = Structures::of(&manifest.walls);
     std::fs::create_dir_all(output.join("chunks"))?;
 
+    // Only the chunks walls touch, if asked and the world there matches.
+    let only = only_walls.then(|| previous_walls(&output, &manifest)).flatten().map(|old| {
+        let mut chunks = structures.chunks();
+        chunks.extend(Structures::of(&old).chunks());
+        chunks.sort_unstable_by_key(|pos| (pos.y, pos.x));
+        chunks.dedup();
+        chunks
+    });
+    if only_walls && only.is_none() {
+        println!("The world in {} doesn't match (or isn't there), so all of it is baked.", output.display());
+    }
+
     let started = Instant::now();
-    bake_chunks(&world, &manifest, &structures, &output)?;
-    println!("{} chunks baked in {:.2?}.", manifest.chunks_per_side().pow(2), started.elapsed());
+    let all: Vec<ChunkPos> = {
+        let chunks = manifest.chunks_per_side();
+        (0..chunks * chunks).map(|i| ChunkPos::new(i % chunks, i / chunks)).collect()
+    };
+    let positions = only.unwrap_or(all);
+    bake_chunks(&world, &positions, &structures, &output)?;
+    println!("{} chunks baked in {:.2?}.", positions.len(), started.elapsed());
 
     // The map is drawn from the chunks just written.
     let started = Instant::now();
@@ -77,6 +102,19 @@ fn main() -> std::io::Result<()> {
     std::fs::write(output.join(MANIFEST_FILE), manifest.to_ron())?;
     println!("World written to {}.", output.display());
     Ok(())
+}
+
+/// The walls of the world already baked in `folder`, if it was baked the
+/// same way as `manifest` (so only chunks walls touch need baking again).
+fn previous_walls(folder: &Path, manifest: &WorldManifest) -> Option<Vec<BakedWall>> {
+    let text = std::fs::read_to_string(folder.join(MANIFEST_FILE)).ok()?;
+    let old = WorldManifest::from_ron(&text).ok()?;
+    let same = old.seed == manifest.seed
+        && old.world_size == manifest.world_size
+        && old.chunk_format == manifest.chunk_format
+        && old.generator_version == manifest.generator_version
+        && old.tree_species == manifest.tree_species;
+    same.then_some(old.walls)
 }
 
 /// The authored world data's folder (unless another is given).
@@ -132,6 +170,11 @@ impl Structures {
         structures
     }
 
+    /// The chunks walls touch (block cells in, or clear props from).
+    fn chunks(&self) -> Vec<ChunkPos> {
+        self.blocked.keys().chain(self.cleared.keys()).copied().collect()
+    }
+
     /// Puts the walls' effects into a freshly generated chunk.
     fn apply(&self, chunk: &mut Chunk) {
         if let Some(cells) = self.blocked.get(&chunk.pos) {
@@ -147,15 +190,13 @@ impl Structures {
     }
 }
 
-/// Generates and writes every chunk, spreading the work over all CPU cores.
+/// Generates and writes chunks, spreading the work over all CPU cores.
 fn bake_chunks(
     world: &WorldGenerator,
-    manifest: &WorldManifest,
+    positions: &[ChunkPos],
     structures: &Structures,
     output: &Path,
 ) -> std::io::Result<()> {
-    let chunks = manifest.chunks_per_side();
-    let total = (chunks * chunks) as usize;
     let next = AtomicUsize::new(0);
     let threads = std::thread::available_parallelism().map_or(4, |count| count.get());
 
@@ -165,10 +206,7 @@ fn bake_chunks(
                 scope.spawn(|| -> std::io::Result<()> {
                     loop {
                         let index = next.fetch_add(1, Ordering::Relaxed);
-                        if index >= total {
-                            return Ok(());
-                        }
-                        let pos = ChunkPos::new(index as i32 % chunks, index as i32 / chunks);
+                        let Some(&pos) = positions.get(index) else { return Ok(()) };
                         let mut chunk = world.generate_chunk(pos);
                         structures.apply(&mut chunk);
                         let bytes = encode_chunk(&chunk);

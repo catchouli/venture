@@ -13,8 +13,9 @@
 //! - **Choose:** click a wall. Its points show as handles: drag one to move
 //!   it, click the wall between two to add one there (and drag it), and
 //!   Delete removes the chosen one.
-//! - **Bake:** saves, then runs the bake (in the background), which also
-//!   blocks the cells the walls stand on and clears trees from their way.
+//! - **Bake:** saves, then runs the bake (in the background, only the
+//!   chunks walls touch), which also blocks the cells the walls stand on and
+//!   clears trees from their way, then shows the world as baked.
 
 use std::process::Child;
 use std::sync::Arc;
@@ -26,7 +27,7 @@ use bevy_egui::egui;
 use bevy_egui::input::EguiWantsInput;
 use venture_client::common::coords::{from_bevy, to_bevy};
 use venture_client::world::query::{ground_height, raycast_ground};
-use venture_client::world::source::WorldInfo;
+use venture_client::world::source::{ReloadWorld, WorldInfo};
 use venture_client::world::streaming::ChunkStore;
 use venture_client::world::walls::ShownWalls;
 use venture_structures::{BakedWall, WallDef, WallKind};
@@ -622,7 +623,8 @@ pub fn save_and_bake(tool: &mut WallTool, document: &mut Document, project: &Pro
         return;
     }
     let mut command = std::process::Command::new("cargo");
-    command.args(["run", "--release", "-p", "venture_worldgen", "--bin", "bake", "--"]);
+    // (Only the chunks walls touch, unless the world there was baked differently.)
+    command.args(["run", "--release", "-p", "venture_worldgen", "--bin", "bake", "--", "--walls"]);
     command.arg(&project.world).arg(seed.unwrap_or_default().to_string()).arg(&project.authoring);
     command.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     match command.spawn() {
@@ -639,12 +641,14 @@ pub fn baking(tool: &WallTool) -> bool {
     tool.bake.is_some()
 }
 
-/// Notices when the bake finishes.
-fn watch_bake(mut tool: ResMut<WallTool>) {
+/// Notices when the bake finishes, and shows the world as baked (the ground
+/// walls cleared, and the map).
+fn watch_bake(mut tool: ResMut<WallTool>, mut reload: MessageWriter<ReloadWorld>) {
     let Some(child) = tool.bake.as_mut() else { return };
     let done = match child.try_wait() {
         Ok(Some(status)) if status.success() => {
-            "Baked. The game (and the editor, once reopened) will have the walls' cleared ground.".to_string()
+            reload.write(ReloadWorld { chunks: None });
+            "Baked. A game or server that's running picks the new world up by itself.".to_string()
         }
         Ok(Some(status)) => format!("The bake failed ({status}); run it in a terminal to see why."),
         Ok(None) => return,

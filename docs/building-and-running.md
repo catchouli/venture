@@ -15,10 +15,21 @@ The server and clients use a **baked** world: generated once, ahead of
 time, and written to the `world/` folder.
 
 ```sh
-cargo run --release -p venture_worldgen --bin bake [folder] [seed]
+cargo run --release -p venture_worldgen --bin bake [--walls] [folder] [seed] [authoring folder]
 ```
 
-Bake again whenever world generation changes. The manifest records the
+Bake again whenever world generation changes. The bake reads the authored
+world data in `world_authoring/` too (walls and fences: see
+[plan-walls.md](plan-walls.md)). With `--walls`, only the chunks walls
+touch are baked again (about a second, not five; the editor's **Save and
+bake** does this); it bakes everything if the world there was baked
+differently.
+
+**A running server (or `--local` game) picks up a new bake by itself:** it
+watches the world's manifest (which the bake writes last), loads the world
+again in the background once it's settled, and tells players which chunks
+changed, so their clients read those again (see "The world, baked again" in
+[client-server.md](client-server.md)). The manifest records the
 generator version. The bake also draws the world map (`world/map/`: tiles
 and place names, see [plan-map.md](plan-map.md)); to draw just the map
 again for a world already baked (such as one baked before there were maps):
