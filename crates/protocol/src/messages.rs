@@ -464,6 +464,33 @@ pub enum AdminCommand {
         /// The level.
         level: u32,
     },
+    /// Move a player somewhere (`/tp NAME`, `/tp NAME OTHER`, `/tp X Y`,
+    /// `/tp NAME X Y`).
+    Teleport {
+        /// Who to move (a player's name), or `None` for yourself.
+        who: Option<String>,
+        /// Where to.
+        to: TeleportTo,
+    },
+    /// Set how fast you run (`/setspeed 5`): 1 is the usual pace.
+    SetSpeed {
+        /// How many times the usual pace.
+        scale: f32,
+    },
+}
+
+/// Where `/tp` moves a player to.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum TeleportTo {
+    /// To another player (by name).
+    Player(String),
+    /// To a place in the world, in metres.
+    Place {
+        /// The first coordinate (as the map shows it).
+        x: f32,
+        /// The second coordinate.
+        y: f32,
+    },
 }
 
 /// Events from the server.
@@ -497,6 +524,12 @@ pub enum ServerMessage {
         admin: bool,
         /// How the player's character looks.
         look: PlayerLook,
+    },
+    /// How fast the player's character runs now, in metres per second (sent
+    /// when an admin changes it, and on joining if it isn't the usual).
+    RunSpeed {
+        /// Metres per second.
+        speed: f32,
     },
     /// Someone attacked something (sent to everyone nearby).
     Attacked {

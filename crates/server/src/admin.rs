@@ -12,19 +12,26 @@
 //!   pace, 10 ten times faster, 0 stopped).
 //! - `/give ITEM [COUNT]`: put items in your bag.
 //! - `/setskill SKILL LEVEL`: set your level in a skill (such as fishing).
+//! - `/tp NAME`, `/tp NAME OTHER`, `/tp X Y`, `/tp NAME X Y`: move yourself
+//!   (or a player) to a player or a place (the nearest ground to stand on).
+//! - `/setspeed N`: run N times the usual speed (until you leave the game).
 
 use bevy::prelude::*;
-use venture_protocol::{AdminCommand, ServerMessage};
+use venture_protocol::{AdminCommand, ServerMessage, TeleportTo};
 use venture_rpg::{MAX_LEVEL, MAX_SKILL_LEVEL};
+use venture_simulation::{Movement, RUN_SPEED};
 
+use crate::abilities::PendingAbility;
 use crate::character::{Admin, Character, class_or_default, find_class};
 use crate::clock::WorldClock;
+use crate::combat::{Attacking, Resting};
 use crate::content::LoadedContent;
-use crate::entities::{NetworkId, Player};
+use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position, RunSpeed};
 use crate::equipment::{Equipment, player_look};
 use crate::inventory::{Change, Inventory, describe_items};
 use crate::link::Link;
 use crate::requests::AdminRequest;
+use crate::world::ServerWorld;
 use crate::{GameRules, ServerSystems};
 
 /// The most of an item `/give` gives at once.
@@ -33,6 +40,14 @@ const MOST_GIVEN: u32 = 1000;
 /// The fastest an admin can make the days go (a whole day in under ten
 /// seconds, at the usual two hours a day).
 const MOST_TIMESCALE: f32 = 1000.0;
+
+/// The slowest and fastest an admin can make themselves run, as times the
+/// usual speed.
+const SPEEDS: std::ops::RangeInclusive<f32> = 0.1..=20.0;
+
+/// How far from where `/tp` aims it may put a player, to find ground to
+/// stand on (out of water, off a cliff), in metres.
+const TELEPORT_SEARCH: f32 = 40.0;
 
 /// Carries out admin commands.
 pub struct AdminPlugin;
@@ -44,11 +59,14 @@ impl Plugin for AdminPlugin {
 }
 
 fn carry_out_admin_commands(
+    mut commands: Commands,
     mut requests: MessageReader<AdminRequest>,
+    world: Res<ServerWorld>,
     content: Res<LoadedContent>,
     mut link: ResMut<Link>,
     mut players: Query<(&Player, &NetworkId, &mut Character, &Equipment, &mut Inventory, Has<Admin>)>,
     everyone: Query<&Player>,
+    mut places: Query<(Entity, &Player, &DisplayName, &mut Position, &mut Mover)>,
     mut clock: ResMut<WorldClock>,
     rules: Res<GameRules>,
 ) {
@@ -139,6 +157,82 @@ fn carry_out_admin_commands(
                 }
                 character.set_skill_level(&def.id, *level);
                 tell(format!("Your {} level is now {level}.", def.name.to_lowercase()));
+                continue;
+            }
+            AdminCommand::Teleport { who, to } => {
+                let find = |name: &str| {
+                    places
+                        .iter()
+                        .find(|(_, _, shown, ..)| shown.0.eq_ignore_ascii_case(name))
+                        .map(|(entity, ..)| entity)
+                };
+                let moved = match who {
+                    None => request.player,
+                    Some(name) => match find(name) {
+                        Some(entity) => entity,
+                        None => {
+                            tell(format!("There's nobody called \"{name}\" in the game."));
+                            continue;
+                        }
+                    },
+                };
+                let (aim, place) = match to {
+                    TeleportTo::Player(name) => {
+                        let Some(target) = find(name) else {
+                            tell(format!("There's nobody called \"{name}\" in the game."));
+                            continue;
+                        };
+                        if target == moved {
+                            tell("They're already there.".to_string());
+                            continue;
+                        }
+                        let Ok((_, _, shown, position, _)) = places.get(target) else { continue };
+                        (position.0, shown.0.clone())
+                    }
+                    TeleportTo::Place { x, y } => {
+                        if !world.contains((*x, *y)) {
+                            let size = world.manifest.world_size;
+                            tell(format!("That's outside the world, which goes from 0 to {size} each way."));
+                            continue;
+                        }
+                        ((*x, *y), format!("{x:.0}, {y:.0}"))
+                    }
+                };
+                let Some(spot) = world.open_ground_near(aim, TELEPORT_SEARCH) else {
+                    tell(format!("There's nowhere to stand near {place}."));
+                    continue;
+                };
+                let Ok((_, mover_player, mover_name, mut position, mut mover)) = places.get_mut(moved) else {
+                    continue;
+                };
+                position.0 = spot;
+                mover.0 = Movement::Idle;
+                commands.entity(moved).remove::<(Following, PendingInteraction, Attacking, PendingAbility, Resting)>();
+                let text = if moved == request.player {
+                    format!("You teleport to {place}.")
+                } else {
+                    let notice = ServerMessage::Notice { text: format!("An admin moved you to {place}.") };
+                    link.send(mover_player.connection, &notice);
+                    format!("You moved {} to {place}.", mover_name.0)
+                };
+                link.send(connection, &ServerMessage::Notice { text });
+                continue;
+            }
+            AdminCommand::SetSpeed { scale } => {
+                if !scale.is_finite() || !SPEEDS.contains(scale) {
+                    tell(format!("Speeds go from {} to {} times the usual.", SPEEDS.start(), SPEEDS.end()));
+                    continue;
+                }
+                if *scale == 1.0 {
+                    commands.entity(request.player).remove::<RunSpeed>();
+                } else {
+                    commands.entity(request.player).insert(RunSpeed(RUN_SPEED * scale));
+                }
+                link.send(connection, &ServerMessage::RunSpeed { speed: RUN_SPEED * scale });
+                link.send(
+                    connection,
+                    &ServerMessage::Notice { text: format!("You now run {scale} times the usual speed.") },
+                );
                 continue;
             }
             AdminCommand::SetTimescale { scale } => {

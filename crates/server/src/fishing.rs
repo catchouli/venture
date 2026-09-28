@@ -62,6 +62,10 @@ const TRAP_REACH: f32 = 5.0;
 /// player stands being a little off on the server).
 const REACH_ALLOWANCE: f32 = 1.0;
 
+/// How much further than when they cast a player may be from their line
+/// before it's left behind (only by being moved: walking stops fishing).
+const LEFT_THE_LINE: f32 = 5.0;
+
 /// Runs fishing.
 pub struct FishingPlugin;
 
@@ -623,14 +627,18 @@ fn act_on_requests(
     }
 }
 
-/// Ends fishing for players who've moved, started a fight or died.
+/// Ends fishing for players who've moved (or been moved), started a fight
+/// or died.
 fn stop_when_busy(
     mut commands: Commands,
     mut link: ResMut<Link>,
-    players: Query<(Entity, &Player, &Mover, &Health, Has<Attacking>), With<Fishing>>,
+    players: Query<(Entity, &Player, &Fishing, &Position, &Mover, &Health, Has<Attacking>)>,
 ) {
-    for (entity, player, mover, health, attacking) in &players {
-        if mover.0.is_moving() || attacking || health.current() == 0 {
+    for (entity, player, fishing, &Position(at), mover, health, attacking) in &players {
+        // (Moved away from the line without walking: by `/town`, or an admin.)
+        let (line_x, line_y) = fishing.line.at;
+        let left = (line_x - at.0).hypot(line_y - at.1) > fishing.line.distance + LEFT_THE_LINE;
+        if mover.0.is_moving() || attacking || health.current() == 0 || left {
             end(&mut commands, &mut link, entity, player.connection, "You stop fishing.".to_string());
         }
     }

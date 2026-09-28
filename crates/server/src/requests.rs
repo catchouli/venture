@@ -22,8 +22,8 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{
-    AdminCommand, ClientMessage, EntityId, FishingCommand, HOTBAR_SLOTS, HotbarEntry, PROTOCOL_VERSION, PartyCommand,
-    ServerMessage, clean_chat_text, clean_name, clean_party_name, is_valid_token,
+    AdminCommand, ClientMessage, EntityId, FishingCommand, HOTBAR_SLOTS, HotbarEntry, MAX_NAME_CHARS, PROTOCOL_VERSION,
+    PartyCommand, ServerMessage, TeleportTo, clean_chat_text, clean_name, clean_party_name, is_valid_token,
 };
 use venture_simulation::steering_direction;
 
@@ -584,6 +584,9 @@ fn judge_player_message(
         ) if id.len() > MAX_ID_BYTES => {
             return Verdict::Strike;
         }
+        ClientMessage::Admin(AdminCommand::Teleport { who, to }) if too_long_to_be_a_name(who.as_deref(), &to) => {
+            return Verdict::Strike;
+        }
         ClientMessage::Admin(command) => return Verdict::Admin(AdminRequest { player, command }),
         ClientMessage::SpendStatPoint { stat } => {
             return Verdict::Character(CharacterRequest { player, action: CharacterAction::SpendStatPoint(stat) });
@@ -695,6 +698,15 @@ impl RateLimit {
             false
         }
     }
+}
+
+/// Whether a `/tp` names someone with a name longer than any player's.
+fn too_long_to_be_a_name(who: Option<&str>, to: &TeleportTo) -> bool {
+    let other = match to {
+        TeleportTo::Player(name) => Some(name.as_str()),
+        TeleportTo::Place { .. } => None,
+    };
+    [who, other].into_iter().flatten().any(|name| name.chars().count() > MAX_NAME_CHARS)
 }
 
 #[cfg(test)]

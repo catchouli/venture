@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{ClientMessage, EntityId, PlayerLook, ServerMessage};
-use venture_simulation::{Follow, FollowOutcome, Movement, Rules, step};
+use venture_simulation::{Follow, FollowOutcome, Movement, RUN_SPEED, Rules, step};
 
 use crate::camera::{CameraHeading, CameraMode, wasd_direction};
 use crate::characters::humans::HumanLook;
@@ -25,7 +25,8 @@ use crate::world::streaming::{ChunkStore, ObstacleStore};
 const TURN_RATE: f32 = 12.0;
 /// While moving, the prediction may run this far ahead of the server (in
 /// metres) before it's snapped back. Running ahead is normal: the server
-/// hears about each move a little later.
+/// hears about each move a little later. (Running faster than usual, it's
+/// that much further.)
 const MAX_PREDICTION_ERROR: f32 = 3.0;
 /// When standing still, the character glides to the server's position at this rate (per second).
 const SETTLE_RATE: f32 = 8.0;
@@ -44,6 +45,7 @@ impl Plugin for PlayerPlugin {
             (
                 place_on_welcome,
                 restyle_when_changed,
+                change_run_speed,
                 steer_with_keyboard.run_if(in_state(ClientState::Playing)),
                 jump_with_space.run_if(in_state(ClientState::Playing)),
                 stop_following_when_deselected,
@@ -74,6 +76,9 @@ pub struct LocalPlayer {
     pub admin: bool,
     /// How the character looks, as the server last said.
     pub look: PlayerLook,
+    /// How fast the character runs, in metres per second (usually
+    /// [`RUN_SPEED`]; admins can change it).
+    pub speed: f32,
 }
 
 /// Following another character.
@@ -129,6 +134,7 @@ fn place_on_welcome(
             player.following = None;
             player.admin = *admin;
             player.look = server_look.clone();
+            player.speed = RUN_SPEED;
             transform.translation = translation;
             nameplate.0.clone_from(name);
             continue;
@@ -143,6 +149,7 @@ fn place_on_welcome(
                 following: None,
                 admin: *admin,
                 look: server_look.clone(),
+                speed: RUN_SPEED,
             },
             Nameplate(name.clone()),
         ));
@@ -168,6 +175,16 @@ fn restyle_when_changed(
             player.look = look.clone();
             rebuild_body(&mut commands, entity, &assets, &assets.player_look(id.0, look, &mut materials));
             commands.entity(entity).insert(HumanLook::of_player(look));
+        }
+    }
+}
+
+/// Runs at the speed the server says (after an admin's `/setspeed`).
+fn change_run_speed(mut events: MessageReader<FromServer>, player: Option<Single<&mut LocalPlayer>>) {
+    let Some(mut player) = player else { return };
+    for FromServer(message) in events.read() {
+        if let ServerMessage::RunSpeed { speed } = message {
+            player.speed = *speed;
         }
     }
 }
@@ -293,7 +310,8 @@ fn predict_movement(
     let (mut transform, mut player, mut gait) = player.into_inner();
     let dt = time.delta_secs();
     let start = from_bevy(transform.translation);
-    let (x, y) = step(start, &mut player.movement, dt, |x, y| is_blocked(&obstacles, x, y));
+    let speed = player.speed;
+    let (x, y) = step(start, &mut player.movement, speed, dt, |x, y| is_blocked(&obstacles, x, y));
 
     let (moved_x, moved_y) = (x - start.0, y - start.1);
     let moved = moved_x.hypot(moved_y);
@@ -331,7 +349,7 @@ fn correct_towards_server(
 
     let (x, y) = from_bevy(transform.translation);
     let error = (server_x - x).hypot(server_y - y);
-    if error > MAX_PREDICTION_ERROR {
+    if error > MAX_PREDICTION_ERROR * (player.speed / RUN_SPEED).max(1.0) {
         transform.translation.x = server_x;
         transform.translation.z = server_y;
         // The prediction was wrong, so its route is too; the server will say where we're going.
