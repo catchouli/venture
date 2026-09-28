@@ -6,4 +6,8 @@
     miss: Some("miss.wav"),
     death: Some("death.wav"),
     level_up: Some("level_up.wav"),
+    cast: Some("cast.wav"),
+    nibble: Some("nibble.wav"),
+    bite: Some("bite.wav"),
+    catch: Some("catch.wav"),
 )

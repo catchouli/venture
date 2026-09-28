@@ -13,6 +13,7 @@
 //! line's tension and how much is out.
 
 pub mod panel;
+pub mod ripples;
 pub mod shadows;
 pub mod traps;
 
@@ -45,8 +46,12 @@ const NIBBLE_DIP: f32 = 0.08;
 const BITE_DIP: f32 = 0.25;
 /// How long a nibble's dip lasts, in seconds.
 const NIBBLE_SECONDS: f32 = 0.5;
-/// How high above the ground the line leaves the rod, in metres.
+/// Where the rod's tip is, from the player's feet: how high, and how far in
+/// front, in metres.
 const ROD_TIP_HEIGHT: f32 = 1.9;
+const ROD_TIP_REACH: f32 = 0.7;
+/// How quickly the player turns to face their line (per second).
+const TURN_RATE: f32 = 8.0;
 /// The line's thickness, in metres.
 const LINE_RADIUS: f32 = 0.006;
 
@@ -57,11 +62,18 @@ impl Plugin for FishingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Angling>()
             .add_message::<CastAt>()
-            .add_plugins((panel::PanelPlugin, shadows::ShadowsPlugin, traps::TrapsPlugin))
+            .add_plugins((panel::PanelPlugin, ripples::RipplesPlugin, shadows::ShadowsPlugin, traps::TrapsPlugin))
             .add_systems(Startup, make_float)
             .add_systems(
                 Update,
-                (follow_server, fish_on_startup_if_requested, cast_where_clicked, strike_and_reel, show_float_and_line)
+                (
+                    follow_server,
+                    fish_on_startup_if_requested,
+                    cast_where_clicked,
+                    strike_and_reel,
+                    face_the_line,
+                    show_float_and_line,
+                )
                     .chain()
                     .run_if(in_state(ClientState::Playing)),
             );
@@ -272,6 +284,19 @@ fn strike_and_reel(
     }
 }
 
+/// Turns the player to face their line (while standing: moving ends fishing).
+fn face_the_line(time: Res<Time>, angling: Res<Angling>, player: Option<Single<&mut Transform, With<LocalPlayer>>>) {
+    let (Some(line), Some(mut player)) = (&angling.line, player) else { return };
+    let (x, y) = from_bevy(player.translation);
+    let (dx, dy) = (line.at.0 - x, line.at.1 - y);
+    if dx.hypot(dy) < 0.1 {
+        return;
+    }
+    // (Characters face +Z in their own space, which is world +y.)
+    let facing = Quat::from_rotation_y(dx.atan2(dy));
+    player.rotation = player.rotation.slerp(facing, (TURN_RATE * time.delta_secs()).min(1.0));
+}
+
 /// The float, and the line from the rod to it.
 #[derive(Component)]
 struct Float;
@@ -349,8 +374,8 @@ fn show_float_and_line(
     *float.0 = Transform::from_translation(at);
     *float.1 = Visibility::Inherited;
 
-    // The line: from above the player (the rod's tip) to the float.
-    let tip = standing + Vec3::Y * ROD_TIP_HEIGHT;
+    // The line: from the rod's tip, up and in front of the player, to the float.
+    let tip = standing + Vec3::Y * ROD_TIP_HEIGHT + player.rotation * Vec3::Z * ROD_TIP_REACH;
     let span = at - tip;
     *line_mesh.0 = Transform {
         translation: tip + span / 2.0,
