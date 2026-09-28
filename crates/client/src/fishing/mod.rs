@@ -25,7 +25,7 @@ use venture_protocol::{ClientMessage, EquipSlot, FishingCommand, FishingState, S
 use venture_rpg::fishing::Method;
 use venture_simulation::fishing::Fight;
 
-use crate::characters::model::RodTip;
+use crate::characters::model::{ROD_ANGLE, RodGrip, RodTip};
 use crate::characters::player::LocalPlayer;
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::content::ContentStore;
@@ -81,6 +81,7 @@ impl Plugin for FishingPlugin {
                     strike_and_reel,
                     face_the_line,
                     show_float_and_line,
+                    bend_the_rod,
                 )
                     .chain()
                     .run_if(in_state(ClientState::Playing)),
@@ -305,6 +306,38 @@ fn face_the_line(time: Res<Time>, angling: Res<Angling>, player: Option<Single<&
     player.rotation = player.rotation.slerp(facing, (TURN_RATE * time.delta_secs()).min(1.0));
 }
 
+/// Bends the player's rod: a twitch at a nibble, a pull down at a bite, and
+/// in a fight as much as the line's tension (so a ledger's bites, which
+/// have no float, show on the rod's tip).
+fn bend_the_rod(
+    time: Res<Time>,
+    angling: Res<Angling>,
+    player: Option<Single<&GlobalTransform, With<LocalPlayer>>>,
+    mut grips: Query<(&GlobalTransform, &mut Transform), With<RodGrip>>,
+) {
+    let Some(player) = player else { return };
+    let now = time.elapsed_secs();
+    let bend = match angling.line.as_ref().map(|line| (line.stage, line.nibbled)) {
+        Some((Stage::Biting, _)) => 0.35 + (now * 30.0).sin() * 0.05,
+        Some((Stage::Fighting(fight), _)) => {
+            let strain = (fight.tension / fight.setup.strength.max(0.01)).min(1.2);
+            0.45 * strain + (now * 23.0).sin() * 0.02 * strain
+        }
+        Some((Stage::Waiting, Some(at))) if now - at < 0.4 => (now * 40.0).sin().abs() * 0.08,
+        _ => 0.0,
+    };
+    // The player's own rod: the one held nearest them.
+    let here = player.translation();
+    let Some((_, mut grip)) = grips
+        .iter_mut()
+        .filter(|(place, _)| place.translation().distance(here) < 2.5)
+        .min_by(|a, b| a.0.translation().distance(here).total_cmp(&b.0.translation().distance(here)))
+    else {
+        return;
+    };
+    grip.rotation = Quat::from_rotation_x(ROD_ANGLE + bend);
+}
+
 /// The float, and the line from the rod to it.
 #[derive(Component)]
 struct Float;
@@ -432,7 +465,9 @@ fn show_float_and_line(
     let bob = (now * 2.4).sin() * BOB;
     let at = to_bevy(x, y, surface + bob - dip);
     *float.0 = Transform::from_translation(at);
-    *float.1 = Visibility::Inherited;
+    // A ledger's weight holds the bait on the bottom: no float (bites show
+    // on the rod's tip).
+    *float.1 = if line.method == Method::Ledger { Visibility::Hidden } else { Visibility::Inherited };
 
     // The line: from the rod's tip, up and in front of the player, to the float.
     *line_mesh.0 = line_between(rod_tip(&tips, standing, player.rotation), at);

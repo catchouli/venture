@@ -682,6 +682,11 @@ pub const ROD_ANGLE: f32 = 1.3;
 #[derive(Component)]
 pub struct RodTip;
 
+/// A held fishing rod, turned at the grip (by [`ROD_ANGLE`], and bent
+/// further by fishing: a nibble, a bite, a fish pulling).
+#[derive(Component)]
+pub struct RodGrip;
+
 /// Puts a weapon in the hand at the end of a forearm (the elbow's space).
 /// Swords point forward, as if ready; staves stand upright; rods reach up
 /// and out, over the water.
@@ -718,7 +723,7 @@ fn spawn_weapon(elbow: &mut ChildSpawnerCommands, m: &CharacterMeshes, weapon: &
             // A long, thin, tapering pole, angled up and forward, with a cork
             // grip (the trim) and a reel just above the hand.
             let grip = Transform::from_translation(hand).with_rotation(Quat::from_rotation_x(ROD_ANGLE));
-            elbow.spawn((grip, Visibility::default())).with_children(|rod| {
+            elbow.spawn((grip, RodGrip, Visibility::default())).with_children(|rod| {
                 rod.spawn(part(&m.unit_cylinder, &weapon.trim, Vec3::new(0.0, 0.05, 0.0), Vec3::new(0.02, 0.3, 0.02)));
                 rod.spawn(part(&m.unit_cylinder, &weapon.main, Vec3::new(0.0, 0.8, 0.0), Vec3::new(0.013, 1.2, 0.013)));
                 rod.spawn(part(
