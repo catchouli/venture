@@ -579,7 +579,14 @@ sends with it, so the client can later run it ahead to make reeling feel
 instant. Fish shadows take no messages at all: which fish shoal where is
 worked out from the world's seed, the region of water and the hour, the
 same way on both sides (so casting where a shadow swims is what the server
-rewards), and each client shows them as its own player's level sees them. See [plan-fishing.md](plan-fishing.md).
+rewards), and each client shows them as its own player's level sees them.
+
+Traps: `Fishing(SetTrap { x, y, trap, bait })` sets one (in water within
+reach; one a player), saved in the owner's profile with the real time it
+was set, so it soaks while they're away. While its owner is in the game,
+the trap is an entity everyone is told about (`EntityKind::Trap { owner }`);
+`Fishing(CollectTrap)` empties it into the owner's bag (if it's caught
+anything), with the experience, and takes it back. See [plan-fishing.md](plan-fishing.md).
 
 ## Connection problems
 

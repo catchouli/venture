@@ -2,6 +2,7 @@
 //!
 //! - on a character: select it; or, if it's selected already, follow them
 //!   (a player) or walk over and talk to them (an NPC);
+//! - on a trap: select it; or, if it's selected already and yours, collect it;
 //! - on water, with a fishing rod in hand: cast there (see [`crate::fishing`]);
 //! - on the ground: run there (at most the server's move distance away),
 //!   with a move marker at the destination.
@@ -16,6 +17,7 @@ use bevy::prelude::*;
 use crate::common::coords::from_bevy;
 use crate::content::ContentStore;
 use crate::dev::settings::DevSettings;
+use crate::fishing::traps::CollectTrap;
 use crate::fishing::{Angling, CastAt, rod_in_hand};
 use crate::interaction::actions::{Action, PerformAction};
 use crate::interaction::orders::Orders;
@@ -51,6 +53,7 @@ fn handle_click(
     sheet: Res<Sheet>,
     content: Res<ContentStore>,
     mut casts: MessageWriter<CastAt>,
+    mut traps: MessageWriter<CollectTrap>,
 ) {
     if !buttons.just_pressed(MouseButton::Left) || angling.busy() {
         return;
@@ -73,6 +76,9 @@ fn handle_click(
             }
             Ok(TargetKind::Enemy) if already_selected => {
                 actions.write(PerformAction::new(Action::Attack));
+            }
+            Ok(TargetKind::Trap) if already_selected => {
+                traps.write(CollectTrap(clicked));
             }
             _ => target.0 = Some(clicked),
         }

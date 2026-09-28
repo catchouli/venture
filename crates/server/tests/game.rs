@@ -92,6 +92,11 @@ impl TestServer {
     fn fishing(name: &str) -> Self {
         let profile_folder = std::env::temp_dir().join(format!("venture-test-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&profile_folder);
+        Self::fishing_with_profiles(profile_folder)
+    }
+
+    /// The same, with profiles saved before.
+    fn fishing_with_profiles(profile_folder: std::path::PathBuf) -> Self {
         let pack = ContentPack::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content")).unwrap();
         let mut server = Self::start(profile_folder, pack);
         server.app.insert_resource(river_world());
@@ -1609,4 +1614,48 @@ fn a_player_catches_a_fish_with_rod_reel_and_worm() {
         }
     }
     panic!("no fish landed in two minutes (caught: {caught:?})");
+}
+
+#[test]
+fn traps_are_seen_by_everyone_and_kept_while_their_owner_is_away() {
+    let mut server = TestServer::fishing("traps");
+    // New characters carry a trap and shrimp bits.
+    let (owner, owner_id) = server.join(TOKEN_A, "Boss");
+    let (watcher, _) = server.join(TOKEN_B, "Watcher");
+    owner.send(&ClientMessage::Fishing(FishingCommand::SetTrap {
+        x: 104.5,
+        y: 100.5,
+        trap: "cage_trap".to_string(),
+        bait: Some("shrimp_bits".to_string()),
+    }));
+    server.run(2);
+    assert!(
+        notices(&owner.receive())
+            .iter()
+            .any(|text| text.starts_with("You set your cage trap, baited with shrimp bits."))
+    );
+    let trap_appeared = |messages: Vec<ServerMessage>| {
+        messages.into_iter().find_map(|m| match m {
+            ServerMessage::EntityAppeared { id, name, kind: EntityKind::Trap { owner }, .. } => Some((id, name, owner)),
+            _ => None,
+        })
+    };
+    let (trap, name, whose) = trap_appeared(watcher.receive()).expect("others see the trap");
+    assert_eq!((name.as_str(), whose), ("Boss's trap", owner_id));
+
+    // It goes when its owner does, and is still there when they're back.
+    owner.disconnect();
+    server.run(2);
+    assert!(watcher.receive().contains(&ServerMessage::EntityLeft { id: trap }));
+    watcher.disconnect();
+    server.run(2);
+    let mut server = TestServer::fishing_with_profiles(server.shut_down());
+    let owner = server.connect();
+    owner.send(&ClientMessage::Hello { protocol_version: PROTOCOL_VERSION, token: TOKEN_A.to_string() });
+    server.run(3);
+    assert!(trap_appeared(owner.receive()).is_some(), "the trap is saved with its owner");
+    // Just set, it has nothing in it yet.
+    owner.send(&ClientMessage::Fishing(FishingCommand::CollectTrap));
+    server.run(2);
+    assert!(notices(&owner.receive()).iter().any(|text| text.contains("Nothing in it yet")));
 }

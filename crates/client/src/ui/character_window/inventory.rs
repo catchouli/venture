@@ -17,6 +17,7 @@ use venture_protocol::{ClientMessage, HotbarEntry, ItemStack, ServerMessage};
 use venture_rpg::Healing;
 
 use crate::content::ContentStore;
+use crate::fishing::traps::SetTrapFromBag;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::character_window::{CharacterWindow, OpenTab, Pages, Tab};
 use crate::ui::chat::SystemMessage;
@@ -403,7 +404,7 @@ fn highlight_slots(
 }
 
 /// Clicking an item sells one while a shop is open, and otherwise equips it
-/// (if it can be equipped) or uses it (if it can be used). A click is a
+/// (if it can be equipped), sets it (a fishing trap) or uses it (if it can be used). A click is a
 /// press and release on the same slot without moving (moving is a drag, to
 /// the hotbar).
 fn use_on_click(
@@ -415,6 +416,7 @@ fn use_on_click(
     slots: Query<(&Interaction, &InventorySlot)>,
     mut pressed: Local<Option<(usize, Vec2)>>,
     mut to_server: MessageWriter<ToServer>,
+    mut traps: MessageWriter<SetTrapFromBag>,
 ) {
     let cursor = window.cursor_position();
     if mouse.just_pressed(MouseButton::Left) {
@@ -436,6 +438,8 @@ fn use_on_click(
     } else if let Some(item) = content.items.get(&stack.item) {
         if item.equip.is_some() {
             to_server.write(ToServer(ClientMessage::Equip { slot }));
+        } else if matches!(item.fishing, Some(venture_content::FishingPart::Trap { .. })) {
+            traps.write(SetTrapFromBag(stack.item.clone()));
         } else if item.on_use != ItemEffect::Nothing {
             to_server.write(ToServer(ClientMessage::UseItem { slot }));
         }

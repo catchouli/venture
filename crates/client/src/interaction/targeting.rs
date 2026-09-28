@@ -62,6 +62,8 @@ pub enum TargetKind {
     Npc,
     /// A monster that can be fought: the target frame shows its health.
     Enemy,
+    /// A fishing trap: clicking your own again collects it.
+    Trap,
 }
 
 /// How healthy a monster is, shown in the target frame.

@@ -75,6 +75,23 @@ pub struct Profile {
     /// Their hotbar, from key 1 (if missing, the starting one).
     #[serde(default)]
     pub hotbar: Option<Vec<Option<HotbarEntry>>>,
+    /// The fishing trap they've set, if any (it goes on soaking while they're away).
+    #[serde(default)]
+    pub trap: Option<SavedTrap>,
+}
+
+/// A fishing trap set in the water (see `crate::fishing`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedTrap {
+    /// The trap (an item id).
+    pub item: String,
+    /// Where it is, in metres.
+    pub at: (f32, f32),
+    /// When it was set, in seconds since 1970 (the real clock, so it soaks
+    /// while its owner is away and the server is down).
+    pub set_at: u64,
+    /// Its bait (an item id), if any.
+    pub bait: Option<String>,
 }
 
 fn first_level() -> u32 {
@@ -102,6 +119,7 @@ impl Profile {
             quests: Vec::new(),
             skill_progress: BTreeMap::new(),
             hotbar: None,
+            trap: None,
         }
     }
 }

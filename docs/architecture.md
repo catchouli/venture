@@ -110,7 +110,8 @@ src/
   fishing/           fishing: mod.rs (casting where water's clicked with a rod in hand, striking
                      and reeling, the float and line), panel.rs (what's happening, and the
                      fight's tension, line out and the fish's strength), shadows.rs (the fish
-                     shoaling in the water round the player, solid or faint by level)
+                     shoaling in the water round the player, solid or faint by level), traps.rs
+                     (setting a trap from the bag, drawing traps, collecting your own)
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
     admin_commands.rs  /setlevel, /reset, /setclass, /setgender, /time, /timescale, /give and /setskill, for admins
