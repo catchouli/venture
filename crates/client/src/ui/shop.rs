@@ -168,11 +168,14 @@ fn show_stock(
     commands.entity(*grid).despawn_children().with_children(|grid| {
         for (index, stock) in shop.stock.iter().enumerate() {
             let tooltip = match content.items.get(&stock.item) {
-                Some(item) => Tooltip {
-                    title: item.name.clone(),
-                    body: format!("{}\nCosts {} coins.", item.description, stock.price),
-                },
-                None => Tooltip { title: stock.item.clone(), body: format!("Costs {} coins.", stock.price) },
+                Some(item) => {
+                    let fishing = item.fishing.as_ref().map_or(String::new(), |part| format!("\n{}", part.describe()));
+                    Tooltip {
+                        title: item.name.clone(),
+                        body: format!("{}{fishing}\nCosts {} Miasma.", item.description, stock.price),
+                    }
+                }
+                None => Tooltip { title: stock.item.clone(), body: format!("Costs {} Miasma.", stock.price) },
             };
             grid.spawn((
                 StockSlot(index as u32),

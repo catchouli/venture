@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "reflect")]
 use venture_protocol::Refers;
 use venture_protocol::{BodyType, EquipSlot, FEATURE_RANGE, Features, ItemLook, MonsterLook};
-use venture_rpg::fishing::{Bait, FishTraits, Lure, Method};
+use venture_rpg::fishing::{Bait, Depth, Diet, Finish, FishTraits, Lure, Method, Size, Temperament};
 use venture_rpg::{ClassRules, Dice, Healing, Stat, Stats};
 use venture_world::{Biome, FluidBody};
 
@@ -298,6 +298,138 @@ pub enum FishingPart {
     },
     /// A fish (or crab, or anything else that can be caught).
     Fish(FishDef),
+}
+
+impl FishingPart {
+    /// What it is to fishing, in a line or two for a tooltip.
+    pub fn describe(&self) -> String {
+        match self {
+            FishingPart::Rod { method, reach, level } => {
+                let how = match method {
+                    Method::Ledger => "A ledger rod: watch its tip for a bite.",
+                    Method::Float => "A float rod: watch the float for a bite.",
+                    Method::Lure => "A lure rod: fish that take the lure hook themselves.",
+                    Method::Trap => "A rod.",
+                };
+                format!("{how} Casts {reach:.0} metres. Needs fishing level {level}.")
+            }
+            FishingPart::Reel { strength, capacity, level } => format!(
+                "Its line takes a {strength:.0} kg pull, and it holds {capacity:.0} metres of it. \
+                 Needs fishing level {level}. Keep it in your bag."
+            ),
+            FishingPart::Bait(bait) => {
+                format!("Bait for {}, on {}.", diets(&bait.diets), hook(bait.hook))
+            }
+            FishingPart::Lure(lure) => format!(
+                "A {} lure for {} {} {}, on {}. It never wears out.",
+                match lure.finish {
+                    Finish::Flashy => "flashy",
+                    Finish::Natural => "natural",
+                },
+                temperament(lure.temperament),
+                depth(lure.depth),
+                diets(&lure.diets),
+                hook(lure.hook),
+            ),
+            FishingPart::Trap { capacity, soak, level } => format!(
+                "Holds {capacity} catches, filling over {:.0} minutes. Needs fishing level {level}.",
+                soak / 60.0
+            ),
+            FishingPart::Fish(fish) => {
+                let traits = &fish.traits;
+                let waters: Vec<&str> = fish
+                    .waters
+                    .iter()
+                    .map(|water| match water {
+                        FluidBody::River => "rivers",
+                        FluidBody::Lake => "lakes",
+                        FluidBody::Sea => "the sea",
+                    })
+                    .collect();
+                format!(
+                    "A {}, {}, {} {} from {}. Fishing level {}, {} experience.",
+                    size(traits.size),
+                    temperament(traits.temperament),
+                    depth(traits.depth),
+                    diet(traits.diet),
+                    waters.join(" and "),
+                    fish.level,
+                    fish.experience,
+                )
+            }
+        }
+    }
+}
+
+/// Diets in words ("insect-eaters and bottom-feeders").
+fn diets(diets: &[Diet]) -> String {
+    let words: Vec<&str> = diets.iter().map(|&diet| diet_eaters(diet)).collect();
+    match words.as_slice() {
+        [] => "nothing".to_string(),
+        [one] => one.to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+fn diet_eaters(diet: Diet) -> &'static str {
+    match diet {
+        Diet::Insect => "insect-eaters",
+        Diet::Fish => "fish-eaters",
+        Diet::Bottom => "bottom-feeders",
+        Diet::Crustacean => "crustacean-eaters",
+        Diet::Plankton => "plankton-feeders",
+        Diet::Herbivore => "grazers",
+        Diet::Scavenger => "scavengers",
+    }
+}
+
+fn diet(diet: Diet) -> &'static str {
+    match diet {
+        Diet::Insect => "insect-eater",
+        Diet::Fish => "fish-eater",
+        Diet::Bottom => "bottom-feeder",
+        Diet::Crustacean => "crustacean-eater",
+        Diet::Plankton => "plankton-feeder",
+        Diet::Herbivore => "grazer",
+        Diet::Scavenger => "scavenger",
+    }
+}
+
+fn temperament(temperament: Temperament) -> &'static str {
+    match temperament {
+        Temperament::Aggressive => "aggressive",
+        Temperament::Opportunist => "opportunistic",
+        Temperament::Skittish => "skittish",
+    }
+}
+
+fn depth(depth: Depth) -> &'static str {
+    match depth {
+        Depth::Bottom => "bottom-dwelling",
+        Depth::Midwater => "midwater",
+        Depth::Surface => "surface",
+    }
+}
+
+fn size(size: Size) -> &'static str {
+    match size {
+        Size::Tiny => "tiny",
+        Size::Small => "small",
+        Size::Medium => "medium-sized",
+        Size::Large => "large",
+        Size::Trophy => "huge",
+    }
+}
+
+/// A hook in words: what it suits.
+fn hook(size: Size) -> &'static str {
+    match size {
+        Size::Tiny => "a tiny hook (tiny fish)",
+        Size::Small => "a small hook (small and tiny fish)",
+        Size::Medium => "a medium hook (medium-sized fish)",
+        Size::Large => "a large hook (large fish)",
+        Size::Trophy => "a huge hook (the biggest fish)",
+    }
 }
 
 /// A kind of fish: where it lives, what it's like, and what catching it gives.
@@ -970,6 +1102,48 @@ pub(crate) const MAX_WANDER_RADIUS: f32 = 50.0;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fishing_items_describe_themselves() {
+        let worm = FishingPart::Bait(Bait { diets: vec![Diet::Insect, Diet::Bottom], hook: Size::Small });
+        assert_eq!(
+            worm.describe(),
+            "Bait for insect-eaters and bottom-feeders, on a small hook (small and tiny fish)."
+        );
+        let spinner = FishingPart::Lure(Lure {
+            diets: vec![Diet::Fish],
+            temperament: Temperament::Aggressive,
+            depth: Depth::Midwater,
+            finish: Finish::Flashy,
+            hook: Size::Small,
+        });
+        assert_eq!(
+            spinner.describe(),
+            "A flashy lure for aggressive midwater fish-eaters, on a small hook (small and tiny fish). It never wears out."
+        );
+        let rod = FishingPart::Rod { method: Method::Float, reach: 12.0, level: 5 };
+        assert_eq!(rod.describe(), "A float rod: watch the float for a bite. Casts 12 metres. Needs fishing level 5.");
+        let dace = FishingPart::Fish(FishDef {
+            level: 1,
+            experience: 110,
+            traits: FishTraits {
+                diet: Diet::Insect,
+                temperament: Temperament::Skittish,
+                depth: Depth::Midwater,
+                size: Size::Small,
+                finish: None,
+            },
+            waters: vec![FluidBody::River],
+            biomes: vec![Biome::Grassland],
+            rods: true,
+            trap: 0.0,
+            bycatch: false,
+        });
+        assert_eq!(
+            dace.describe(),
+            "A small, skittish, midwater insect-eater from rivers. Fishing level 1, 110 experience."
+        );
+    }
 
     fn appearance(id: &str) -> AppearanceDef {
         let colour = (0.5, 0.5, 0.5);
