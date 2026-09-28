@@ -611,8 +611,10 @@ fn plant_chunk(
     }
 }
 
-/// Keeps track of which trees are felled, as the server says.
-fn follow_felling(time: Res<Time>, mut events: MessageReader<FromServer>, mut felled: ResMut<FelledTrees>) {
+/// Keeps track of which trees are felled, as the server says. (The editor
+/// has no server, so no messages: its trees all stand.)
+fn follow_felling(time: Res<Time>, events: Option<MessageReader<FromServer>>, mut felled: ResMut<FelledTrees>) {
+    let Some(mut events) = events else { return };
     for FromServer(message) in events.read() {
         match message {
             ServerMessage::TreesFelled { trees } => {
@@ -637,7 +639,8 @@ fn show_felled(
     trees: Query<(Entity, &StandingTree, &TreeLook, &GlobalTransform, &Children, Ref<StandingTree>, Has<Targetable>)>,
     mut bodies: Query<&mut Visibility, With<TreeBody>>,
     stumps: Query<(), With<Stump>>,
-    mut target: ResMut<Target>,
+    // (Missing in the editor, which has no targeting.)
+    mut target: Option<ResMut<Target>>,
 ) {
     let Some(stump_mesh) = templates.stump.clone() else { return };
     for (root, &StandingTree(id), look, place, children, added, selectable) in &trees {
@@ -648,7 +651,9 @@ fn show_felled(
         // A felled tree can't be selected (and stops being, if it was).
         if is_felled {
             commands.entity(root).remove::<Targetable>();
-            if target.0 == Some(root) {
+            if let Some(target) = target.as_mut()
+                && target.0 == Some(root)
+            {
                 target.0 = None;
             }
         } else if !selectable {
@@ -803,4 +808,22 @@ fn ground_slope(chunk: &Chunk, local_x: f32, local_y: f32) -> f32 {
     let highest = heights.iter().copied().fold(f32::MIN, f32::max);
     let lowest = heights.iter().copied().fold(f32::MAX, f32::min);
     highest - lowest
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn felling_is_followed_without_a_connection_or_targeting() {
+        // As in the editor: no network plugin (so no server messages), and no targeting.
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<FelledTrees>()
+            .init_resource::<TreeTemplates>()
+            .add_systems(Update, (follow_felling, show_felled).chain());
+        app.update();
+        app.update();
+        assert!(app.world().resource::<FelledTrees>().0.is_empty());
+    }
 }
