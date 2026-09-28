@@ -55,9 +55,6 @@ use crate::{GameRules, ServerSystems};
 /// The fishing skill's id (in the content's skills).
 pub const SKILL: &str = "fishing";
 
-/// How much likelier a fish is to bite a line cast where it's shoaling.
-const SHOAL_BONUS: f32 = 3.0;
-
 /// How far from a player (in metres) they can set a trap, and collect one.
 const TRAP_REACH: f32 = 5.0;
 
@@ -176,6 +173,7 @@ fn trap_fill(items: &BTreeMap<String, ItemDef>, trap: &SavedTrap, now: u64) -> u
 /// them bycatch, and those its bait appeals to likelier.
 pub fn trap_catches<'a>(
     items: &'a BTreeMap<String, ItemDef>,
+    tuning: &fishing::Tuning,
     trap: &SavedTrap,
     (body, biome): (FluidBody, Biome),
     skill: u32,
@@ -195,13 +193,13 @@ pub fn trap_catches<'a>(
         living
             .iter()
             .filter(|(_, fish)| fish.bycatch == bycatch)
-            .map(|(id, fish)| (*id, fishing::trap_weight(&fish.traits, fish.trap, bait)))
+            .map(|(id, fish)| (*id, tuning.trap_weight(&fish.traits, fish.trap, bait)))
             .collect()
     };
     let (main, bycatch) = (pool(false), pool(true));
     (0..caught)
         .filter_map(|_| {
-            let wants_bycatch = rolls() < fishing::BYCATCH_SHARE;
+            let wants_bycatch = rolls() < tuning.bycatch_share;
             let from = match (wants_bycatch, main.is_empty(), bycatch.is_empty()) {
                 (true, _, false) | (false, true, false) => &bycatch,
                 (_, false, _) => &main,
@@ -382,14 +380,21 @@ pub fn shoaling_at(
 
 /// What bites a line (if anything), when, and the nibbles before, from
 /// three rolls (0 to 1) and the time it's cast.
-fn plan_bite(candidates: &[(&str, &FishDef, f32)], method: Method, now: f32, patience: f32, rolls: [f32; 3]) -> Stage {
+fn plan_bite(
+    tuning: &fishing::Tuning,
+    candidates: &[(&str, &FishDef, f32)],
+    method: Method,
+    now: f32,
+    patience: f32,
+    rolls: [f32; 3],
+) -> Stage {
     let weights: Vec<f32> = candidates.iter().map(|(_, _, weight)| *weight).collect();
     let Some(chosen) = fishing::choose(&weights, rolls[0]) else {
         return Stage::Waiting { fish: None, bite_at: now + patience, nibbles: Vec::new() };
     };
     let (id, fish, weight) = candidates[chosen];
     // A bait or lure that draws the fish poorly waits longer (up to twice as long).
-    let wait = fishing::bite_wait(fish.traits.temperament, rolls[1]) / weight.clamp(0.5, 1.0);
+    let wait = tuning.bite_wait(fish.traits.temperament, rolls[1]) / weight.clamp(0.5, 1.0);
     let bite_at = now + wait;
     let count = fishing::nibbles(fish.traits.temperament, method, rolls[2]);
     // Nibbles spread over the second half of the wait, soonest last.
@@ -398,16 +403,17 @@ fn plan_bite(candidates: &[(&str, &FishDef, f32)], method: Method, now: f32, pat
 }
 
 /// A fight with a fish, hooked on a line.
-fn hook(line: &Line, fish: &FishDef) -> Box<FightTimeline> {
-    let size = fish.traits.size;
+fn hook(rules: &FishingConfig, line: &Line, fish: &FishDef) -> Box<FightTimeline> {
+    let size = rules.tuning.size(fish.traits.size);
     Box::new(FightTimeline::new(FightSetup {
-        pull: fishing::pull(size),
-        run: fishing::run(size),
-        stamina: fishing::stamina(size),
+        pull: size.pull,
+        run: size.run,
+        stamina: size.stamina,
         strength: line.reel.0,
         capacity: line.reel.1,
         distance: line.distance.max(venture_simulation::fishing::LAND_DISTANCE + 1.0),
         seed: fastrand::u64(..),
+        tuning: rules.fight,
     }))
 }
 
@@ -472,11 +478,11 @@ fn act_on_requests(
                 let mut candidates = candidates(items, &line, water, skill);
                 for (id, _, weight) in &mut candidates {
                     if shoaling.contains(id) {
-                        *weight *= SHOAL_BONUS;
+                        *weight *= rules.0.shoal_bonus;
                     }
                 }
                 let rolls = [fastrand::f32(), fastrand::f32(), fastrand::f32()];
-                let stage = plan_bite(&candidates, line.method, now, rules.0.patience, rolls);
+                let stage = plan_bite(&rules.0.tuning, &candidates, line.method, now, rules.0.patience, rolls);
                 link.send(
                     connection,
                     &ServerMessage::Fishing(FishingState::Waiting { at: line.at, method: line.method }),
@@ -488,11 +494,11 @@ fn act_on_requests(
                 let method = fishing.line.method;
                 match &fishing.stage {
                     Stage::Biting { fish, since } => {
-                        if fishing::strike_hooks(method, now - since, rules.0.strike_allowance) {
+                        if rules.0.tuning.strike_hooks(method, now - since, rules.0.strike_allowance) {
                             let Some(Some(FishingPart::Fish(def))) = items.get(fish).map(|item| &item.fishing) else {
                                 continue;
                             };
-                            let fight = hook(&fishing.line, def);
+                            let fight = hook(&rules.0, &fishing.line, def);
                             fishing.stage = Stage::Fighting { fish: fish.clone(), fight };
                         }
                         // (Too late is noticed by `run_lines`.)
@@ -567,7 +573,8 @@ fn act_on_requests(
                 }
                 let skill = character.skill(SKILL).level;
                 let water = world.water_at(saved.at).unwrap_or((FluidBody::River, Biome::Grassland));
-                let caught = trap_catches(items, &saved, water, skill, unix_now(), &mut || fastrand::f32());
+                let caught =
+                    trap_catches(items, &rules.0.tuning, &saved, water, skill, unix_now(), &mut || fastrand::f32());
                 if caught.is_empty() && trap_fill(items, &saved, unix_now()) == 0 {
                     tell(&mut link, "Nothing in it yet. Give it longer.".to_string());
                     continue;
@@ -682,13 +689,13 @@ fn run_lines(
                 if method == Method::Lure {
                     // Fish strike lures hard enough to hook themselves.
                     let Some(def) = fish_def(&fish) else { continue };
-                    fishing.stage = Stage::Fighting { fight: hook(&line, def), fish };
+                    fishing.stage = Stage::Fighting { fight: hook(&rules.0, &line, def), fish };
                 } else {
                     fishing.stage = Stage::Biting { fish, since: now };
                 }
             }
             Stage::Biting { since, .. } => {
-                let window = fishing::strike_window(method).unwrap_or(0.0) + rules.0.strike_allowance;
+                let window = rules.0.tuning.strike_window(method).unwrap_or(0.0) + rules.0.strike_allowance;
                 if now - *since > window {
                     log("struck too late for", &fishing_fish(&fishing.stage), None);
                     let text = format!("Too late: the fish got away with your {tackle_name}.");
@@ -909,15 +916,30 @@ mod tests {
         let mut rng = fastrand::Rng::with_seed(3);
         let mut rolls = || rng.f32();
         let river = RIVER.unwrap();
-        assert!(trap_catches(&items, &trap(None), river, 99, 60, &mut rolls).is_empty(), "nothing in the first minute");
-        assert_eq!(trap_catches(&items, &trap(None), river, 99, 800, &mut rolls).len(), 2, "two thirds full");
-        let full = trap_catches(&items, &trap(None), river, 99, 100_000, &mut rolls);
+        assert!(
+            trap_catches(&items, &fishing::Tuning::DEFAULT, &trap(None), river, 99, 60, &mut rolls).is_empty(),
+            "nothing in the first minute"
+        );
+        assert_eq!(
+            trap_catches(&items, &fishing::Tuning::DEFAULT, &trap(None), river, 99, 800, &mut rolls).len(),
+            2,
+            "two thirds full"
+        );
+        let full = trap_catches(&items, &fishing::Tuning::DEFAULT, &trap(None), river, 99, 100_000, &mut rolls);
         assert_eq!(full.len(), 3, "and no more than it holds");
         let living = fish_living_in(items.values(), river.0, river.1);
         let trap_fish = |id: &str| living.iter().any(|(fish, def)| *fish == id && def.trap > 0.0);
         let mut seen = Vec::new();
         for _ in 0..200 {
-            for fish in trap_catches(&items, &trap(Some("shrimp_bits")), river, 99, 100_000, &mut rolls) {
+            for fish in trap_catches(
+                &items,
+                &fishing::Tuning::DEFAULT,
+                &trap(Some("shrimp_bits")),
+                river,
+                99,
+                100_000,
+                &mut rolls,
+            ) {
                 assert!(trap_fish(fish), "{fish} isn't caught in river traps");
                 seen.push(fish);
             }
@@ -925,9 +947,17 @@ mod tests {
         let bycatch = seen.iter().filter(|fish| ["river_snail", "freshwater_mussel"].contains(fish)).count();
         assert!((90..210).contains(&bycatch), "about a quarter bycatch: {bycatch} of {}", seen.len());
         // At level 1, only what a beginner can catch.
-        let beginner = trap_catches(&items, &trap(None), river, 1, 100_000, &mut rolls);
+        let beginner = trap_catches(&items, &fishing::Tuning::DEFAULT, &trap(None), river, 1, 100_000, &mut rolls);
         assert!(beginner.is_empty(), "nothing in the river's traps is level 1: {beginner:?}");
-        let coast = trap_catches(&items, &trap(None), (FluidBody::Sea, Biome::Grassland), 1, 100_000, &mut rolls);
+        let coast = trap_catches(
+            &items,
+            &fishing::Tuning::DEFAULT,
+            &trap(None),
+            (FluidBody::Sea, Biome::Grassland),
+            1,
+            100_000,
+            &mut rolls,
+        );
         assert!(coast.iter().all(|fish| ["brown_shrimp", "shore_crab"].contains(fish)), "{coast:?}");
     }
 
@@ -936,7 +966,8 @@ mod tests {
         let items = items();
         let Some(FishingPart::Fish(roach)) = &items["roach"].fishing else { panic!("roach is a fish") };
         let candidates = [("roach", roach, 1.0)];
-        let Stage::Waiting { fish, bite_at, nibbles } = plan_bite(&candidates, Method::Float, 100.0, 20.0, [0.5; 3])
+        let Stage::Waiting { fish, bite_at, nibbles } =
+            plan_bite(&fishing::Tuning::DEFAULT, &candidates, Method::Float, 100.0, 20.0, [0.5; 3])
         else {
             panic!("a new line waits")
         };
@@ -946,7 +977,9 @@ mod tests {
         assert!(nibbles.windows(2).all(|pair| pair[0] > pair[1]), "soonest last");
         assert!(nibbles.iter().all(|&nibble| (100.0..bite_at).contains(&nibble)));
 
-        let Stage::Waiting { fish, bite_at, .. } = plan_bite(&[], Method::Float, 100.0, 20.0, [0.5; 3]) else {
+        let Stage::Waiting { fish, bite_at, .. } =
+            plan_bite(&fishing::Tuning::DEFAULT, &[], Method::Float, 100.0, 20.0, [0.5; 3])
+        else {
             panic!("a new line waits")
         };
         assert_eq!((fish, bite_at), (None, 120.0), "nothing bites, and the player is told after a while");

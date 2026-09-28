@@ -121,11 +121,24 @@ pub struct FishingConfig {
     /// How long (in seconds) a line waits when nothing here takes the bait,
     /// before the player is told so.
     pub patience: f32,
+    /// How much likelier a fish is to bite a line cast where it's shoaling.
+    pub shoal_bonus: f32,
+    /// Strike windows, bite waits, how fish of each size fight, and traps
+    /// (see `venture_rpg::fishing::Tuning`).
+    pub tuning: venture_rpg::fishing::Tuning,
+    /// How the fight feels (see `venture_simulation::fishing::FightTuning`).
+    pub fight: venture_simulation::fishing::FightTuning,
 }
 
 impl Default for FishingConfig {
     fn default() -> Self {
-        Self { strike_allowance: 0.3, patience: 20.0 }
+        Self {
+            strike_allowance: 0.3,
+            patience: 20.0,
+            shoal_bonus: 3.0,
+            tuning: Default::default(),
+            fight: Default::default(),
+        }
     }
 }
 
@@ -181,6 +194,13 @@ impl ServerConfig {
         if !patience.is_finite() || patience <= 0.0 {
             return Err(format!("fishing.patience must be a positive number of seconds, not {patience}"));
         }
+        let bonus = self.fishing.shoal_bonus;
+        if !bonus.is_finite() || bonus < 1.0 {
+            return Err(format!("fishing.shoal_bonus must be at least 1, not {bonus}"));
+        }
+        if let Some(problem) = self.fishing.tuning.problems().or_else(|| self.fishing.fight.problems()) {
+            return Err(format!("fishing: {problem}"));
+        }
         let seconds = self.party.invite_seconds;
         if !seconds.is_finite() || seconds <= 0.0 {
             return Err(format!("party.invite_seconds must be a positive number of seconds, not {seconds}"));
@@ -203,6 +223,16 @@ mod tests {
     #[test]
     fn typos_are_errors() {
         assert!(ron::from_str::<ServerConfig>("(player: (max_move_distanse: 80.0))").is_err());
+    }
+
+    #[test]
+    fn the_example_settings_load_and_are_the_defaults_for_fishing() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../server.ron");
+        let config = ServerConfig::load(&path).unwrap();
+        assert_eq!(config.fishing, FishingConfig::default(), "server.ron lists fishing's defaults");
+        let mut tuned = config.clone();
+        tuned.fishing.tuning.bycatch_share = 2.0;
+        assert!(tuned.validate().unwrap_err().contains("bycatch_share"));
     }
 
     #[test]

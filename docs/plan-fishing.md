@@ -122,8 +122,12 @@ Each step ends playable or testable, and is committed.
    for each outcome, such as `Fishing: Wynra (Ledger, worm, level 10):
    landed dace 21.9 s after casting, fought 6.9 s.`, so `grep Fishing:`
    gives catches, losses by cause, waits and fights; `/setskill fishing 20`
-   and `/give ITEM [COUNT]`. Not yet: the rules' numbers (bite waits, strike
-   windows, fight) in `server.ron` or content.)
+   and `/give ITEM [COUNT]`. The numbers tuned in playtests are in `server.ron`
+   under `fishing`: strike windows and the network's allowance, bite waits
+   by temperament, how fish of each size fight, the shoal bonus, traps'
+   bycatch and bait bias, and how the fight feels (reel speed, effort,
+   slack, snap grace; these travel with each fight, so the client's
+   prediction matches). Species, bait, gear, prices and levels are content.)
 
 ## What the slice answers
 

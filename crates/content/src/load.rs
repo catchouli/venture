@@ -667,7 +667,7 @@ fn check_fishing(items: &BTreeMap<String, ItemDef>) -> Vec<String> {
             }
             let landed = parts.iter().any(|part| {
                 matches!(part, FishingPart::Reel { strength, capacity, .. }
-                    if fishing::reel_lands(*strength, *capacity, traits.size))
+                    if fishing::Tuning::DEFAULT.reel_lands(*strength, *capacity, traits.size))
             });
             if !landed {
                 problems.push(format!("fish \"{}\": no reel is strong enough to land it", item.id));

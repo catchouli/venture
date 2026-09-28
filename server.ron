@@ -32,6 +32,38 @@
         strike_allowance: 0.3,
         // How long (seconds) a line waits when nothing takes the bait, before saying so.
         patience: 20.0,
+        // How much likelier a fish is to bite where it's shoaling (where its shadows are).
+        shoal_bonus: 3.0,
+        tuning: (
+            // Seconds after a bite to strike (the allowance above is added).
+            strike_windows: (ledger: 0.6, float: 1.0),
+            // Seconds a fish takes to bite (least, most), by temperament.
+            bite_waits: (aggressive: (4.0, 10.0), opportunist: (6.0, 16.0), skittish: (10.0, 25.0)),
+            // How fish fight, by size: steady pull (kg), how far they run fresh (m),
+            // and how many seconds of running tire them out.
+            sizes: (
+                tiny: (pull: 0.4, run: 5.0, stamina: 4.0),
+                small: (pull: 1.2, run: 15.0, stamina: 6.0),
+                medium: (pull: 3.5, run: 40.0, stamina: 10.0),
+                large: (pull: 9.0, run: 90.0, stamina: 16.0),
+                trophy: (pull: 22.0, run: 180.0, stamina: 25.0),
+            ),
+            // How much harder than their steady pull fish pull when they run.
+            peak_pull: 2.0,
+            // The share of a trap's catches that are bycatch, and how much likelier
+            // fish its bait draws are.
+            bycatch_share: 0.25,
+            trap_bait_bias: 3.0,
+        ),
+        fight: (
+            // How fast reeling draws line in (m/s), how much it adds to the tension
+            // (a share of the line's strength), how much of a running fish's pull
+            // reaches a slack line, and how long (s) the line takes too much before it snaps.
+            reel_speed: 3.0,
+            reel_effort: 0.3,
+            slack_share: 0.35,
+            snap_grace: 0.3,
+        ),
     ),
     day: (
         // How long a whole day and night lasts, in real minutes.
