@@ -41,10 +41,12 @@ struct Told(Option<f32>);
 fn keep_time(
     time: Res<Time>,
     rules: Res<GameRules>,
-    mut events: MessageReader<FromServer>,
+    // (None in the editor, which has no connection.)
+    events: Option<MessageReader<FromServer>>,
     mut clock: ResMut<TimeOfDay>,
     mut told_before: Local<Told>,
 ) {
+    let Some(mut events) = events else { return };
     let told = events.read().filter_map(|FromServer(message)| match message {
         ServerMessage::Time { hour, scale } => Some((*hour, *scale)),
         _ => None,
@@ -54,5 +56,20 @@ fn keep_time(
         told_before.0 = Some(scale);
     } else if let Some(scale) = told_before.0 {
         clock.0 = rules.0.day.after(clock.0, time.delta_secs() * scale);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_clock_stands_still_without_a_connection() {
+        // As in the editor: no network plugin, so no server messages.
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TimeOfDayPlugin));
+        app.update();
+        app.update();
+        assert_eq!(app.world().resource::<TimeOfDay>().0, DEFAULT_HOUR);
     }
 }
