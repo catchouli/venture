@@ -135,7 +135,9 @@ In the World tab:
   to its band, which is drawn to 450 m; fences look the same at any
   distance. Plain `StandardMaterial`s with the imported textures (mipmaps
   added on load) and tangents for the normal maps. The editor shows them
-  too, through the world plugin. Not on the map yet.
+  too, through the world plugin. They're on the map (and minimap) too:
+  lines along them in the baked tiles, dark grey for dry stone and brown
+  for fences.
 - [x] 5. The village wall: a dry stone ring round Oakwengate's square
   (about 28 m out), open where the north–south road passes, and a fenced
   field to its south-west with a gateway facing the village.
@@ -145,5 +147,5 @@ In the World tab:
   `venture_worldgen::structures::bake_authored_wall`, the same function
   `bake` uses, and rebuilds only the walls that changed. Saving rewrites
   `walls.ron` tidily, so its comments go.
-- [ ] 7. Later: gates, stiles, hedges, walls meeting buildings, walls on the
-  map, rebaking only the chunks a change touches.
+- [ ] 7. Later: gates, stiles, hedges, walls meeting buildings, rebaking only
+  the chunks a change touches.

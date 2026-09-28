@@ -22,7 +22,7 @@ use crate::places::{
     EntryRef, Place, PlaceKind, PlaceMarker, Places, Selection, add_place, copy_place, delete_place, marker_heights,
 };
 use crate::previews::{class_preview, monster_preview};
-use crate::walls::{WallTool, baking, save_and_bake, wall_buttons, walls_list};
+use crate::walls::{WallTool, baking, place_added_point, save_and_bake, wall_buttons, wall_defs, walls_list};
 use venture_client::world::source::WorldInfo;
 
 /// How long after the last change the content is checked, in seconds.
@@ -659,30 +659,45 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                     ui.weak("Scroll: closer or further. W A S D: move (Shift: faster).");
                 });
             });
+            // The properties panel is always there (and keeps its width), so the view doesn't
+            // change size as things are chosen; what's in it scrolls sideways rather than widening it.
             let chosen = places.list.iter().find(|place| selection.is(place)).map(|place| place.entry);
-            if let Some(entry) = chosen {
-                let mut changed = false;
-                egui::Panel::right("place properties").resizable(true).default_size(380.0).show_inside(root, |ui| {
-                    changed = edit_entry(ui, world, document, entry);
+            let wall = if chosen.is_none() { chosen_wall(document, &tool) } else { None };
+            let before = wall
+                .and_then(|_| tool.chosen.clone())
+                .and_then(|id| wall_defs(document).into_iter().find(|def| def.id == id));
+            let mut changed = None;
+            egui::Panel::right("properties").resizable(true).default_size(380.0).show_inside(root, |ui| {
+                egui::ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| match (chosen, wall) {
+                    (Some(entry), _) => {
+                        if edit_entry(ui, world, document, entry) {
+                            changed = Some(entry);
+                        }
+                    }
+                    (None, Some(entry)) => {
+                        wall_buttons(ui, &mut tool, document, now);
+                        ui.separator();
+                        if edit_entry(ui, world, document, entry) {
+                            changed = Some(entry);
+                        }
+                    }
+                    (None, None) => {
+                        ui.heading("Nothing chosen");
+                        ui.weak("Click something in the view, or in the list on the left, to see and change it here.");
+                    }
                 });
-                if changed {
-                    document.changed(entry.0, entry.1, now);
-                    shell.check_due = Some(now + CHECK_DELAY);
+            });
+            if let Some(entry) = changed {
+                // A point added to a wall's list starts a little past its end, not on it.
+                if let Some(before) = &before {
+                    place_added_point(document, before);
                 }
-            } else if let Some(entry) = chosen_wall(document, &tool) {
-                let mut changed = false;
-                egui::Panel::right("wall properties").resizable(true).default_size(380.0).show_inside(root, |ui| {
-                    wall_buttons(ui, &mut tool, document, now);
-                    ui.separator();
-                    changed = edit_entry(ui, world, document, entry);
-                });
-                if changed {
-                    document.changed(entry.0, entry.1, now);
-                }
-                // (Renaming it, or undoing, can leave the choice naming nothing.)
-                if chosen_wall(document, &tool).is_none() {
-                    tool.choose(None);
-                }
+                document.changed(entry.0, entry.1, now);
+                shell.check_due = Some(now + CHECK_DELAY);
+            }
+            // (Renaming a wall, or undoing, can leave the choice naming nothing.)
+            if tool.chosen.is_some() && !tool.drawing && chosen_wall(document, &tool).is_none() {
+                tool.choose(None);
             }
         });
     });

@@ -45,6 +45,8 @@ const HANDLE_RADIUS: f32 = 0.7;
 const WALL_RADIUS: f32 = 0.8;
 /// How far the pointer must move (pixels) before a press becomes a drag.
 const DRAG_START: f32 = 4.0;
+/// How far past a wall's end a point added there starts, in metres.
+const PAST_END: f32 = 1.0;
 /// Two clicks this close together (seconds) are a double-click.
 const DOUBLE_CLICK: f64 = 0.35;
 
@@ -226,6 +228,76 @@ fn insert_index(def: &WallDef, at: Vec2) -> usize {
         .map_or(points.len(), |(i, _)| i + 1)
 }
 
+/// Where a point added past one end of a wall goes: a little further on,
+/// the way the wall runs at that end (east, for a wall of one point).
+pub fn past_end(def: &WallDef, at_start: bool) -> (f32, f32) {
+    let points: Vec<Vec2> = def.points.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
+    let (end, before) = match (at_start, points.len()) {
+        (_, 0) => return (0.0, 0.0),
+        (_, 1) => (points[0], points[0] - Vec2::X),
+        (true, _) => (points[0], points[1]),
+        (false, n) => (points[n - 1], points[n - 2]),
+    };
+    let way = (end - before).normalize_or(Vec2::X);
+    let at = end + way * PAST_END;
+    ((at.x * 100.0).round() / 100.0, (at.y * 100.0).round() / 100.0)
+}
+
+/// Adds a point past one end of a wall (not a ring). Returns its index.
+pub fn add_past_end(document: &mut Document, id: &str, at_start: bool, now: f64) -> Option<usize> {
+    let mut index = None;
+    change_wall(document, id, now, |def| {
+        if def.closed {
+            return;
+        }
+        let at = past_end(def, at_start);
+        if at_start {
+            def.points.insert(0, at);
+            index = Some(0);
+        } else {
+            def.points.push(at);
+            index = Some(def.points.len() - 1);
+        }
+    });
+    index
+}
+
+/// A point added to a wall's list in its fields starts as a copy of the
+/// last; this moves it a little past the end instead, so it can be seen
+/// (and grabbed). `before` is the wall as it was. (The caller tells the
+/// document about the change.)
+pub fn place_added_point(document: &mut Document, before: &WallDef) {
+    let Some((_, walls)) = document.find_mut::<WallDef>() else { return };
+    let Some(def) =
+        walls.files_mut().iter_mut().flat_map(|file| file.entries.iter_mut()).find(|def| def.id == before.id)
+    else {
+        return;
+    };
+    if def.points.len() == before.points.len() + 1
+        && !before.points.is_empty()
+        && def.points.last() == before.points.last()
+    {
+        let at = past_end(before, false);
+        if let Some(last) = def.points.last_mut() {
+            *last = at;
+        }
+    }
+}
+
+/// Where the "add a point" handles past a wall's ends are (none for a ring).
+fn end_handles(def: &WallDef, store: &ChunkStore) -> Vec<(bool, Vec3)> {
+    if def.closed || def.points.is_empty() {
+        return Vec::new();
+    }
+    [true, false]
+        .into_iter()
+        .map(|at_start| {
+            let (x, y) = past_end(def, at_start);
+            (at_start, to_bevy(x, y, ground_height(store, x, y).unwrap_or(0.0) + 0.3))
+        })
+        .collect()
+}
+
 /// Rounds a point to the centimetre (so it saves as tidy numbers).
 fn tidy(at: Vec3) -> (f32, f32) {
     let (x, y) = from_bevy(at);
@@ -365,6 +437,18 @@ fn wall_clicks(
             buttons.clear_just_pressed(MouseButton::Left);
             tool.point = Some(index);
             tool.pressed = Some((index, cursor));
+            return;
+        }
+        // A handle past an end: a new point there (to drag on further).
+        let past = end_handles(&def, &store)
+            .into_iter()
+            .find(|&(_, at)| ray_miss(ray, at).is_some_and(|(miss, along)| miss < HANDLE_RADIUS + along * 0.004));
+        if let Some((at_start, _)) = past {
+            buttons.clear_just_pressed(MouseButton::Left);
+            if let Some(index) = add_past_end(&mut document, &def.id, at_start, now) {
+                tool.point = Some(index);
+                tool.pressed = Some((index, cursor));
+            }
             return;
         }
         // The chosen wall's line: a new point there, to drag.
@@ -507,6 +591,18 @@ fn draw_wall_guides(
         let colour = if tool.point == Some(i) { Color::srgb(1.0, 0.85, 0.2) } else { Color::WHITE };
         gizmos.sphere(Isometry3d::from_translation(at), 0.35, colour);
     }
+    // Past each end (unless it's being drawn): a "+" to add a point there.
+    if !tool.drawing {
+        let colour = Color::srgba(0.5, 1.0, 0.6, 0.9);
+        for ((_, at), end) in end_handles(&def, &store).into_iter().zip([places.first(), places.last()]) {
+            if let Some(&end) = end {
+                gizmos.line(end, at, Color::srgba(0.5, 1.0, 0.6, 0.4));
+            }
+            gizmos.sphere(Isometry3d::from_translation(at), 0.25, colour);
+            gizmos.line(at - Vec3::X * 0.18, at + Vec3::X * 0.18, colour);
+            gizmos.line(at - Vec3::Z * 0.18, at + Vec3::Z * 0.18, colour);
+        }
+    }
     if tool.drawing
         && let Some(&last) = places.last()
         && let Some((ray, _)) = pointer_ray(&window, &view, *camera)
@@ -641,7 +737,23 @@ pub fn wall_buttons(ui: &mut egui::Ui, tool: &mut WallTool, document: &mut Docum
             tool.choose(None);
         }
     });
-    ui.weak("Drag a point to move it. Click the wall between two to add one. Delete removes the chosen point.");
+    let ring = wall_defs(document).iter().any(|def| def.id == id && def.closed);
+    ui.add_enabled_ui(!ring, |ui| {
+        ui.horizontal(|ui| {
+            ui.label("Add a point:");
+            for (at_start, label) in [(true, "At the start"), (false, "At the end")] {
+                if ui.button(label).clicked()
+                    && let Some(index) = add_past_end(document, &id, at_start, now)
+                {
+                    tool.point = Some(index);
+                }
+            }
+        });
+    });
+    ui.weak(
+        "Drag a point to move it. Click the wall between two points to add one, or a green + past an end. \
+         Delete removes the chosen point.",
+    );
 }
 
 #[cfg(test)]
@@ -687,6 +799,24 @@ mod tests {
         assert!(tool.chosen.is_none() && !tool.drawing);
         let _ = std::fs::remove_dir_all(content.parent().unwrap());
         let _ = std::fs::remove_dir_all(&mirror);
+    }
+
+    #[test]
+    fn points_added_at_the_ends_go_a_little_past_them() {
+        let (content, authoring) = scratch("ends");
+        let mut document = Document::load_with_authoring(&content, Some(&authoring)).unwrap();
+        let id = add_wall(&mut document, WallKind::Fence, (10.0, 10.0), 0.0).unwrap();
+        change_wall(&mut document, &id, 0.0, |def| def.points.push((20.0, 10.0)));
+        assert_eq!(add_past_end(&mut document, &id, true, 1.0), Some(0));
+        assert_eq!(add_past_end(&mut document, &id, false, 2.0), Some(3));
+        let def = wall_defs(&document).into_iter().find(|def| def.id == id).unwrap();
+        assert_eq!(def.points, vec![(9.0, 10.0), (10.0, 10.0), (20.0, 10.0), (21.0, 10.0)]);
+        // A copy of the last point (as the fields' "+ Add" makes) moves past the end too.
+        change_wall(&mut document, &id, 3.0, |def| def.points.push((21.0, 10.0)));
+        place_added_point(&mut document, &def);
+        let def = wall_defs(&document).into_iter().find(|def| def.id == id).unwrap();
+        assert_eq!(def.points.last(), Some(&(22.0, 10.0)));
+        let _ = std::fs::remove_dir_all(content.parent().unwrap());
     }
 
     #[test]

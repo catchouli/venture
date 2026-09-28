@@ -25,7 +25,9 @@ as for `--local`.
     metres east, and **Delete** removes it.
   - Click a thing in the view to choose it, and drag it to move it along
     the ground.
-  - The chosen thing's every field is on the right.
+  - The chosen thing's every field is on the right. The panel is always
+    there (saying nothing's chosen when nothing is) and keeps its width, so
+    the view doesn't change size; wide fields scroll sideways.
   - **Walls and fences** (`world_authoring/walls.ron`, baked into the
     world; see [plan-walls.md](plan-walls.md)) are listed too. **Draw**
     (with the kind beside it: dry-stone wall or fence) starts a new one:
@@ -33,7 +35,10 @@ as for `--local`.
     Enter or Escape finishes, and clicking its first point closes it into a
     ring. Click a wall to choose it: its points show as handles. Drag one
     to move it, click the wall between two points to add one there (and
-    drag it), and Delete removes the chosen point. On the right are **New
+    drag it), or the green + past either end (or **At the start** / **At
+    the end** on the right) to add one a metre past it, and Delete removes
+    the chosen point. A point added with the fields' **+ Add** starts a
+    metre past the end too, rather than on the last point. On the right are **New
     seed** (the same wall, its stones laid differently), **Delete wall**,
     and its fields (kind, points, whether it's a ring, height, seed).
     Walls are shown exactly as the bake will make them (the editor bakes

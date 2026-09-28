@@ -5,8 +5,9 @@
 //! The map is drawn from the chunks on disk, not generated again, so it
 //! always shows the world as baked. Each metre is one pixel at level 0: the
 //! ground's colour, lit from the north-west by its slope, water darker the
-//! deeper it is, lava, and a dot for each tree, bush and boulder. Each level
-//! after averages the one before, two pixels by two.
+//! deeper it is, lava, a dot for each tree, bush and boulder, and a line
+//! along each wall and fence (from the manifest). Each level after averages
+//! the one before, two pixels by two.
 
 use std::io::Cursor;
 use std::path::Path;
@@ -15,8 +16,8 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use image::codecs::jpeg::JpegEncoder;
 use image::{Rgb, RgbImage};
 use venture_world::{
-    BUSH_SCALE, CHUNK_SIZE, ChunkPos, FluidKind, Ground, MAP_LABELS_FILE, MapInfo, PropKind, WorldManifest,
-    chunk_file_path, decode_chunk, map_tile_path,
+    BUSH_SCALE, BakedWall, CHUNK_SIZE, ChunkPos, FluidKind, Ground, MAP_LABELS_FILE, MapInfo, PropKind, WallKind,
+    WorldManifest, chunk_file_path, decode_chunk, map_tile_path,
 };
 
 use crate::map_labels::{LandFacts, place_names};
@@ -71,7 +72,41 @@ fn draw_world(folder: &Path, manifest: &WorldManifest) -> std::io::Result<(RgbIm
         }
         facts.merge(&band.facts);
     }
+    draw_walls(&mut picture, &manifest.walls);
     Ok((picture, facts))
+}
+
+/// Draws walls and fences as lines along their samples (leaving their gaps):
+/// dry stone grey and as wide as it is, fences brown and thin.
+fn draw_walls(picture: &mut RgbImage, walls: &[BakedWall]) {
+    let (width, height) = (picture.width() as i32, picture.height() as i32);
+    for wall in walls {
+        let (colour, reach) = match wall.kind {
+            WallKind::DryStone => (Rgb([84, 80, 74]), 0.7),
+            WallKind::Fence => (Rgb([96, 70, 44]), 0.45),
+        };
+        for pair in wall.samples.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            if a.open || b.open {
+                continue;
+            }
+            // Every pixel whose middle is within reach of the line between the samples.
+            let (low_x, high_x) = (a.x.min(b.x) - reach, a.x.max(b.x) + reach);
+            let (low_y, high_y) = (a.y.min(b.y) - reach, a.y.max(b.y) + reach);
+            for y in (low_y.floor() as i32).max(0)..=(high_y.floor() as i32).min(height - 1) {
+                for x in (low_x.floor() as i32).max(0)..=(high_x.floor() as i32).min(width - 1) {
+                    let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                    let (run_x, run_y) = (b.x - a.x, b.y - a.y);
+                    let t = (((px - a.x) * run_x + (py - a.y) * run_y) / (run_x * run_x + run_y * run_y).max(1e-6))
+                        .clamp(0.0, 1.0);
+                    let (nx, ny) = (a.x + run_x * t, a.y + run_y * t);
+                    if (px - nx).hypot(py - ny) <= reach {
+                        picture.put_pixel(x as u32, y as u32, colour);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// One row of chunks, drawn.
@@ -225,6 +260,21 @@ fn half_size(picture: &RgbImage) -> RgbImage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn walls_are_drawn_along_their_line_but_not_their_gaps() {
+        use venture_world::WallSample;
+        let samples = (0..=40)
+            .map(|i| WallSample { x: 2.0 + i as f32 * 0.5, y: 10.5, ground: 0.0, open: (16..24).contains(&i) })
+            .collect();
+        let wall = BakedWall { id: "w".into(), kind: WallKind::DryStone, height: 1.3, seed: 0, samples };
+        let mut picture = RgbImage::new(32, 32);
+        draw_walls(&mut picture, &[wall]);
+        let drawn = |x: u32, y: u32| picture.get_pixel(x, y).0 != [0, 0, 0];
+        assert!(drawn(4, 10) && drawn(18, 10), "along the line");
+        assert!(!drawn(12, 10), "not in the gap");
+        assert!(!drawn(4, 12), "nor off the line");
+    }
 
     #[test]
     fn slopes_facing_the_sun_are_lighter() {
