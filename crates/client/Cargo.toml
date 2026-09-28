@@ -14,6 +14,7 @@ venture_protocol.workspace = true
 venture_rpg.workspace = true
 venture_content.workspace = true
 venture_trees.workspace = true
+venture_structures.workspace = true
 # (Decoding the tree photographs: see `world::trees`.)
 image = { workspace = true, features = ["png", "jpeg"] }
 bevy = { workspace = true, features = ["default", "wav", "jpeg"] }

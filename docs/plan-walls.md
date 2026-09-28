@@ -91,7 +91,7 @@ detail on its own and be culled.
 
 **Textures:** ambientCG's Rock051 for the stones, and a weathered wood for
 fences (CC0). They're downloaded to `~/assets/structures` and imported into
-`content/structures/` (via LFS), and recorded in `licenses/` and
+`content/textures/drystone/` and `fence_wood/` (via LFS), and recorded in `licenses/` and
 ATTRIBUTION.md.
 
 ## The editor
@@ -121,9 +121,24 @@ In the World tab:
 ## Status
 
 - [x] 1. The plan
-- [ ] 2. The generator
-- [ ] 3. Authored data and the bake
-- [ ] 4. In the game
-- [ ] 5. The village wall
+- [x] 2. The generator: `crates/structures` (`path.rs`, `walls.rs`,
+  `mesh.rs`). A dry stone wall is roughly 500 triangles a metre close
+  up and a twentieth of that far away; fences are a few boxes a post.
+- [x] 3. Authored data and the bake: `world_authoring/walls.ron` is read by
+  `bake`, which writes the manifest's `walls`, blocks each chunk's
+  `structure_cells` (the wall's half-width: 0.4 m for dry stone, 0.15 m for
+  fences), clears trees and rocks within 1.5 m more, and opens gaps where a
+  road comes within its half-width plus 0.5 m (widened by 1 m either side).
+- [x] 4. In the game: `crates/client/src/world/walls.rs` builds every wall in
+  the background when the world arrives (the village's two take 4 ms: 17
+  stretches, 112k triangles). Dry stone is every stone to 60 m, crossfading
+  to its band, which is drawn to 450 m; fences look the same at any
+  distance. Plain `StandardMaterial`s with the imported textures (mipmaps
+  added on load) and tangents for the normal maps. The editor shows them
+  too, through the world plugin. Not on the map yet.
+- [x] 5. The village wall: a dry stone ring round Oakwengate's square
+  (about 28 m out), open where the north–south road passes, and a fenced
+  field to its south-west with a gateway facing the village.
 - [ ] 6. The editor's tools
-- [ ] 7. Later
+- [ ] 7. Later: gates, stiles, hedges, walls meeting buildings, walls on the
+  map, rebaking only the chunks a change touches.

@@ -6955,6 +6955,7 @@ dependencies = [
  "venture_rpg",
  "venture_server",
  "venture_simulation",
+ "venture_structures",
  "venture_trees",
  "venture_world",
  "web-sys",

@@ -1,5 +1,5 @@
 //! The world as the client shows it: the baked world's chunks, loaded around
-//! the camera and turned into terrain, water, lava and props, under the sky and sun.
+//! the camera and turned into terrain, water, lava, props and walls, under the sky and sun.
 
 pub mod daylight;
 pub mod lighting;
@@ -12,6 +12,7 @@ pub mod terrain_material;
 pub mod terrain_mesh;
 pub mod time_of_day;
 pub mod trees;
+pub mod walls;
 pub mod water_material;
 
 use bevy::prelude::*;
@@ -30,6 +31,7 @@ impl Plugin for WorldPlugin {
             water_material::WaterMaterialPlugin,
             streaming::ChunkStreamingPlugin,
             trees::TreesPlugin,
+            walls::WallsPlugin,
         ));
     }
 }
