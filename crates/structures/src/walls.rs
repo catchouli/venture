@@ -19,11 +19,13 @@
 //!   running between them with the slope. Fences are light enough to be the
 //!   same close up and far away.
 //!
-//! - **Hedge:** a leafy body (lumpy along its length and in its outline,
-//!   wider at the shoulder, clipped flat-ish on top), drawn at any distance,
-//!   with sprigs of leaves (cards from a tree species' leaf atlas: see
-//!   `venture_trees::mesh::sprig_cell`) sprouting from it all over, drawn
-//!   close up ([`Stretch::leaves`]).
+//! - **Hedge:** a leafy body (textured; lumpy along its length and in its
+//!   outline, full at the shoulders, rounded over a clipped top, and rounded
+//!   off at its ends), drawn at any distance, with sprigs of leaves (cards
+//!   from a tree species' leaf atlas: see `venture_trees::mesh::sprig_cell`)
+//!   lying along its shoulders and top to soften its outline, drawn close
+//!   up ([`Stretch::leaves`]). Its texture coordinates are metres along it
+//!   and round its outline.
 //!
 //! Where the wall is open (a gap, such as a gateway for a road), nothing is
 //! built.
@@ -53,27 +55,35 @@ const END_PROUD: f32 = 0.03;
 const STONE: [f32; 3] = [0.92, 0.9, 0.86];
 const CORE: [f32; 3] = [0.25, 0.24, 0.23];
 const WOOD: [f32; 3] = [0.82, 0.78, 0.72];
-/// A hedge's body's colour (sRGB): the dark of leaves in shade.
-const HEDGE: [f32; 3] = [0.2, 0.28, 0.11];
 /// A hedge's half-width at its shoulder, in metres.
 const HEDGE_HALF_WIDTH: f32 = 0.6;
 /// Its outline, across (a share of its half-width, from the middle) and up
-/// (a share of its height), from one foot over the top to the other.
-const HEDGE_OUTLINE: [(f32, f32); 9] = [
-    (-0.8, -0.06),
-    (-1.0, 0.3),
-    (-0.96, 0.75),
-    (-0.72, 0.97),
-    (0.0, 1.0),
-    (0.72, 0.97),
-    (0.96, 0.75),
-    (1.0, 0.3),
-    (0.8, -0.06),
+/// (a share of its height; below 0 is into the ground), from one foot over
+/// the top to the other: full at the shoulders, rounded over a clipped top.
+const HEDGE_OUTLINE: [(f32, f32); 14] = [
+    (-0.82, -0.2),
+    (-0.9, 0.12),
+    (-0.98, 0.4),
+    (-1.0, 0.66),
+    (-0.94, 0.84),
+    (-0.78, 0.95),
+    (-0.4, 1.0),
+    (0.4, 1.0),
+    (0.78, 0.95),
+    (0.94, 0.84),
+    (1.0, 0.66),
+    (0.98, 0.4),
+    (0.9, 0.12),
+    (0.82, -0.2),
 ];
-/// How many sprigs of leaves a square metre of hedge has.
-const SPRIGS_PER_SQUARE_METRE: f32 = 9.0;
+/// How far a hedge's rounded end (a dome closing it) reaches past where it
+/// stops, in metres, and how many rings it's made of.
+const HEDGE_DOME: f32 = 0.55;
+const DOME_RINGS: usize = 5;
+/// How many sprigs of leaves a metre of hedge has, along its shoulders and top.
+const SPRIGS_PER_METRE: f32 = 26.0;
 /// How big a sprig's card is, in metres.
-const SPRIG_SIZE: f32 = 0.42;
+const SPRIG_SIZE: f32 = 0.24;
 
 /// A stretch of wall, ready to draw.
 #[derive(Clone, Debug, Default)]
@@ -462,104 +472,136 @@ fn fence(path: &Path, height: f32, builder: &mut Builder, random: &mut Random) {
 }
 
 fn hedge(path: &Path, height: f32, builder: &mut Builder, random: &mut Random) {
-    // How far the outline bulges in or out along the hedge (smooth lumps a metre or two long).
-    let phases: [f32; 4] = std::array::from_fn(|_| random.range(0.0, std::f32::consts::TAU));
-    let lump = |distance: f32, side: f32| {
-        let wave = (distance * 1.7 + phases[0]).sin() * 0.5
-            + (distance * 0.63 + phases[1]).sin() * 0.35
-            + (distance * 3.1 + phases[2] + side).sin() * 0.15;
-        1.0 + wave * 0.12
+    // Each point of the outline wobbles in and out along the hedge on its own
+    // (smooth lumps a metre or two long), and the top rises and falls a little.
+    let phases: [f32; 8] = std::array::from_fn(|_| random.range(0.0, std::f32::consts::TAU));
+    let wobble = |distance: f32, point: usize| {
+        let phase = |k: usize| phases[(point + k) % phases.len()] + point as f32 * 0.9;
+        (distance * 1.3 + phase(0)).sin() * 0.5
+            + (distance * 2.9 + phase(3)).sin() * 0.3
+            + (distance * 0.55 + phase(5)).sin() * 0.2
     };
-    let top = |distance: f32| height * (1.0 + (distance * 0.9 + phases[3]).sin() * 0.03);
-    // Where a point of the outline is, `distance` along: on the ground plan and up.
-    let outline = |distance: f32, (across, up): (f32, f32)| {
-        let (at, ground) = path.at(distance);
-        let along = path.along(distance);
-        let right = Vec2::new(along.y, -along.x);
-        let width = HEDGE_HALF_WIDTH * lump(distance, across.signum());
-        lift(at + right * across * width, ground + up * top(distance))
-    };
-    let dark = linear(HEDGE.map(|c| c * 0.7));
-    let light = linear(HEDGE);
+    let top = |distance: f32| height * (1.0 + (distance * 0.9 + phases[7]).sin() * 0.03);
 
-    // The body: a band through the outline, sample to sample (not across gaps), with its ends closed.
     for run in path.runs() {
+        // The outline `distance` along: each point's place, its normal, and how
+        // far round the outline it is. Past an end (`past` metres on, of the
+        // dome's `HEDGE_DOME` radius) the outline pulls in and down to close it.
+        let ring = |distance: f32, past: f32| {
+            let (at, ground) = path.at(distance);
+            let along = path.along(distance);
+            let right = Vec2::new(along.y, -along.x);
+            let right3 = Vec3::new(right.x, 0.0, right.y);
+            let onward = Vec3::new(along.x, 0.0, along.y) * past.signum();
+            // How far round the dome (0 where the hedge ends, a right angle where it closes).
+            let angle = (past.abs() / HEDGE_DOME).clamp(0.0, 1.0) * std::f32::consts::FRAC_PI_2;
+            let (pull, lean) = (angle.cos(), angle.sin());
+            let tall = top(distance);
+            let points: Vec<(f32, f32)> = HEDGE_OUTLINE
+                .iter()
+                .enumerate()
+                .map(|(i, &(across, up))| {
+                    let lump = 1.0 + 0.09 * wobble(distance, i);
+                    let x = across * HEDGE_HALF_WIDTH * lump * pull;
+                    // (The feet stay in the ground; the rest comes down as it closes.)
+                    let y = if up < 0.0 {
+                        up * height
+                    } else {
+                        up * tall * (1.0 + 0.03 * wobble(distance, i + 4)) * (0.35 + 0.65 * pull)
+                    };
+                    (x, y)
+                })
+                .collect();
+            let mut around = 0.0;
+            points
+                .iter()
+                .enumerate()
+                .map(|(i, &(x, y))| {
+                    if i > 0 {
+                        let (px, py) = points[i - 1];
+                        around += (x - px).hypot(y - py);
+                    }
+                    // The outline's normal (out from it), softened towards out from
+                    // the middle, and turned onwards round the dome.
+                    let (bx, by) = points[i.saturating_sub(1)];
+                    let (ax, ay) = points[(i + 1).min(points.len() - 1)];
+                    let (tx, ty) = (ax - bx, ay - by);
+                    let flat = Vec2::new(-ty, tx).normalize_or(Vec2::Y);
+                    let soft =
+                        (flat * 0.7 + Vec2::new(x, y - tall * 0.45).normalize_or(Vec2::Y) * 0.3).normalize_or(Vec2::Y);
+                    let side = (right3 * soft.x + Vec3::Y * soft.y).normalize_or(Vec3::Y);
+                    let normal = (side * pull + onward * lean).normalize_or(Vec3::Y);
+                    let place = lift(at + right * x, ground + y) + onward * HEDGE_DOME * lean * 0.8;
+                    (place, normal, around)
+                })
+                .collect::<Vec<_>>()
+        };
+
+        // Its rings, end to end: a dome closing each end (unless it runs on
+        // round a ring), and one a sample along between.
         let steps = ((run.end - run.start) / WALL_SAMPLE_SPACING).round().max(1.0) as usize;
-        for step in 0..steps {
-            let (from, to) = (
-                run.start + (run.end - run.start) * step as f32 / steps as f32,
-                run.start + (run.end - run.start) * (step + 1) as f32 / steps as f32,
-            );
+        let mut rings: Vec<(f32, f32)> = Vec::new();
+        let dome = |from_end: usize| HEDGE_DOME * (DOME_RINGS - from_end) as f32 / DOME_RINGS as f32;
+        if run.capped_start {
+            rings.extend((0..DOME_RINGS).map(|k| (run.start, -dome(k))));
+        }
+        rings.extend((0..=steps).map(|step| (run.start + (run.end - run.start) * step as f32 / steps as f32, 0.0)));
+        if run.capped_end {
+            rings.extend((0..DOME_RINGS).rev().map(|k| (run.end, dome(k))));
+        }
+        let mut previous = ring(rings[0].0, rings[0].1);
+        for pair in rings.windows(2) {
+            let ((from, from_past), (to, to_past)) = (pair[0], pair[1]);
+            let next = ring(to, to_past);
+            let (u_from, u_to) = (from + from_past, to + to_past);
             let (stretch, _) = builder.place((from + to) / 2.0, Vec3::ZERO);
             let origin = Vec3::from(stretch.origin);
-            for pair in HEDGE_OUTLINE.windows(2) {
-                let colour = if pair[0].1 < 0.5 && pair[1].1 < 0.5 { dark } else { light };
-                let corners =
-                    [outline(from, pair[0]), outline(to, pair[0]), outline(to, pair[1]), outline(from, pair[1])];
-                let uvs = [[from, pair[0].1], [to, pair[0].1], [to, pair[1].1], [from, pair[1].1]];
-                stretch.full.quad(corners.map(|p| p - origin), uvs, colour);
+            let body = &mut stretch.full;
+            for i in 0..previous.len() - 1 {
+                let first = body.positions.len() as u32;
+                for (&(place, normal, around), u) in
+                    [(&previous[i], u_from), (&next[i], u_to), (&next[i + 1], u_to), (&previous[i + 1], u_from)]
+                {
+                    // Darker low down, where less light gets in, and patchy over a metre or two.
+                    let height_share = ((place.y - origin.y) / height.max(0.1)).clamp(0.0, 1.0);
+                    let patches =
+                        0.88 + 0.12 * ((u * 0.8 + phases[1]).sin() * (around * 1.1 + u * 0.3 + phases[2]).sin());
+                    let shade = (0.5 + 0.5 * height_share.sqrt()) * patches;
+                    body.positions.push((place - origin).to_array());
+                    body.normals.push(normal.to_array());
+                    body.uvs.push([u, around]);
+                    body.colours.push([shade, shade, shade, 1.0]);
+                }
+                body.indices.extend([first, first + 1, first + 2, first, first + 2, first + 3]);
             }
+            previous = next;
         }
-        // Its ends, where it stops (as a fan from the middle).
-        for (capped, at, outwards) in [(run.capped_start, run.start, -1.0f32), (run.capped_end, run.end, 1.0)] {
-            if !capped {
-                continue;
-            }
-            let (stretch, _) = builder.place(at, Vec3::ZERO);
-            let origin = Vec3::from(stretch.origin);
-            let middle = outline(at, (0.0, 0.45));
-            for pair in HEDGE_OUTLINE.windows(2) {
-                let (a, b) = (outline(at, pair[0]), outline(at, pair[1]));
-                let (a, b) = if outwards > 0.0 { (b, a) } else { (a, b) };
-                stretch.full.quad([middle - origin, a - origin, b - origin, b - origin], [[0.5, 0.5]; 4], dark);
-            }
-        }
-    }
 
-    // Sprigs of leaves all over it, sprouting out and up.
-    let perimeter: f32 = HEDGE_OUTLINE
-        .windows(2)
-        .map(|pair| {
-            let (a, b) = (pair[0], pair[1]);
-            ((b.0 - a.0) * HEDGE_HALF_WIDTH).hypot((b.1 - a.1) * height)
-        })
-        .sum();
-    for run in path.runs() {
-        let count = ((run.end - run.start) * perimeter * SPRIGS_PER_SQUARE_METRE) as usize;
+        // Sprigs of leaves along its shoulders and top, lying close, to soften its outline.
+        let count = ((run.end - run.start) * SPRIGS_PER_METRE) as usize;
         for _ in 0..count {
             let distance = random.range(run.start, run.end);
-            // A point on the outline, by how far round it is.
-            let mut round = random.range(0.0, perimeter);
-            let mut place = (HEDGE_OUTLINE[0], HEDGE_OUTLINE[1], 0.0);
-            for pair in HEDGE_OUTLINE.windows(2) {
-                let edge = ((pair[1].0 - pair[0].0) * HEDGE_HALF_WIDTH).hypot((pair[1].1 - pair[0].1) * height);
-                if round <= edge {
-                    place = (pair[0], pair[1], round / edge.max(1e-4));
-                    break;
-                }
-                round -= edge;
-            }
-            let (a, b, t) = place;
-            let point = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
-            if point.1 < 0.05 {
+            let points = ring(distance, 0.0);
+            // A point on the upper part of the outline (from the shoulders over the top).
+            let shoulders: Vec<usize> =
+                (0..points.len() - 1).filter(|&i| HEDGE_OUTLINE[i].1 > 0.55 && HEDGE_OUTLINE[i + 1].1 > 0.55).collect();
+            let Some(&i) = shoulders.get((random.next_u64() % shoulders.len().max(1) as u64) as usize) else {
                 continue;
-            }
-            let surface = outline(distance, point);
+            };
+            let t = random.unit();
+            let surface = points[i].0.lerp(points[i + 1].0, t);
+            let out = points[i].1.lerp(points[i + 1].1, t).normalize_or(Vec3::Y);
             let along_path = path.along(distance);
-            let right = Vec3::new(along_path.y, 0.0, -along_path.x);
-            // Out from the hedge's middle, more upward near the top.
-            let middle = outline(distance, (0.0, point.1 * 0.8));
-            let out = (surface - middle).normalize_or(Vec3::Y);
-            let tilt = Vec3::new(random.signed(), random.signed(), random.signed()) * 0.35;
-            let along = (out * 0.55 + Vec3::Y * 0.45 + tilt).normalize_or(Vec3::Y);
-            let across = along.cross(out).normalize_or(right);
-            let size = SPRIG_SIZE * random.range(0.75, 1.25);
-            let base = surface - out * random.range(0.02, 0.12);
-            let tip = base + along * size;
+            let along_path = Vec3::new(along_path.x, 0.0, along_path.y);
+            let tilt = Vec3::new(random.signed(), random.signed(), random.signed()) * 0.25;
+            // Mostly along the surface, tipped out a little.
+            let lying = (along_path * random.signed().signum() + out * 0.45 + tilt).normalize_or(Vec3::Y);
+            let across = lying.cross(out).normalize_or(along_path);
+            let size = SPRIG_SIZE * random.range(0.7, 1.2);
+            let base = surface - out * 0.05;
+            let tip = base + lying * size;
             let half_width = across * size * 0.45;
-            // Lit as the hedge's surface there, darker low down and inside.
-            let normal = (out * 0.8 + Vec3::Y * 0.2).normalize_or(Vec3::Y).to_array();
-            let shade = (0.55 + 0.45 * point.1.clamp(0.0, 1.0)) * random.range(0.85, 1.05);
+            let shade = random.range(0.7, 0.9);
             let colour = [shade, shade, shade, 1.0];
             let [u0, u1, v_top, v_bottom] = venture_trees::mesh::sprig_cell(random.next_u64() as u32);
             let (stretch, _) = builder.place(distance, Vec3::ZERO);
@@ -573,7 +615,7 @@ fn hedge(path: &Path, height: f32, builder: &mut Builder, random: &mut Random) {
                 (tip - half_width, [u0, v_top]),
             ] {
                 leaves.positions.push((corner - origin).to_array());
-                leaves.normals.push(normal);
+                leaves.normals.push(out.to_array());
                 leaves.uvs.push(uv);
                 leaves.colours.push(colour);
             }
@@ -709,6 +751,14 @@ mod tests {
     }
 
     #[test]
+    fn hedges_are_the_same_both_sides_and_go_into_the_ground() {
+        for (&(x, y), &(mx, my)) in HEDGE_OUTLINE.iter().zip(HEDGE_OUTLINE.iter().rev()) {
+            assert!((x + mx).abs() < 1e-6 && (y - my).abs() < 1e-6, "({x}, {y}) mirrors ({mx}, {my})");
+        }
+        assert!(HEDGE_OUTLINE[0].1 < 0.0, "its feet are in the ground");
+    }
+
+    #[test]
     fn hedges_are_leafy_face_outwards_and_leave_gaps() {
         let wall = build_wall(&straight(WallKind::Hedge, 16, Some(12..20)));
         let leaves: usize = wall.iter().map(|stretch| stretch.leaves.triangles()).sum();
@@ -721,22 +771,36 @@ mod tests {
             for triangle in part.indices.as_chunks::<3>().0 {
                 let [a, b, c] = triangle.map(|i| Vec3::from(part.positions[i as usize]) + origin);
                 let face = (b - a).cross(c - a);
-                if face.length() < 1e-6 {
+                // (Slivers where the domes pinch shut don't show.)
+                if face.length() < 2e-3 {
                     continue;
                 }
-                // Out from the hedge's line (y = 0), or along it at its ends.
+                // Wound the way its normals face...
+                let normals: Vec3 = triangle.iter().map(|&i| Vec3::from(part.normals[i as usize])).sum();
+                assert!(face.dot(normals) > 0.0, "wound to face its normals at {a}");
+                // ...which, along the middle of a run, are out from the hedge's line.
                 let middle = (a + b + c) / 3.0;
-                let away = Vec3::new(0.0, middle.y - (0.05 * middle.x + 0.8), middle.z);
-                let end = [(0.0, -1.0), (5.5, 1.0), (10.0, -1.0), (16.0, 1.0)]
-                    .into_iter()
-                    .find(|(end, _)| (middle.x - end).abs() < 0.05 && face.normalize().x.abs() > 0.9);
-                match end {
-                    Some((_, outwards)) => assert!(face.x * outwards > 0.0, "the end at {middle} faces out"),
-                    None => assert!(face.dot(away) > 0.0, "the body faces out at {middle}"),
+                if (1.0..4.5).contains(&middle.x) || (11.0..15.0).contains(&middle.x) {
+                    let away = Vec3::new(0.0, middle.y - (0.05 * middle.x + 0.8), middle.z);
+                    assert!(face.dot(away) > 0.0, "the body faces out at {middle}");
                 }
             }
             let world: Vec<Vec3> = stretch.leaves.positions.iter().map(|p| Vec3::from(*p) + origin).collect();
             assert!(!world.iter().any(|p| p.x > 6.2 && p.x < 9.3), "no leaves in the gap");
+        }
+        // Each end is closed by a dome reaching a little past it, pinched shut at its tip.
+        let body: Vec<Vec3> = wall
+            .iter()
+            .flat_map(|stretch| stretch.full.positions.iter().map(|p| Vec3::from(*p) + Vec3::from(stretch.origin)))
+            .collect();
+        for (end, onward) in [(0.0, -1.0), (5.5, 1.0), (10.0, -1.0), (16.0, 1.0)] {
+            let past = |p: &Vec3| (p.x - end) * onward;
+            let furthest = body.iter().map(past).filter(|&d| d < 1.5).fold(f32::MIN, f32::max);
+            assert!((0.35..0.5).contains(&furthest), "the dome past {end} reaches {furthest}");
+            let tip: Vec<&Vec3> = body.iter().filter(|p| (past(p) - furthest).abs() < 1e-3).collect();
+            let wide =
+                tip.iter().map(|p| p.z).fold(f32::MIN, f32::max) - tip.iter().map(|p| p.z).fold(f32::MAX, f32::min);
+            assert!(wide < 1e-3, "pinched shut at its tip ({wide} m wide)");
         }
     }
 }

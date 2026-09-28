@@ -33,4 +33,5 @@ credits). Licence details are in [licenses/README.md](licenses/README.md).
 - Created using LeafSet024 from ambientCG.com, licensed under the Creative Commons CC0 1.0 Universal License.
 - Created using Rock051 from ambientCG.com, licensed under the Creative Commons CC0 1.0 Universal License.
 - Created using Wood059 from ambientCG.com, licensed under the Creative Commons CC0 1.0 Universal License.
+- Created using Grass002 from ambientCG.com, licensed under the Creative Commons CC0 1.0 Universal License.
 - Text font Fira Mono by Mozilla, licensed under the SIL Open Font License 1.1.

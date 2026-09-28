@@ -149,9 +149,13 @@ In the World tab:
   `walls.ron` tidily, so its comments go.
 - [x] Rebaking only the chunks walls touch (`bake --walls`), and a running
   server (and clients, and the editor) loading the new world by itself.
-- [x] Hedges (`kind: Hedge`): a lumpy leafy body (drawn at any distance)
-  with sprigs of hawthorn's leaves all over it (cards from the tree's own
-  leaf atlas and material, drawn to 110 m), 1.7 m tall by default, 1.2 m
-  wide. A test hedgerow runs south of the village, open where the road
+- [x] Hedges (`kind: Hedge`): a body textured with ambientCG's Grass002
+  (`content/textures/hedge/`, laid in metres along the hedge and round its
+  outline), lumpy (each point of its outline wobbles in and out on its
+  own), full at the shoulders, rounded over a clipped top, and rounded off
+  where it ends; drawn at any distance. Small sprigs of hawthorn's leaves
+  (cards from the tree's own leaf atlas and material, drawn to 110 m) lie
+  along its shoulders and top to soften its outline. 1.7 m tall by default,
+  1.2 m wide. A test hedgerow runs south of the village, open where the road
   crosses. On the map, dark green.
 - [ ] 7. Later: gates, stiles, walls meeting buildings.
