@@ -14,7 +14,7 @@
 //!   (`textures/drystone/` and `fence_wood/`: colour, normal map, and
 //!   ambient occlusion and roughness), multiplied by each piece's vertex
 //!   colour. Bevy doesn't make mipmaps for JPEGs, so they're added once the
-//!   pictures load. A hedge's body is its vertex colour; its leaves are
+//!   pictures load. A hedge's body wears `textures/hedge/`; its leaves are
 //!   [`HEDGE_SPECIES`]' own leaves (the trees' material, fading near the
 //!   camera as trees do), added once the trees have grown.
 
@@ -36,8 +36,8 @@ use crate::world::trees::TreeTemplates;
 
 /// Each kind's texture (a folder in the content's `textures/`), and how
 /// many metres it covers before it repeats.
-const TEXTURES: [(WallKind, &str, f32); 2] =
-    [(WallKind::DryStone, "drystone", 1.6), (WallKind::Fence, "fence_wood", 1.2)];
+const TEXTURES: [(WallKind, &str, f32); 3] =
+    [(WallKind::DryStone, "drystone", 1.6), (WallKind::Fence, "fence_wood", 1.2), (WallKind::Hedge, "hedge", 2.2)];
 /// The pictures of each texture, and whether each is sRGB.
 const PICTURES: [(&str, bool); 3] = [("colour.jpg", true), ("normal.jpg", false), ("surface.jpg", false)];
 /// The tree species whose leaves hedges wear.
@@ -122,23 +122,35 @@ fn load_materials(
             pictures.push(handle.clone());
             handle
         });
-        let material = materials.add(StandardMaterial {
-            base_color_texture: Some(colour),
-            normal_map_texture: Some(normal),
-            // Ambient occlusion in red, roughness in green (and no metal: blue is 0).
-            occlusion_texture: Some(surface.clone()),
-            metallic_roughness_texture: Some(surface),
-            perceptual_roughness: 1.0,
-            metallic: 0.0,
-            reflectance: 0.3,
-            uv_transform: Affine2::from_scale(Vec2::splat(1.0 / metres)),
-            ..default()
+        let material = materials.add(match kind {
+            // Leaves: rough all over, with little sheen, and some light through
+            // them. (Its roughness picture reads too smooth for leaves, and its
+            // normal map adds more fine noise than shape.)
+            WallKind::Hedge => StandardMaterial {
+                base_color_texture: Some(colour),
+                occlusion_texture: Some(surface),
+                perceptual_roughness: 0.95,
+                metallic: 0.0,
+                reflectance: 0.08,
+                diffuse_transmission: 0.15,
+                uv_transform: Affine2::from_scale(Vec2::splat(1.0 / metres)),
+                ..default()
+            },
+            _ => StandardMaterial {
+                base_color_texture: Some(colour),
+                normal_map_texture: Some(normal),
+                // Ambient occlusion in red, roughness in green (and no metal: blue is 0).
+                occlusion_texture: Some(surface.clone()),
+                metallic_roughness_texture: Some(surface),
+                perceptual_roughness: 1.0,
+                metallic: 0.0,
+                reflectance: 0.3,
+                uv_transform: Affine2::from_scale(Vec2::splat(1.0 / metres)),
+                ..default()
+            },
         });
         made.insert(kind, material);
     }
-    // A hedge's body: leafy dark, rough and a little translucent, as leaves are.
-    let body = StandardMaterial { perceptual_roughness: 0.9, reflectance: 0.2, diffuse_transmission: 0.2, ..default() };
-    made.insert(WallKind::Hedge, materials.add(body));
     walls.materials = Some(made);
     walls.pictures = pictures;
 }
