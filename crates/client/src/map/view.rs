@@ -152,6 +152,13 @@ fn size_of(node: &ComputedNode) -> Vec2 {
     node.size() * node.inverse_scale_factor()
 }
 
+/// The world point (in metres) under the mouse in a view, if it's over it.
+pub fn point_under_mouse(view: &MapView, node: &ComputedNode, relative: &RelativeCursorPosition) -> Option<Vec2> {
+    // (`normalized` is from the view's middle, from -0.5 to 0.5 each way.)
+    let at = relative.normalized.filter(|_| relative.cursor_over())?;
+    Some(view.centre + at * size_of(node) * view.metres_per_pixel)
+}
+
 /// The wheel zooms a view under the mouse; dragging moves a draggable one.
 fn zoom_and_drag(
     scroll: Res<AccumulatedMouseScroll>,

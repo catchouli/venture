@@ -14,7 +14,8 @@ them.
    zooms it; the Map button in its corner opens the full map.
 3. **Map window** (`client/src/map/window.rs`, **M**): a big window in the
    middle of the screen. It opens on the player; the wheel zooms towards the
-   mouse, out as far as the whole world, and dragging moves it.
+   mouse, out as far as the whole world, and dragging moves it. The bottom
+   right shows the point under the mouse (`x, y` in metres, as `/tp` takes).
 4. **Tiles** (baked; `venture_world::MapInfo`, `venture_worldgen::map_render`):
    see below.
 5. **Zoom:** the wheel on both, smoothly between tile levels (below).
