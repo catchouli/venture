@@ -259,5 +259,9 @@ As for walls:
   right angles, choosing, moving and turning, style, New seed, and the
   plan editor (corners, inner walls, doors, deleting). Styles are a tab of
   their own. Each style has a `scale` multiplying all its sizes.
-- [ ] 6. A village: four test cottages so far; next, homes for the NPCs, a big stone smithy and a fishing guild, in a bigger ring of wall
+- [x] 6. A village: Oakwengate, in a wider ring of dry stone wall: a stone
+  hall for Hilda's smithy, a wooden fishing guild for Wendel by the lake, a
+  stone guardhouse at the north gate for Aldren, a cottage for Old Tomas, a
+  two-storey wooden bakery for Elsie, and two more houses; each NPC stands
+  at their door. (The roof also hides while the camera is inside a building.)
 - [ ] 7. Later
