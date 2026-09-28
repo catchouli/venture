@@ -1,0 +1,14 @@
+// How the game draws trees (see docs/plan-trees.md). Distances are in metres
+// from the camera; each pair is where something starts and finishes
+// changing, so it changes smoothly between them.
+(
+    // Trees fade out close to the camera, so they never block the view:
+    // gone nearer than the first number, whole beyond the second.
+    camera_fade: (2.0, 7.0),
+    // Where the full trees give way to their reduced versions,
+    full_until: (45.0, 55.0),
+    // the reduced ones to impostors (two crossed pictures),
+    reduced_until: (110.0, 130.0),
+    // and where impostors fade away.
+    impostors_until: (330.0, 360.0),
+)

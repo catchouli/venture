@@ -20,10 +20,9 @@
 //! flipping (`cull_mode: None` rather than `double_sided`), since their
 //! normals point out from the crown whichever way a card faces.
 //!
-//! **Trees in the way fade:** where a tree comes between the camera and the
-//! player, it fades smoothly (dithered) the closer it is to the line
-//! between them, so the player is never hidden in a wood
-//! (`shaders/tree.wgsl`; see [`TreeFade`]).
+//! **Trees fade close to the camera,** smoothly, so they never block the
+//! view (`shaders/tree.wgsl`; see [`TreeFade`]). How close, and where the
+//! levels of detail change, come from the content (`trees/drawing.ron`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -37,13 +36,12 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat};
 use bevy::shader::ShaderRef;
 use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
-use venture_content::trees::Species;
+use venture_content::trees::{Species, TreeDrawing};
 use venture_trees::impostor::{Impostor, impostor};
 use venture_trees::photos::{LeafPhotos, Photos};
 use venture_trees::{Detail, MeshPart, TreeParams, TreeTextures, grow, textures};
 use venture_world::{Biome, CHUNK_SIZE, Chunk, PropKind};
 
-use crate::characters::player::LocalPlayer;
 use crate::common::coords::to_bevy;
 use crate::common::mipmaps::{add_mipmaps, add_mipmaps_keeping_coverage};
 use crate::content::ContentStore;
@@ -53,25 +51,10 @@ use crate::world::streaming::{ChunkStore, MeshTask, ShownChunks};
 const VARIANTS: [(f32, u64); 3] = [(0.55, 11), (1.0, 12), (1.4, 13)];
 /// Leaves are see-through below this coverage.
 const ALPHA_CUTOFF: f32 = 0.5;
-/// Where the full trees give way to the reduced ones, in metres from the camera (start and end of the crossfade).
-const FULL_UNTIL: (f32, f32) = (45.0, 55.0);
-/// Where the reduced trees give way to impostors.
-const REDUCED_UNTIL: (f32, f32) = (110.0, 130.0);
-/// How far impostors show (about the view's reach).
-const IMPOSTORS_UNTIL: (f32, f32) = (330.0, 360.0);
 /// How far from its middle a trunk's flared base reaches, for sinking it on slopes, in metres.
 const TRUNK_BASE_REACH: f32 = 1.2;
 /// Bushes are young trees of their species, this much smaller than usual.
 const BUSH_SCALE: f32 = 0.45;
-/// Trees within this distance of the line from the camera to the player are gone, in metres.
-const FADE_INNER: f32 = 1.5;
-/// Trees further than this from the line are all there; in between they fade.
-const FADE_OUTER: f32 = 5.0;
-/// Past the player, trees come back over this share of the camera's distance.
-const FADE_BEHIND: f32 = 0.15;
-/// How high above the player's feet the line ends (about their chest), in metres.
-const FADE_FOCUS_HEIGHT: f32 = 1.2;
-
 /// A tree's material: the standard one, fading where it's in the way.
 pub type TreeMaterial = ExtendedMaterial<StandardMaterial, TreeFade>;
 
@@ -82,13 +65,11 @@ pub struct TreeFade {
     settings: FadeSettings,
 }
 
-/// The fade's settings (each a `vec4`, so the layout suits WebGL2).
+/// The fade's settings (a `vec4`, so the layout suits WebGL2).
 #[derive(ShaderType, Reflect, Debug, Clone, Default)]
 struct FadeSettings {
-    /// The player's chest, and 1 if fading is on (there's a player to see).
-    focus: Vec4,
-    /// `(inner radius, outer radius, past the player, unused)`.
-    shape: Vec4,
+    /// `(where the fade starts, where it ends, 1 if fading is on, unused)`, in metres from the camera.
+    settings: Vec4,
 }
 
 impl MaterialExtension for TreeFade {
@@ -105,7 +86,7 @@ impl Plugin for TreesPlugin {
         embedded_asset!(app, "shaders/tree.wgsl");
         app.add_plugins(MaterialPlugin::<TreeMaterial>::default())
             .init_resource::<TreeTemplates>()
-            .add_systems(Update, (start_growing, finish_growing, plant_trees, follow_the_player).chain());
+            .add_systems(Update, (start_growing, finish_growing, take_drawing, plant_trees).chain());
     }
 }
 
@@ -118,7 +99,9 @@ pub struct TreeTemplates {
     pub species: HashMap<String, Vec<Template>>,
     /// Growing, if under way: a task per species, and the content version.
     growing: Option<(String, Vec<Task<GrownSpecies>>)>,
-    /// Counts up each time the templates change, so chunks replant.
+    /// How trees are drawn (from the content).
+    drawing: TreeDrawing,
+    /// Counts up each time the templates (or how they're drawn) change, so chunks replant.
     generation: u32,
 }
 
@@ -250,36 +233,36 @@ fn finish_growing(
     templates.generation += 1;
 }
 
-/// A material that fades where it's in the way (set to the player's place by [`follow_the_player`]).
+/// A material that fades close to the camera (see [`take_drawing`]).
 fn fading(base: StandardMaterial) -> TreeMaterial {
     TreeMaterial { base, extension: TreeFade::default() }
 }
 
-/// Keeps every tree material's fade on the player (or off, with no player, as in the editor).
-fn follow_the_player(
-    player: Option<Single<&GlobalTransform, With<LocalPlayer>>>,
-    templates: Res<TreeTemplates>,
+/// Takes how trees are drawn from the content: the fade into every tree
+/// material, and (by replanting) the levels of detail.
+fn take_drawing(
+    content: Res<ContentStore>,
+    mut templates: ResMut<TreeTemplates>,
     mut materials: ResMut<Assets<TreeMaterial>>,
-    mut last: Local<Option<Vec4>>,
 ) {
-    let focus = match player {
-        Some(player) => (player.translation() + Vec3::Y * FADE_FOCUS_HEIGHT).extend(1.0),
-        None => Vec4::ZERO,
-    };
-    // (Only when it moves, or new materials arrive: each change sends them to the GPU again.)
-    let moved = last.is_none_or(|last| last.distance(focus) > 0.01);
-    if !moved && !templates.is_changed() {
+    let drawing = &content.tree_drawing;
+    if *drawing == templates.drawing && !templates.is_changed() {
         return;
     }
-    *last = Some(focus);
-    let settings = FadeSettings { focus, shape: Vec4::new(FADE_INNER, FADE_OUTER, FADE_BEHIND, 0.0) };
-    let handles = templates
+    if *drawing != templates.drawing {
+        templates.drawing = drawing.clone();
+        templates.generation += 1;
+    }
+    let (near, far) = drawing.camera_fade;
+    let settings = FadeSettings { settings: Vec4::new(near, far.max(near + 0.01), 1.0, 0.0) };
+    let handles: Vec<Handle<TreeMaterial>> = templates
         .species
         .values()
         .flatten()
-        .flat_map(|template| [&template.bark, &template.leaves, &template.impostor_material]);
+        .flat_map(|template| [template.bark.clone(), template.leaves.clone(), template.impostor_material.clone()])
+        .collect();
     for handle in handles {
-        if let Some(mut material) = materials.get_mut(handle) {
+        if let Some(mut material) = materials.get_mut(&handle) {
             material.extension.settings = settings.clone();
         }
     }
@@ -416,16 +399,18 @@ fn plant_chunk(
     templates: &TreeTemplates,
 ) {
     let (origin_x, origin_y) = chunk.pos.origin_cell();
+    let drawing = &templates.drawing;
+    let range = |(start, end): (f32, f32)| start..end.max(start);
     let ranges = [
-        VisibilityRange { start_margin: 0.0..0.0, end_margin: FULL_UNTIL.0..FULL_UNTIL.1, use_aabb: false },
+        VisibilityRange { start_margin: 0.0..0.0, end_margin: range(drawing.full_until), use_aabb: false },
         VisibilityRange {
-            start_margin: FULL_UNTIL.0..FULL_UNTIL.1,
-            end_margin: REDUCED_UNTIL.0..REDUCED_UNTIL.1,
+            start_margin: range(drawing.full_until),
+            end_margin: range(drawing.reduced_until),
             use_aabb: false,
         },
         VisibilityRange {
-            start_margin: REDUCED_UNTIL.0..REDUCED_UNTIL.1,
-            end_margin: IMPOSTORS_UNTIL.0..IMPOSTORS_UNTIL.1,
+            start_margin: range(drawing.reduced_until),
+            end_margin: range(drawing.impostors_until),
             use_aabb: false,
         },
     ];

@@ -21,7 +21,9 @@ use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 use venture_content::characters::{CharacterModels, parse_character_models};
 use venture_content::layout::{UiNode, UiStyles, parse_layout, parse_styles};
 use venture_content::sky::{SKY_CYCLE_FILE, SkyCycle, SkyDef, SkyLight, parse_sky, parse_sky_cycle};
-use venture_content::trees::{Species, TREE_SPECIES_FILE, parse_species};
+use venture_content::trees::{
+    Species, TREE_DRAWING_FILE, TREE_SPECIES_FILE, TreeDrawing, parse_species, parse_tree_drawing,
+};
 use venture_content::{
     AbilityDef, AppearanceDef, CLIENT_MANIFEST_FILE, ContentManifest, GameSounds, ItemDef, ManifestFile, SkillDef,
     ThemeDef, parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
@@ -88,6 +90,8 @@ pub struct ContentStore {
     pub sky_cycle: Option<SkyCycle>,
     /// Tree species (`trees/species.ron`), for the tree generator.
     pub tree_species: Vec<Species>,
+    /// How trees are drawn (`trees/drawing.ron`).
+    pub tree_drawing: TreeDrawing,
     /// Tree photographs (bark and leaf sets), by path in the content.
     pub tree_photos: HashMap<String, Arc<Vec<u8>>>,
     /// Model files that changed in the last download (to reload).
@@ -175,6 +179,8 @@ enum FileData {
     SkyCycle(SkyCycle),
     /// Tree species (`trees/species.ron`).
     TreeSpecies(Vec<Species>),
+    /// How trees are drawn (`trees/drawing.ron`).
+    TreeDrawing(TreeDrawing),
     /// A tree photograph (bark, or a leaf set), for the tree generator.
     TreePhoto(Arc<Vec<u8>>),
 }
@@ -366,6 +372,7 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
         Some("sounds.ron") => FileData::GameSounds(parse_game_sounds(&text())?),
         Some("skills") => FileData::Skills(parse_skills(&text())?),
         Some("trees") if path == TREE_SPECIES_FILE => FileData::TreeSpecies(parse_species(&text())?),
+        Some("trees") if path == TREE_DRAWING_FILE => FileData::TreeDrawing(parse_tree_drawing(&text())?),
         Some("trees") => FileData::TreePhoto(Arc::new(bytes.to_vec())),
         Some("ui") if path.starts_with("ui/layouts/") => FileData::Layout(Box::new(parse_layout(&text())?)),
         Some("ui") if path == "ui/styles.ron" => FileData::Styles(parse_styles(&text())?),
@@ -406,6 +413,7 @@ fn finish_download(
             store.skies.clear();
             store.sky_cycle = None;
             store.tree_species.clear();
+            store.tree_drawing = TreeDrawing::default();
             store.tree_photos.clear();
             store.changed_models =
                 downloaded.changed.iter().filter(|path| path.starts_with("characters/")).cloned().collect();
@@ -455,6 +463,7 @@ fn finish_download(
                     FileData::Sky(def) => store.skies.entry(sky_name(path)).or_default().def = Some(def.clone()),
                     FileData::SkyCycle(cycle) => store.sky_cycle = Some(cycle.clone()),
                     FileData::TreeSpecies(species) => store.tree_species = species.clone(),
+                    FileData::TreeDrawing(drawing) => store.tree_drawing = drawing.clone(),
                     FileData::TreePhoto(bytes) => {
                         store.tree_photos.insert(path.clone(), bytes.clone());
                     }

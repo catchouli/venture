@@ -187,7 +187,8 @@ fn bark(species: &Species, skeleton: &Skeleton, detail: Detail, bark_aspect: f32
             for side in 0..sides {
                 let a = first + i * ring + side;
                 let b = a + ring;
-                mesh.indices.extend([a, b, a + 1, a + 1, b, b + 1]);
+                // Counter-clockwise seen from outside (so the outside is the front).
+                mesh.indices.extend([a, a + 1, b, a + 1, b + 1, b]);
             }
         }
     }
@@ -294,5 +295,23 @@ mod tests {
         }
         assert!(reduced.bark.triangles() < full.bark.triangles());
         assert!(reduced.leaves.triangles() < full.leaves.triangles());
+    }
+
+    #[test]
+    fn bark_faces_outwards() {
+        let species = species();
+        let bark = build(&species, &grow(&species, &TreeParams::default()), Detail::Full, 1.0).bark;
+        let at = |i: u32| Vec3::from(bark.positions[i as usize]);
+        let mut facing_out = 0;
+        let triangles = bark.indices.as_chunks::<3>().0;
+        for &[a, b, c] in triangles {
+            let face = (at(b) - at(a)).cross(at(c) - at(a));
+            let normal = Vec3::from(bark.normals[a as usize]);
+            if face.length() > 1e-9 && face.dot(normal) > 0.0 {
+                facing_out += 1;
+            }
+        }
+        // (Degenerate slivers at branch tips aside, every triangle faces out.)
+        assert!(facing_out as f32 > triangles.len() as f32 * 0.95, "{facing_out} of {}", triangles.len());
     }
 }
