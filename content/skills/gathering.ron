@@ -1,6 +1,0 @@
-[
-    (id: "fishing", name: "Fishing", description: "Catching fish in rivers, lakes and the sea.", icon: "skill_fishing.png"),
-    (id: "woodcutting", name: "Woodcutting", description: "Felling trees for logs and timber.", icon: "skill_woodcutting.png"),
-    (id: "mining", name: "Mining", description: "Digging ore and stone out of the ground.", icon: "skill_mining.png"),
-    (id: "blacksmithing", name: "Blacksmithing", description: "Working metal into tools, weapons and armour.", icon: "skill_blacksmithing.png"),
-]

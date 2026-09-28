@@ -28,6 +28,7 @@ fn flat_world() -> ServerWorld {
         spawn_point: (100.0, 100.0),
         settlements: Vec::new(),
         map: None,
+        tree_species: Vec::new(),
     };
     let chunks: Vec<Chunk> = (0..16).map(|i| Chunk::new(ChunkPos::new(i % 4, i / 4))).collect();
     ServerWorld::from_chunks(manifest, &chunks)
@@ -45,6 +46,7 @@ fn river_world() -> ServerWorld {
         spawn_point: (100.0, 100.0),
         settlements: Vec::new(),
         map: None,
+        tree_species: Vec::new(),
     };
     let chunks: Vec<Chunk> = (0..16)
         .map(|i| {

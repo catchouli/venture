@@ -15,8 +15,8 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use image::codecs::jpeg::JpegEncoder;
 use image::{Rgb, RgbImage};
 use venture_world::{
-    CHUNK_SIZE, ChunkPos, FluidKind, Ground, MAP_LABELS_FILE, MapInfo, PropKind, WorldManifest, chunk_file_path,
-    decode_chunk, map_tile_path,
+    BUSH_SCALE, CHUNK_SIZE, ChunkPos, FluidKind, Ground, MAP_LABELS_FILE, MapInfo, PropKind, WorldManifest,
+    chunk_file_path, decode_chunk, map_tile_path,
 };
 
 use crate::map_labels::{LandFacts, place_names};
@@ -108,16 +108,16 @@ fn draw_band(folder: &Path, manifest: &WorldManifest, row: i32) -> std::io::Resu
             }
         }
         for prop in &chunk.props {
-            let (colour, radius) = match prop.kind {
-                PropKind::Oak | PropKind::Birch => ([46, 84, 34], 2.4),
-                PropKind::Pine => ([30, 64, 42], 2.0),
-                PropKind::Bush => ([58, 96, 40], 1.3),
-                PropKind::DeadTree => ([74, 60, 46], 1.2),
-                PropKind::Boulder => ([132, 128, 122], 1.5),
+            // Trees by the size of their crowns (bushes are small young ones).
+            let (colour, radius, tree) = match prop.kind {
+                PropKind::Tree { .. } if prop.scale < BUSH_SCALE => ([58, 96, 40], 1.3, false),
+                PropKind::Tree { variant, .. } => ([44, 80, 34], [2.2, 3.4, 4.2][usize::from(variant.min(2))], true),
+                PropKind::DeadTree => ([74, 60, 46], 1.2, false),
+                PropKind::Boulder => ([132, 128, 122], 1.5, false),
             };
             let radius = radius * prop.scale.clamp(0.6, 1.6);
             dot(&mut pixels, width, top, (prop.x, prop.y), radius, colour);
-            if matches!(prop.kind, PropKind::Oak | PropKind::Birch | PropKind::Pine) {
+            if tree {
                 facts.count_tree(prop.x, prop.y);
             }
         }

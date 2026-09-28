@@ -187,9 +187,14 @@ icons, sounds and looks.
 Skills are what characters get better at by doing them (gathering and
 making things). Each has its own level and experience, on the same curve as
 character levels but going on to 99 (characters stop at 60), and the Skills
-tab lists them in file order. For now they
-only have names and levels: what each one involves is still being designed
-(see [vision.md](vision.md)). The `id` is saved in profiles.
+tab lists them in file order. The `id` is saved in profiles.
+
+Since 2026-09-28 there are three, each gathering its own materials and
+making things from them (the list may change): **Fishing**, **Woodworking**
+(felling trees, and working wood; see [plan-trees.md](plan-trees.md)) and
+**Blacksmithing** (mining, and smithing). Fishing is designed in
+[plan-fishing.md](plan-fishing.md); the others are still being designed
+(see [vision.md](vision.md)).
 
 ### The interface's look (theme)
 

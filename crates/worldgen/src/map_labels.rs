@@ -353,6 +353,7 @@ mod tests {
             spawn_point: (0.0, 0.0),
             settlements,
             map: None,
+            tree_species: Vec::new(),
         }
     }
 

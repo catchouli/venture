@@ -46,6 +46,7 @@ fn main() -> std::io::Result<()> {
             .map(|settlement| SettlementInfo { position: settlement.position, biome: settlement.biome })
             .collect(),
         map: None,
+        tree_species: world.config().tree_species(),
     };
     std::fs::create_dir_all(output.join("chunks"))?;
 

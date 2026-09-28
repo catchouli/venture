@@ -1,0 +1,6 @@
+// The skills: each gathers its own materials and makes things from them.
+[
+    (id: "fishing", name: "Fishing", description: "Catching fish in rivers, lakes and the sea.", icon: "skill_fishing.png"),
+    (id: "woodworking", name: "Woodworking", description: "Felling trees for logs, and working wood into useful things.", icon: "skill_woodworking.png"),
+    (id: "blacksmithing", name: "Blacksmithing", description: "Mining ore and stone, and working metal into tools, weapons and armour.", icon: "skill_blacksmithing.png"),
+]

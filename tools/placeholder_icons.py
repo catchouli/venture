@@ -352,7 +352,7 @@ def skill_fishing():
     ]
 
 
-def skill_woodcutting():
+def skill_woodworking():
     return [
         tile((56, 70, 44)),
         (capsule(9, 26, 22, 7, 1.8), WOOD),  # the handle
@@ -361,6 +361,7 @@ def skill_woodcutting():
 
 
 def skill_mining():
+    # (No longer a skill of its own, part of Blacksmithing; the interface's placeholders still draw it.)
     return [
         tile((66, 60, 56)),
         (capsule(8, 26, 21, 9, 1.8), WOOD),  # the handle
@@ -405,8 +406,7 @@ ICONS = {
     "emote_wave.png": emote_wave,
     "action_town.png": action_town,
     "skill_fishing.png": skill_fishing,
-    "skill_woodcutting.png": skill_woodcutting,
-    "skill_mining.png": skill_mining,
+    "skill_woodworking.png": skill_woodworking,
     "skill_blacksmithing.png": skill_blacksmithing,
 }
 

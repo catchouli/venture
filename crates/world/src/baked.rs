@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// The version of the chunk file layout. Increase it whenever the layout changes.
-pub const CHUNK_FORMAT_VERSION: u16 = 2;
+pub const CHUNK_FORMAT_VERSION: u16 = 3;
 
 /// Name of the manifest file in a baked world folder.
 pub const MANIFEST_FILE: &str = "manifest.ron";
@@ -45,6 +45,10 @@ pub struct WorldManifest {
     /// maps don't: `bake_map` makes one).
     #[serde(default)]
     pub map: Option<crate::MapInfo>,
+    /// The tree species the world's trees are (ids of the content's
+    /// `trees/species.ron`), which [`crate::PropKind::Tree`] refers to by index.
+    #[serde(default)]
+    pub tree_species: Vec<String>,
 }
 
 /// A settlement site in a baked world.
@@ -202,7 +206,8 @@ mod tests {
         chunk.set_corner_height(5, 7, 12.3456);
         chunk.cell_mut(1, 2).fluid = Some(Fluid { kind: FluidKind::Lava, body: FluidBody::Lake, level: 40.004 });
         chunk.cell_mut(1, 2).ground = Ground::Basalt;
-        chunk.props.push(Prop { kind: PropKind::Oak, x: 1.5, y: 2.5, ground_height: 3.0, scale: 1.1, rotation: 0.4 });
+        let kind = PropKind::Tree { species: 2, variant: 1 };
+        chunk.props.push(Prop { kind, x: 1.5, y: 2.5, ground_height: 3.0, scale: 1.1, rotation: 0.4 });
 
         let decoded = decode_chunk(&encode_chunk(&chunk)).unwrap();
         assert_eq!(decoded.pos, chunk.pos);
@@ -224,6 +229,7 @@ mod tests {
             spawn_point: (10.0, 20.0),
             settlements: vec![SettlementInfo { position: (10.0, 20.0), biome: Biome::Meadow }],
             map: Some(crate::MapInfo::for_world(4096)),
+            tree_species: Vec::new(),
         };
         assert_eq!(WorldManifest::from_ron(&manifest.to_ron()).unwrap(), manifest);
     }

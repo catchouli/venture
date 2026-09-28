@@ -25,7 +25,7 @@ pub use chunk::Chunk;
 pub use coords::{CellPos, ChunkPos};
 pub use ground::{Fluid, FluidBody, FluidKind, Ground, TerrainCell};
 pub use map::{LabelKind, MAP_LABELS_FILE, MapInfo, MapLabel, MapLabels, map_tile_path};
-pub use prop::{Prop, PropKind};
+pub use prop::{BUSH_SCALE, Prop, PropKind, TREE_VARIANTS};
 
 /// Width of one terrain cell, in metres.
 pub const CELL_SIZE: f32 = 1.0;

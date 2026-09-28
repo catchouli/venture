@@ -132,6 +132,11 @@ pub struct WorldGenConfig {
     pub prop_spacing: f32,
     /// Frequency of the noise that groups trees into woods and clearings.
     pub forest_frequency: f64,
+    /// The species that grows by water (weeping willow), and the share of
+    /// trees near water that are it.
+    pub waterside_tree: &'static str,
+    /// (See [`WorldGenConfig::waterside_tree`].)
+    pub waterside_share: f32,
     /// Of the spots where a tree could grow, the share that gets one. Real
     /// trees need room (a mature oak's crown is 15 to 20 m across), so a
     /// wood has a tree every 8 to 10 m, not every spot on the grid.
@@ -159,6 +164,11 @@ pub struct BiomeTerrain {
     pub boulders: f32,
     /// How many bushes grow, from `0.0` to `1.0`.
     pub bushes: f32,
+    /// Which tree species grow in its woods (ids in the content's
+    /// `trees/species.ron`), with how common each is.
+    pub trees: &'static [(&'static str, f32)],
+    /// Which species its bushes are (they're young trees), with how common each is.
+    pub bush_species: &'static [(&'static str, f32)],
     /// Whether regions of this biome have a volcano at their centre.
     pub volcanoes: bool,
 }
@@ -183,6 +193,15 @@ impl Default for WorldGenConfig {
                 forest_cover: 0.3,
                 boulders: 0.15,
                 bushes: 0.4,
+                trees: &[
+                    ("oak", 4.0),
+                    ("ash", 2.0),
+                    ("beech", 1.5),
+                    ("sycamore", 1.5),
+                    ("hawthorn", 0.6),
+                    ("yew", 0.2),
+                ],
+                bush_species: &[("hawthorn", 1.0), ("hazel", 1.0)],
                 volcanoes: false,
             },
             meadow: BiomeTerrain {
@@ -194,6 +213,8 @@ impl Default for WorldGenConfig {
                 forest_cover: 0.45,
                 boulders: 0.25,
                 bushes: 0.8,
+                trees: &[("beech", 3.0), ("ash", 2.0), ("oak", 2.0), ("birch", 1.5), ("sycamore", 1.0), ("hazel", 0.5)],
+                bush_species: &[("hazel", 1.5), ("hawthorn", 1.0)],
                 volcanoes: false,
             },
             highlands: BiomeTerrain {
@@ -205,6 +226,8 @@ impl Default for WorldGenConfig {
                 forest_cover: 0.4,
                 boulders: 1.0,
                 bushes: 0.2,
+                trees: &[("scots_pine", 6.0), ("birch", 2.0), ("yew", 0.2)],
+                bush_species: &[("hazel", 1.0), ("birch", 0.5)],
                 volcanoes: false,
             },
             volcanic: BiomeTerrain {
@@ -216,6 +239,8 @@ impl Default for WorldGenConfig {
                 forest_cover: 0.08,
                 boulders: 0.7,
                 bushes: 0.05,
+                trees: &[("birch", 1.0)],
+                bush_species: &[("hawthorn", 1.0)],
                 volcanoes: true,
             },
 
@@ -271,6 +296,8 @@ impl Default for WorldGenConfig {
             prop_spacing: 4.0,
             forest_frequency: 1.0 / 180.0,
             tree_share: 0.22,
+            waterside_tree: "willow",
+            waterside_share: 0.7,
         }
     }
 }
@@ -279,6 +306,19 @@ impl WorldGenConfig {
     /// Number of coarse map points along each axis (one more than cells).
     pub fn map_points(&self) -> usize {
         (self.world_size / self.map_cell_size) as usize + 1
+    }
+
+    /// Every tree species the world can have (in a fixed order: tree props
+    /// refer to them by their place in it).
+    pub fn tree_species(&self) -> Vec<String> {
+        let species: std::collections::BTreeSet<&str> =
+            [&self.grassland, &self.meadow, &self.highlands, &self.volcanic]
+                .into_iter()
+                .flat_map(|biome| biome.trees.iter().chain(biome.bush_species))
+                .map(|(id, _)| *id)
+                .chain([self.waterside_tree])
+                .collect();
+        species.into_iter().map(str::to_string).collect()
     }
 
     /// The terrain settings for a biome.

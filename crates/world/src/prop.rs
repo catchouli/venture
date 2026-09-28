@@ -1,23 +1,28 @@
-//! Props: trees, rocks and bushes standing on the terrain.
+//! Props: trees (and bushes, which are young trees), rocks and dead trees standing on the terrain.
 
 use serde::{Deserialize, Serialize};
 
 /// What kind of prop something is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PropKind {
-    /// A broad, leafy tree.
-    Oak,
-    /// A slender, pale-barked tree.
-    Birch,
-    /// A tall conifer.
-    Pine,
+    /// A tree, grown by the tree generator (see `docs/plan-trees.md`).
+    Tree {
+        /// Its species: an index into the world's [`crate::WorldManifest::tree_species`].
+        species: u16,
+        /// Which of its species' variants it is: 0 young, 1 mature, 2 old.
+        variant: u8,
+    },
     /// A bare, dead tree.
     DeadTree,
     /// A large rock.
     Boulder,
-    /// A low bush.
-    Bush,
 }
+
+/// How many variants each tree species has (young, mature, old).
+pub const TREE_VARIANTS: u8 = 3;
+
+/// Trees scaled smaller than this are bushes (small young trees, in the undergrowth).
+pub const BUSH_SCALE: f32 = 0.6;
 
 /// One prop placed in the world.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]

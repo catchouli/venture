@@ -98,6 +98,12 @@ A full set of skills for gathering, making and doing things is central to the
 game. The exact list needs careful design. We want our own system that suits
 this world, not a copy of RuneScape's.
 
+**For now (2026-09-28), skills are streamlined:** each gathers its own
+materials and makes things from them, rather than one skill each for
+gathering and making. There are three: Fishing, Woodworking (felling trees
+and working wood) and Blacksmithing (mining and smithing). This may change,
+but it keeps the slice simple.
+
 ### Principles
 
 1. **Everything connects.** Every skill feeds at least one other and the

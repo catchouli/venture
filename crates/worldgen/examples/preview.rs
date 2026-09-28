@@ -66,8 +66,7 @@ fn render_terrain(world: &WorldGenerator) -> RgbImage {
             }
             for prop in &chunk.props {
                 let colour = match prop.kind {
-                    PropKind::Oak | PropKind::Birch | PropKind::Bush => Rgb([40, 80, 30]),
-                    PropKind::Pine => Rgb([25, 60, 40]),
+                    PropKind::Tree { .. } => Rgb([40, 80, 30]),
                     PropKind::DeadTree => Rgb([60, 45, 35]),
                     PropKind::Boulder => Rgb([140, 140, 135]),
                 };
