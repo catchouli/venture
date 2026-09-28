@@ -10,9 +10,10 @@
 //!   where it's open, and works out the cells it blocks ([`wall_cells`]).
 //! - Clients (and the editor) build its meshes ([`walls::build_wall`]).
 
+pub mod buildings;
 pub mod mesh;
 pub mod path;
-mod random;
+pub(crate) mod random;
 pub mod walls;
 
 use glam::Vec2;

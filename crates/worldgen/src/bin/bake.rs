@@ -66,6 +66,7 @@ fn main() -> std::io::Result<()> {
         map: None,
         tree_species: world.config().tree_species(),
         walls: Vec::new(),
+        buildings: Vec::new(),
     };
     let mut manifest = manifest;
     manifest.walls = bake_walls(&world, &authoring);
