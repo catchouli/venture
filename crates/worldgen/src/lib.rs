@@ -142,6 +142,13 @@ impl WorldGenerator {
         let bottom = lerp(corner(x0, y0 + 1.0), corner(x0 + 1.0, y0 + 1.0), fx);
         lerp(top, bottom, fy)
     }
+
+    /// How far a point is from the nearest road's centre line, in metres,
+    /// if a road runs within `within` metres (for walls leaving gateways).
+    pub fn road_distance(&self, x: f32, y: f32, within: f32) -> Option<f32> {
+        let near = self.map.roads_near((x - within, y - within), (x + within, y + within));
+        roads::nearest_road(&near, x, y).map(|sample| sample.distance).filter(|&distance| distance <= within)
+    }
 }
 
 /// The generator's own stamps: level ground and a square for each settlement.
