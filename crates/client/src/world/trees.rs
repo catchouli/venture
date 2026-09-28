@@ -67,8 +67,8 @@ const FALLEN_PICK_RADIUS: f32 = 0.9;
 const PICK_TREES_WITHIN: f32 = 40.0;
 /// How tall a felled tree's stump is, in metres.
 const STUMP_HEIGHT: f32 = 0.55;
-/// How wide young, mature and old trees' stumps (and fallen trunks) are, in metres of radius.
-const STUMP_RADII: [f32; 3] = [0.22, 0.38, 0.55];
+/// How much wider a stump is than the trunk above the flare.
+const STUMP_FLARE: f32 = 1.25;
 /// How far apart the ground is sampled under a fallen tree, in metres.
 const TILT_SAMPLE_SPACING: f32 = 1.0;
 /// How far to each side of its trunk a fallen tree's crown rests, in metres.
@@ -151,6 +151,8 @@ pub struct TreeTemplates {
 pub struct Template {
     /// How tall it is, in metres.
     height: f32,
+    /// Its trunk's radius at the ground (above the flare), in metres.
+    trunk_radius: f32,
     /// The full tree's bark and leaves (either may be missing: a dead tree
     /// has no leaves, and Bevy mustn't be given empty meshes).
     full: (Option<Handle<Mesh>>, Option<Handle<Mesh>>),
@@ -172,6 +174,8 @@ struct GrownSpecies {
 struct GrownVariant {
     /// How tall it is, in metres.
     height: f32,
+    /// Its trunk's radius at the ground (above the flare), in metres.
+    trunk_radius: f32,
     full: venture_trees::TreeMeshes,
     reduced: venture_trees::TreeMeshes,
     impostor: Impostor,
@@ -194,7 +198,8 @@ pub struct TreeDimensions {
 #[derive(Component)]
 struct TreeLook {
     bark: Handle<TreeMaterial>,
-    variant: u8,
+    /// Its trunk's radius (before the tree's scale), in metres.
+    trunk_radius: f32,
 }
 
 /// A part of a standing tree's body (hidden while it's felled).
@@ -257,7 +262,13 @@ fn grow_species(species: Species, photos: Photos) -> GrownSpecies {
             let full = grow(&species, &params, Detail::Full, &textures);
             let reduced = grow(&species, &params, Detail::Reduced, &textures);
             let impostor = impostor(&full, &textures);
-            GrownVariant { height: full.height, full: full.meshes, reduced: reduced.meshes, impostor }
+            GrownVariant {
+                height: full.height,
+                trunk_radius: full.trunk_radius,
+                full: full.meshes,
+                reduced: reduced.meshes,
+                impostor,
+            }
         })
         .collect();
     GrownSpecies { id: species.id, textures, variants }
@@ -327,6 +338,7 @@ fn finish_growing(
                 let impostor_image = images.add(texture(&variant.impostor.texture, false, Some(ALPHA_CUTOFF)));
                 Template {
                     height: variant.height,
+                    trunk_radius: variant.trunk_radius,
                     full: (part(&mut meshes, &variant.full.bark), part(&mut meshes, &variant.full.leaves)),
                     reduced: (part(&mut meshes, &variant.reduced.bark), part(&mut meshes, &variant.reduced.leaves)),
                     impostor: meshes.add(mesh(&variant.impostor.mesh)),
@@ -543,7 +555,7 @@ fn plant_chunk(
         let root = commands
             .spawn((
                 TreePart,
-                TreeLook { bark: template.bark.clone(), variant },
+                TreeLook { bark: template.bark.clone(), trunk_radius: template.trunk_radius },
                 local,
                 global,
                 Visibility::default(),
@@ -561,7 +573,7 @@ fn plant_chunk(
             let id = TreeId { chunk_x: chunk.pos.x, chunk_y: chunk.pos.y, index: index as u16 };
             commands.entity(root).insert((
                 StandingTree(id),
-                TreeDimensions { trunk_radius: STUMP_RADII[usize::from(variant.min(2))] * prop.scale, height },
+                TreeDimensions { trunk_radius: template.trunk_radius * prop.scale, height },
                 Targetable { id: EntityId::NONE, kind: TargetKind::Tree },
                 TargetLabel(name),
                 Level(level),
@@ -650,7 +662,8 @@ fn show_felled(
         let stump = children.iter().find(|child| stumps.contains(*child));
         match (is_felled, stump) {
             (true, None) => {
-                let radius = STUMP_RADII[usize::from(look.variant.min(2))];
+                // (A little wider than the trunk above: the stump's in its flare.)
+                let radius = look.trunk_radius * STUMP_FLARE;
                 let local = Transform::from_xyz(0.0, STUMP_HEIGHT / 2.0, 0.0).with_scale(Vec3::new(
                     radius,
                     STUMP_HEIGHT,
@@ -693,7 +706,7 @@ fn dress_fallen(
         let Some(prop) = chunk.props.get(usize::from(tree.index)) else { continue };
         let Some((template, local)) = template_for(&templates, &world.0.tree_species, chunk, prop) else { continue };
         let PropKind::Tree { variant, .. } = prop.kind else { continue };
-        let lying_radius = STUMP_RADII[usize::from(variant.min(2))] * prop.scale;
+        let lying_radius = template.trunk_radius * prop.scale;
         let length = FALLEN_LENGTHS[usize::from(variant.min(2))] * prop.scale;
         commands.entity(entity).insert(Dressed(length));
         // The root turns to the way it fell; a pivot at its foot tips it over.

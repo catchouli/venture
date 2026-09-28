@@ -10,4 +10,5 @@
     nibble: Some("nibble.wav"),
     bite: Some("bite.wav"),
     catch: Some("catch.wav"),
+    chop: Some("chop.wav"),
 )

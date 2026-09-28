@@ -412,9 +412,15 @@ Things seen in playtest screenshots that want work:
   back as usual). It rests on its foot and the highest ground under it
   (sampled along where it lies, and to each side under the crown) instead
   of lying through a hillside.
-- **Glints:** with an axe in hand, trees within 25 m that the player can
-  fell now and then show a small, faint golden glint on the trunk (or on a
-  bush's body): easy to spot if you're looking, and not otherwise
-  (`woodcutting/sparkles.rs`).
+- **Glints:** with an axe in hand, trees within 40 m that the player can
+  fell twinkle every few seconds with a small golden glint on the trunk (or
+  a bush's body) (`woodcutting/sparkles.rs`):
+  - on the side facing the camera, so their own trunk never hides them;
+  - about the same size on screen at any distance;
+  - easy to spot when looking for trees to chop, but brief and small.
+- **Sound:** each swing of an axe sounds (`chop.wav`; a copy of the hit
+  sound for now) as the axe comes down, quieter when it doesn't bite.
+- **Trunk sizes:** stumps, fallen trunks and glints use each tree's real
+  trunk radius, from the generator.
 - **Picking:** a tree's pick shape reaches no higher than the plant itself,
   so a bush can't be selected by clicking the air above it.

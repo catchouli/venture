@@ -1,11 +1,13 @@
 //! Glints on trees the player can fell: while an axe is in hand, each
-//! standing tree near them that their Woodworking level can fell now and
-//! then twinkles with a small golden glint on its trunk, fading in and out
-//! and coming back somewhere else round the trunk after a pause. Subtle on
-//! purpose: not noticeable unless you're looking for trees to chop. They're
-//! additive, just bright enough to catch the bloom, and face the camera.
+//! standing tree near them that their Woodworking level can fell every few
+//! seconds twinkles with a small golden glint on its trunk (or a bush's
+//! body), on the side facing the camera (so its own trunk never hides it),
+//! fading in and out and coming back somewhere else. Easy to spot
+//! when you're looking for trees to chop, but small and brief enough not to
+//! be in the way. Glints keep about the same size on screen whatever their
+//! distance, and are additive, bright enough to catch the bloom.
 
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::PI;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
@@ -21,23 +23,30 @@ use crate::woodcutting::axe_in_hand;
 use crate::world::trees::{StandingTree, TreeDimensions};
 
 /// Trees within this distance of the player glint, in metres.
-const RANGE: f32 = 25.0;
+const RANGE: f32 = 40.0;
 /// Glints on each tree.
 const PER_TREE: usize = 1;
 /// How long a glint shows, in seconds (from nothing, to brightest, to nothing)...
-const LIFE: f32 = 1.2;
+const LIFE: f32 = 1.0;
 /// ...and how long it's gone before it shows again, somewhere else.
-const PAUSE: f32 = 5.0;
-/// How big a glint is at its brightest, in metres.
-const SIZE: f32 = 0.15;
+const PAUSE: f32 = 2.2;
+/// How big a glint is at its brightest, in metres, close up...
+const SIZE: f32 = 0.18;
+/// ...growing by its own size again every this many metres from the camera,
+/// so far trees' glints stay about as easy to see as near ones'.
+const GROWS_EVERY: f32 = 10.0;
 /// How high up the trunk glints appear, in metres (from, to), and no
 /// higher than this share of the tree (a bush has no trunk to speak of).
 const HEIGHTS: (f32, f32) = (0.5, 2.2);
 const MOST_OF_HEIGHT: f32 = 0.4;
+/// How much wider than its trunk a tree is low down (its flare), for glints to sit outside.
+const FLARE_ALLOWANCE: f32 = 1.5;
+/// How far round the trunk from the side facing the camera a glint may be, in radians.
+const FACING_SPREAD: f32 = 1.0;
 /// Trees shorter than this (in metres) are bushy: glints show on their outside.
 const BUSHY: f32 = 4.0;
 /// Its colour (bright, so the bloom catches it).
-const COLOUR: Color = Color::linear_rgb(0.9, 0.75, 0.45);
+const COLOUR: Color = Color::linear_rgb(1.4, 1.15, 0.65);
 
 /// Glints on fellable trees.
 pub struct SparklesPlugin;
@@ -56,8 +65,9 @@ struct GlintAssets {
 }
 
 /// A glint on a tree: seconds since it started (negative: not yet), and
-/// where round the trunk (radians) and how high (0 to 1, from the lowest a
-/// glint goes on that tree to the highest).
+/// where round the trunk (from -1 to 1: either side of the side facing the
+/// camera) and how high (0 to 1, from the lowest a glint goes on that tree
+/// to the highest).
 #[derive(Component)]
 struct Glint {
     tree: Entity,
@@ -129,7 +139,7 @@ fn glint(
             glint.age = 0.0;
             glint.turn += 1;
             let seed = glint.tree.index_u32().wrapping_mul(31).wrapping_add(glint.turn * 7919);
-            glint.around = scatter(seed) * TAU;
+            glint.around = scatter(seed) * 2.0 - 1.0;
             glint.height = scatter(seed ^ 0x5bd1);
         }
         let Ok((_, place, _, size)) = trees.get(glint.tree) else { continue };
@@ -137,12 +147,17 @@ fn glint(
         let top = HEIGHTS.1.min(size.height * MOST_OF_HEIGHT);
         let bottom = HEIGHTS.0.min(top * 0.5);
         let height = bottom + (top - bottom) * glint.height;
-        let out = if size.height < BUSHY { size.height * 0.3 } else { size.trunk_radius + 0.05 };
+        // (Outside the flare near the ground, which is wider than the trunk above.)
+        let out = if size.height < BUSHY { size.height * 0.3 } else { size.trunk_radius * FLARE_ALLOWANCE + 0.05 };
         let brightness = if (0.0..LIFE).contains(&glint.age) { (PI * glint.age / LIFE).sin().powi(2) } else { 0.0 };
-        let on_bark = place.translation() + Vec3::new(glint.around.sin() * out, height, glint.around.cos() * out);
+        // On the side facing the camera (never hidden behind its own trunk).
+        let to_camera = camera.translation() - place.translation();
+        let angle = to_camera.x.atan2(to_camera.z) + glint.around * FACING_SPREAD;
+        let on_bark = place.translation() + Vec3::new(angle.sin() * out, height, angle.cos() * out);
         transform.translation = on_bark;
         transform.rotation = camera.rotation();
-        transform.scale = Vec3::splat(SIZE * brightness.max(0.001));
+        let away = on_bark.distance(camera.translation());
+        transform.scale = Vec3::splat(SIZE * (1.0 + away / GROWS_EVERY) * brightness.max(0.001));
     }
     // New glints on trees that have none yet (starting at different times, so they don't pulse together).
     let Some(near) = near else { return };
@@ -157,7 +172,7 @@ fn glint(
                     turn: index as u32 * 101,
                     age: -(index as f32) * (LIFE + PAUSE) / PER_TREE as f32
                         - scatter(tree.index_u32() + index as u32) * PAUSE,
-                    around: scatter(tree.index_u32() * 13 + index as u32) * TAU,
+                    around: scatter(tree.index_u32() * 13 + index as u32) * 2.0 - 1.0,
                     height: scatter(tree.index_u32() * 17 + index as u32),
                 },
                 Mesh3d(assets.quad.clone()),

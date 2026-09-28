@@ -788,6 +788,9 @@ pub struct GameSounds {
     /// The player landing a fish.
     #[serde(default, skip_serializing_if = "is_default")]
     pub catch: Option<String>,
+    /// An axe biting into a tree (felling it, or cutting it up).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub chop: Option<String>,
 }
 
 impl GameSounds {

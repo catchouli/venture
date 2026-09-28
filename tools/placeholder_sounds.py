@@ -174,6 +174,8 @@ def catch():
 
 SOUNDS = {
     "hit": hit,
+    # (The same as a hit for now; its own file, so they can differ once real sounds come.)
+    "chop": hit,
     "critical": critical,
     "miss": miss,
     "death": death,
