@@ -13,33 +13,29 @@
 //! - **Materials:** the stones and wood wear PBR textures from the content
 //!   (`textures/drystone/` and `fence_wood/`: colour, normal map, and
 //!   ambient occlusion and roughness), multiplied by each piece's vertex
-//!   colour. Bevy doesn't make mipmaps for JPEGs, so they're added once the
-//!   pictures load. A hedge's body wears `textures/hedge/`; its leaves are
+//!   colour (loaded once for every structure: see `surfaces.rs`). A hedge's body wears `textures/hedge/`; its leaves are
 //!   [`HEDGE_SPECIES`]' own leaves (the trees' material, fading near the
 //!   camera as trees do), added once the trees have grown.
 
 use std::collections::HashMap;
 
-use bevy::asset::{LoadState, RenderAssetUsages};
+use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::VisibilityRange;
-use bevy::image::{ImageAddressMode, ImageFilterMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor};
 use bevy::math::Affine2;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
 use venture_structures::{BakedWall, MeshPart, Stretch, WallKind, build_wall};
 
-use crate::common::mipmaps::add_mipmaps;
-use crate::content::{CONTENT_SOURCE, ContentStore};
+use crate::content::ContentStore;
 use crate::world::source::WorldInfo;
+use crate::world::surfaces::{SurfaceTextures, textured};
 use crate::world::trees::TreeTemplates;
 
 /// Each kind's texture (a folder in the content's `textures/`), and how
 /// many metres it covers before it repeats.
 const TEXTURES: [(WallKind, &str, f32); 3] =
     [(WallKind::DryStone, "drystone", 1.6), (WallKind::Fence, "fence_wood", 1.2), (WallKind::Hedge, "hedge", 2.0)];
-/// The pictures of each texture, and whether each is sRGB.
-const PICTURES: [(&str, bool); 3] = [("colour.jpg", true), ("normal.jpg", false), ("surface.jpg", false)];
 /// The tree species whose leaves hedges wear.
 pub const HEDGE_SPECIES: &str = "hawthorn";
 /// Hedges' leaves are drawn up to this far from the camera, in metres.
@@ -58,8 +54,7 @@ impl Plugin for WallsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Walls>().init_resource::<ShownWalls>().add_systems(
             Update,
-            (load_materials, finish_textures, take_manifest_walls, start_building, finish_building, dress_hedges)
-                .chain(),
+            (load_materials, take_manifest_walls, start_building, finish_building, dress_hedges).chain(),
         );
     }
 }
@@ -85,8 +80,6 @@ pub struct Walls {
     /// Hedges' leaves waiting for the trees to grow (for their material):
     /// the stretch they're on, and their mesh.
     bare_hedges: Vec<(Entity, Handle<Mesh>)>,
-    /// Each kind's pictures, until they've been given mipmaps.
-    pictures: Vec<Handle<Image>>,
     /// Each wall shown, by its key: what it was built from, and its stretches.
     built: HashMap<String, (BakedWall, Vec<Entity>)>,
     /// Building, if under way: every wall's key (to know which have gone),
@@ -100,84 +93,41 @@ pub struct Walls {
 #[derive(Component)]
 pub struct WallStretch;
 
-/// Asks for the walls' textures, once the content (which has them) is here,
-/// and makes their materials.
+/// Makes the walls' materials, once the content (which has their textures) is here.
 fn load_materials(
     content: Res<ContentStore>,
     asset_server: Res<AssetServer>,
+    mut textures: ResMut<SurfaceTextures>,
     mut walls: ResMut<Walls>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if walls.materials.is_some() || content.version.is_none() {
         return;
     }
-    let mut pictures = Vec::new();
     let mut made: HashMap<WallKind, Handle<StandardMaterial>> = HashMap::new();
     for (kind, texture, metres) in TEXTURES {
-        let [colour, normal, surface] = PICTURES.map(|(picture, srgb)| {
-            let handle = asset_server
-                .load_builder()
-                .with_settings(move |settings: &mut ImageLoaderSettings| settings.is_srgb = srgb)
-                .load::<Image>(format!("{CONTENT_SOURCE}://textures/{texture}/{picture}"));
-            pictures.push(handle.clone());
-            handle
-        });
-        let material = materials.add(match kind {
+        let pictures = textures.get(texture, &asset_server);
+        let material = match kind {
             // Leaves: rough all over, with little sheen, and some light through them.
-            WallKind::Hedge => StandardMaterial {
-                base_color_texture: Some(colour),
-                normal_map_texture: Some(normal),
-                occlusion_texture: Some(surface),
-                perceptual_roughness: 0.95,
-                metallic: 0.0,
-                reflectance: 0.08,
-                diffuse_transmission: 0.15,
-                uv_transform: Affine2::from_scale(Vec2::splat(1.0 / metres)),
-                ..default()
-            },
-            _ => StandardMaterial {
-                base_color_texture: Some(colour),
-                normal_map_texture: Some(normal),
-                // Ambient occlusion in red, roughness in green (and no metal: blue is 0).
-                occlusion_texture: Some(surface.clone()),
-                metallic_roughness_texture: Some(surface),
-                perceptual_roughness: 1.0,
-                metallic: 0.0,
-                reflectance: 0.3,
-                uv_transform: Affine2::from_scale(Vec2::splat(1.0 / metres)),
-                ..default()
-            },
-        });
-        made.insert(kind, material);
+            WallKind::Hedge => {
+                let [colour, normal, surface] = pictures;
+                StandardMaterial {
+                    base_color_texture: Some(colour),
+                    normal_map_texture: Some(normal),
+                    occlusion_texture: Some(surface),
+                    perceptual_roughness: 0.95,
+                    metallic: 0.0,
+                    reflectance: 0.08,
+                    diffuse_transmission: 0.15,
+                    uv_transform: Affine2::from_scale(Vec2::splat(1.0 / metres)),
+                    ..default()
+                }
+            }
+            _ => textured(pictures, metres),
+        };
+        made.insert(kind, materials.add(material));
     }
     walls.materials = Some(made);
-    walls.pictures = pictures;
-}
-
-/// Gives the textures mipmaps and a sampler that repeats, as each loads.
-fn finish_textures(asset_server: Res<AssetServer>, mut walls: ResMut<Walls>, mut images: ResMut<Assets<Image>>) {
-    walls.pictures.retain(|handle| {
-        if matches!(asset_server.load_state(handle), LoadState::Failed(_)) {
-            warn!("A wall texture couldn't be loaded, so walls go without it.");
-            return false;
-        }
-        if !asset_server.is_loaded_with_dependencies(handle) {
-            return true;
-        }
-        if let Some(mut image) = images.get_mut(handle) {
-            add_mipmaps(&mut image);
-            image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-                address_mode_u: ImageAddressMode::Repeat,
-                address_mode_v: ImageAddressMode::Repeat,
-                mag_filter: ImageFilterMode::Linear,
-                min_filter: ImageFilterMode::Linear,
-                mipmap_filter: ImageFilterMode::Linear,
-                anisotropy_clamp: 16,
-                ..default()
-            });
-        }
-        false
-    });
 }
 
 /// Shows the world's own walls, unless something else sets them.
@@ -327,7 +277,7 @@ fn dress_hedges(
 }
 
 /// A Bevy mesh from a generated one, with tangents for the normal maps.
-fn to_mesh(part: &MeshPart) -> Mesh {
+pub(crate) fn to_mesh(part: &MeshPart) -> Mesh {
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, part.positions.clone())
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, part.normals.clone())

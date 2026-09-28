@@ -372,7 +372,7 @@ fn gable_wall(builder: &mut Builder, wing: &Wing, high: bool, slope: &Slope) {
                 WallConstruction::Timber => {
                     let at = |x: f32, h: f32, depth: f32| start + along * x + Vec3::Y * h + out * depth;
                     let corners = [at(a, y, 0.035), at(b, y, 0.035), at(b, top, 0.0), at(a, top, 0.0)];
-                    let uvs = [[a, -y * 3.0], [b, -y * 3.0], [b, -top * 3.0], [a, -top * 3.0]];
+                    let uvs = [[a, -y], [b, -y], [b, -top], [a, -top]];
                     quad_facing(builder.mesh(Surface::Boards, Detail::Full, true), corners, uvs, walls, out);
                 }
             }

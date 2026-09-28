@@ -19,8 +19,10 @@ const QUOIN_PROUD: f32 = 0.03;
 pub const LINTEL: (f32, f32) = (0.18, 0.24);
 /// How far up a timber building's stone plinth comes, in metres.
 const TIMBER_PLINTH: f32 = 0.35;
+/// How deep the timber wall plate along the walls' tops is, in metres.
+const PLATE: f32 = 0.14;
 /// How tall a board is, in metres, and how far its bottom edge stands out.
-const BOARD: (f32, f32) = (0.22, 0.035);
+const BOARD: (f32, f32) = (0.22, 0.05);
 /// How thick a corner post is, in metres.
 const POST: f32 = 0.2;
 
@@ -269,6 +271,18 @@ pub fn outer_walls(builder: &mut Builder, openings: &[Vec<Opening>]) {
         let top_upper = builder.floors > 1;
         let mesh = builder.mesh(wall_surface, Detail::Full, top_upper);
         quad_facing(mesh, top, [[0.0; 2]; 4], walls, Vec3::Y);
+        // A timber wall plate along it, for the roof to sit on.
+        let middle = builder.point((a + b + inside_a + inside_b) / 4.0, eaves + PLATE / 2.0);
+        let trim = builder.colours.trim;
+        let size = Vec3::new(builder.style.wall_thickness * 0.8, PLATE, length);
+        builder.mesh(Surface::Wood, Detail::Full, top_upper).block(
+            middle,
+            facing(along),
+            size,
+            [0.0; 8],
+            [0.0, 0.0],
+            trim,
+        );
         u += length;
     }
 }
