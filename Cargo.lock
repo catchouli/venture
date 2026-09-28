@@ -6990,7 +6990,9 @@ dependencies = [
  "venture_content",
  "venture_protocol",
  "venture_rpg",
+ "venture_structures",
  "venture_world",
+ "venture_worldgen",
 ]
 
 [[package]]

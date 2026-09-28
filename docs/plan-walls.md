@@ -139,6 +139,11 @@ In the World tab:
 - [x] 5. The village wall: a dry stone ring round Oakwengate's square
   (about 28 m out), open where the north–south road passes, and a fenced
   field to its south-west with a gateway facing the village.
-- [ ] 6. The editor's tools
+- [x] 6. The editor's tools: draw, choose, drag points, add points on the
+  line, Delete, New seed, Delete wall, fields, Save and bake (see
+  [editor.md](editor.md)). The editor bakes walls live with
+  `venture_worldgen::structures::bake_authored_wall`, the same function
+  `bake` uses, and rebuilds only the walls that changed. Saving rewrites
+  `walls.ron` tidily, so its comments go.
 - [ ] 7. Later: gates, stiles, hedges, walls meeting buildings, walls on the
   map, rebaking only the chunks a change touches.

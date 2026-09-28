@@ -3,7 +3,7 @@
 //!
 //! ```sh
 //! cargo run -p venture_editor                               # content/ and world/
-//! cargo run -p venture_editor -- --content content --world world
+//! cargo run -p venture_editor -- --content content --world world --authoring world_authoring
 //! ```
 //!
 //! It edits the content pack's files through the content crate's own types
@@ -24,6 +24,7 @@ mod places;
 mod previews;
 mod screenshot;
 mod shell;
+mod walls;
 
 use std::path::PathBuf;
 
@@ -38,12 +39,14 @@ pub struct Project {
     pub content: PathBuf,
     /// The baked world folder.
     pub world: PathBuf,
+    /// The world authoring folder (walls), which the bake reads.
+    pub authoring: PathBuf,
     /// A copy of the content folder for checking unsaved changes.
     pub mirror: PathBuf,
 }
 
 impl Project {
-    /// From the command line: `--content <folder>` and `--world <folder>`.
+    /// From the command line: `--content <folder>`, `--world <folder>` and `--authoring <folder>`.
     fn from_arguments() -> Self {
         let args: Vec<String> = std::env::args().collect();
         let value_after = |flag: &str| args.iter().position(|arg| arg == flag).and_then(|i| args.get(i + 1)).cloned();
@@ -51,6 +54,7 @@ impl Project {
         Self {
             content: value_after("--content").unwrap_or_else(|| "content".to_string()).into(),
             world: value_after("--world").unwrap_or_else(|| "world".to_string()).into(),
+            authoring: value_after("--authoring").unwrap_or_else(|| "world_authoring".to_string()).into(),
             mirror,
         }
     }
@@ -58,7 +62,7 @@ impl Project {
 
 fn main() {
     let project = Project::from_arguments();
-    let document = match document::Document::load(&project.content) {
+    let document = match document::Document::load_with_authoring(&project.content, Some(&project.authoring)) {
         Ok(document) => document,
         Err(error) => {
             eprintln!("The editor can't read the content in {}: {error}", project.content.display());
@@ -90,6 +94,7 @@ fn main() {
         grips::GripsPlugin,
         places::PlacesPlugin,
         screenshot::ScreenshotPlugin,
+        walls::WallToolsPlugin,
     ));
     {
         let registry = app.world().resource::<AppTypeRegistry>().clone();

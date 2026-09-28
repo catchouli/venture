@@ -17,10 +17,12 @@ physically is baked into the world files at bake time.
 The app is being built first as a general editor for all content, starting
 with what exists today: see [plan-editor.md](plan-editor.md).
 
-This is the plan; little of it exists yet. Today's pieces are the overlay
+This is the plan; some of it exists. Today's pieces are the overlay
 stamps (see [world-generation-engine.md](world-generation-engine.md)), the
-generator's own prop scattering and roads, and content placed at world
-positions (see [content-authoring.md](content-authoring.md)).
+generator's own prop scattering and roads, content placed at world
+positions (see [content-authoring.md](content-authoring.md)), and walls and
+fences (`world_authoring/walls.ron`, drawn in the editor and baked; see
+[plan-walls.md](plan-walls.md)).
 
 ## The layers
 

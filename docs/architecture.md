@@ -9,10 +9,11 @@ venture_client ──► venture_protocol, venture_simulation, venture_navigatio
 venture_server ──► venture_protocol, venture_simulation, venture_navigation, venture_content (+scripts), venture_world
    (headless Bevy, tokio/axum, Rhai)
 
-venture_editor ──► venture_client (its world rendering), venture_content (+reflect), venture_world
+venture_editor ──► venture_client (its world rendering), venture_content (+reflect), venture_world,
+                   venture_structures (+reflect), venture_worldgen (baking walls as it edits them)
    (Bevy, egui)
 
-venture_worldgen ──► venture_world, venture_structures   (the bake tool; nothing at runtime depends on it)
+venture_worldgen ──► venture_world, venture_structures   (the bake tool; the game doesn't depend on it, only the editor)
 
 venture_trees                          (the tree generator; depends on nothing of ours)
 venture_structures ──► venture_world   (walls and fences: paths, baking, meshes)

@@ -27,6 +27,10 @@ pub const WALLS_FILE: &str = "walls.ron";
 /// How far into a wall's path (either way) a gap reaches past what makes it
 /// (such as a road's edge), in metres, so the wall stops short of it.
 const GAP_MARGIN: f32 = 1.0;
+/// The lowest a wall can be, in metres...
+pub const MIN_HEIGHT: f32 = 0.3;
+/// ...and the tallest.
+pub const MAX_HEIGHT: f32 = 6.0;
 
 /// A wall (or fence) as an author describes it.
 ///
@@ -64,6 +68,28 @@ pub fn parse_walls(text: &str) -> Result<Vec<WallDef>, String> {
     ron::from_str(text).map_err(|error| error.to_string())
 }
 
+/// Problems with authored walls: ids missing or used twice, too few
+/// points, or heights out of range (the empty list if there are none).
+pub fn check_walls(defs: &[WallDef]) -> Vec<String> {
+    let mut problems = Vec::new();
+    for (i, def) in defs.iter().enumerate() {
+        let name = if def.id.trim().is_empty() { format!("wall {}", i + 1) } else { format!("wall \"{}\"", def.id) };
+        if def.id.trim().is_empty() {
+            problems.push(format!("{name} has no id"));
+        } else if defs[..i].iter().any(|other| other.id == def.id) {
+            problems.push(format!("{name} is there twice"));
+        }
+        let needed = if def.closed { 3 } else { 2 };
+        if def.points.len() < needed {
+            problems.push(format!("{name} needs at least {needed} points"));
+        }
+        if !(MIN_HEIGHT..=MAX_HEIGHT).contains(&def.height) {
+            problems.push(format!("{name} must be {MIN_HEIGHT} to {MAX_HEIGHT} m tall"));
+        }
+    }
+    problems
+}
+
 /// Bakes a wall: its path sampled every [`WALL_SAMPLE_SPACING`] metres, with
 /// the ground's height at each sample (`ground`), and open wherever `opens`
 /// says something needs a way through (a road), widened by [`GAP_MARGIN`].
@@ -80,7 +106,13 @@ pub fn bake_wall(def: &WallDef, ground: impl Fn(f32, f32) -> f32, opens: impl Fn
             WallSample { x: sample.at.x, y: sample.at.y, ground: ground(sample.at.x, sample.at.y), open: near_gap }
         })
         .collect();
-    BakedWall { id: def.id.clone(), kind: def.kind, height: def.height.clamp(0.3, 6.0), seed: def.seed, samples }
+    BakedWall {
+        id: def.id.clone(),
+        kind: def.kind,
+        height: def.height.clamp(MIN_HEIGHT, MAX_HEIGHT),
+        seed: def.seed,
+        samples,
+    }
 }
 
 /// The cells (1 m squares, by their corner) a baked wall stands on, so
@@ -160,6 +192,16 @@ mod tests {
         for x in (0..8).chain(13..20) {
             assert!(cells.iter().any(|&(cx, _)| cx == x), "a hole at {x}");
         }
+    }
+
+    #[test]
+    fn problems_with_walls_are_found() {
+        let mut twice = line(WallKind::Fence);
+        twice.closed = true;
+        twice.height = 9.0;
+        let problems = check_walls(&[line(WallKind::DryStone), twice]);
+        assert_eq!(problems.len(), 3, "{problems:?}");
+        assert!(check_walls(&[line(WallKind::DryStone)]).is_empty());
     }
 
     #[test]

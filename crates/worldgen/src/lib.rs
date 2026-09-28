@@ -29,6 +29,7 @@ mod rivers;
 mod roads;
 mod settlements;
 mod spatial;
+pub mod structures;
 mod surface;
 mod world_map;
 
