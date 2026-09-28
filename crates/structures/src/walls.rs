@@ -10,9 +10,11 @@
 //!   *batter*), laid course by course with each course's joints offset
 //!   from the last, every stone a little irregular (its corners pushed in
 //!   or out), tilted and shaded; a dark core between the faces, so no
-//!   daylight shows through the joints; and upright coping stones along the
-//!   top. Far away it's the same shape as one plain extruded band.
-//! - **Fence:** posts every [`POST_SPACING`] metres or so, sunk into the
+//!   daylight shows through the joints; upright coping stones along the
+//!   top; and wherever the wall ends (at a gap, or the end of its path, but
+//!   not where a ring comes back round), a *cheek end* of through stones
+//!   across its whole width, one a course. Far away it's the same shape as one plain extruded band.
+//! - **Fence:** a post at each end and every [`POST_SPACING`] metres or so between, sunk into the
 //!   ground and leaning a little, with rails (two, or three on a tall fence)
 //!   running between them with the slope. Fences are light enough to be the
 //!   same close up and far away.
@@ -39,6 +41,8 @@ const FOOTING: f32 = 0.1;
 pub const POST_SPACING: f32 = 2.4;
 /// How far a fence post is sunk into the ground, in metres.
 const POST_SUNK: f32 = 0.45;
+/// How far a dry stone wall's end stones stand past the end of its core, in metres.
+const END_PROUD: f32 = 0.03;
 /// The stones' colour (sRGB, multiplying their texture) and the wood's.
 const STONE: [f32; 3] = [0.92, 0.9, 0.86];
 const CORE: [f32; 3] = [0.25, 0.24, 0.23];
@@ -87,12 +91,58 @@ impl Path<'_> {
         Vec2::new(b.x - a.x, b.y - a.y).normalize_or(Vec2::X)
     }
 
-    /// Whether the wall is open (a gap) anywhere between two distances.
-    fn open_between(&self, from: f32, to: f32) -> bool {
-        let (first, _) = self.index(from.min(to));
-        let (last, _) = self.index(from.max(to));
-        (first..=(last + 1).min(self.samples.len() - 1)).any(|i| self.samples[i].open)
+    /// Whether it comes back round to where it started (a ring).
+    fn closed(&self) -> bool {
+        let (first, last) = (self.samples[0], self.samples[self.samples.len() - 1]);
+        Vec2::new(first.x - last.x, first.y - last.y).length() < WALL_SAMPLE_SPACING * 0.5
     }
+
+    /// The unbroken runs of wall between its gaps and ends: where each
+    /// starts and ends (in metres along), and whether each end is a real
+    /// end (not where a ring comes back round to its start).
+    fn runs(&self) -> Vec<Run> {
+        let mut runs = Vec::new();
+        let mut first: Option<usize> = None;
+        for (i, sample) in self.samples.iter().enumerate() {
+            match (sample.open, first) {
+                (false, None) => first = Some(i),
+                (true, Some(from)) => {
+                    if i - 1 > from {
+                        runs.push((from, i - 1));
+                    }
+                    first = None;
+                }
+                _ => {}
+            }
+        }
+        if let Some(from) = first
+            && self.samples.len() - 1 > from
+        {
+            runs.push((from, self.samples.len() - 1));
+        }
+        let last = self.samples.len() - 1;
+        let closed = self.closed();
+        runs.into_iter()
+            .map(|(from, to)| Run {
+                start: from as f32 * WALL_SAMPLE_SPACING,
+                end: to as f32 * WALL_SAMPLE_SPACING,
+                capped_start: !(closed && from == 0),
+                capped_end: !(closed && to == last),
+            })
+            .collect()
+    }
+}
+
+/// An unbroken run of wall.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Run {
+    /// Where it starts and ends, in metres along the path.
+    start: f32,
+    end: f32,
+    /// Whether it ends there (and so needs finishing off), rather than
+    /// running on round a ring.
+    capped_start: bool,
+    capped_end: bool,
 }
 
 /// Collects pieces into stretches, relative to each stretch's origin.
@@ -155,27 +205,57 @@ fn facing(along: Vec2) -> Quat {
 }
 
 fn dry_stone(path: &Path, height: f32, builder: &mut Builder, random: &mut Random) {
-    let length = path.length();
     let coping = height * COPING_SHARE;
     let body = height - coping;
     let batter = (FOOT_HALF_WIDTH - TOP_HALF_WIDTH).atan2(body);
 
-    // The faces, course by course.
-    for side in [-1.0f32, 1.0] {
-        let mut bottom = -FOOTING;
-        while bottom < body {
-            let course = random.range(0.11, 0.19).min(body - bottom + 0.02);
-            // Each course starts somewhere different, so joints don't line up.
-            let mut distance = random.range(0.0, 0.25);
-            while distance < length {
-                let stone_length = random.range(0.22, 0.48);
-                let middle = (distance + stone_length / 2.0).min(length);
-                if !path.open_between(distance, distance + stone_length) {
+    let runs = path.runs();
+
+    // Course by course (the same courses both sides, so the ends can bind them).
+    let mut bottom = -FOOTING;
+    while bottom < body {
+        let course = random.range(0.11, 0.19).min(body - bottom + 0.02);
+        let up = bottom + course / 2.0;
+        for run in &runs {
+            // Each end is finished with a through stone across the whole
+            // wall (a "cheek end"), hiding the core, alternately long and short
+            // so the courses bond.
+            let mut from = run.start;
+            let mut to = run.end;
+            for (capped, at, inwards) in [(run.capped_start, run.start, 1.0f32), (run.capped_end, run.end, -1.0)] {
+                if !capped || run.end - run.start < 0.8 {
+                    continue;
+                }
+                let stone_length = random.range(0.3, 0.5);
+                // Standing a little proud of the end, so its lumps never uncover the core.
+                let middle = at + inwards * (stone_length / 2.0 - END_PROUD);
+                let (place, ground) = path.at(middle);
+                let along = path.along(middle);
+                let centre = lift(place, ground + up);
+                let wobble =
+                    Quat::from_rotation_x(random.signed() * 0.04) * Quat::from_rotation_z(random.signed() * 0.04);
+                let size = Vec3::new(half_width(up, body) * 2.0 + 0.04, course * 0.92, stone_length);
+                stone(builder, random, middle, centre, facing(along) * wobble, size);
+                if inwards > 0.0 {
+                    from = at + stone_length - END_PROUD;
+                } else {
+                    to = at - stone_length + END_PROUD;
+                }
+            }
+            // The faces between, filled exactly to the ends.
+            for side in [-1.0f32, 1.0] {
+                // Each course's joints fall somewhere different.
+                let mut distance = from;
+                let mut stone_length = random.range(0.1, 0.48);
+                while to - distance > 0.02 {
+                    if to - distance - stone_length < 0.18 {
+                        stone_length = to - distance;
+                    }
+                    let middle = distance + stone_length / 2.0;
                     let (at, ground) = path.at(middle);
                     let along = path.along(middle);
                     let right = Vec2::new(along.y, -along.x);
                     let depth = random.range(0.2, 0.32);
-                    let up = bottom + course / 2.0;
                     let out = half_width(up, body) - depth / 2.0;
                     let centre = lift(at + right * side * out, ground + up);
                     let wobble = Quat::from_euler(
@@ -186,29 +266,28 @@ fn dry_stone(path: &Path, height: f32, builder: &mut Builder, random: &mut Rando
                     );
                     let rotation = facing(along) * Quat::from_rotation_z(side * batter) * wobble;
                     let size = Vec3::new(depth, course * 0.92, stone_length * 0.95);
-                    let lumps = std::array::from_fn(|_| random.signed() * 0.12);
-                    let shade = random.range(0.72, 1.05);
-                    let tint = [STONE[0] * shade, STONE[1] * shade * random.range(0.97, 1.02), STONE[2] * shade];
-                    let uv = [random.range(0.0, 4.0), random.range(0.0, 4.0)];
-                    let (stretch, local) = builder.place(middle, centre);
-                    stretch.full.block(local, rotation, size, lumps, uv, linear(tint));
+                    stone(builder, random, middle, centre, rotation, size);
+                    distance += stone_length;
+                    stone_length = random.range(0.22, 0.48);
                 }
-                distance += stone_length;
             }
-            bottom += course;
         }
+        bottom += course;
     }
 
     // The core between the faces, and (far away) the whole wall, as bands along the path.
     band(path, builder, |_| -FOOTING, |_| body, TOP_HALF_WIDTH * 0.8, FOOT_HALF_WIDTH * 0.7, CORE, true);
     band(path, builder, |_| -FOOTING, |_| height, TOP_HALF_WIDTH, FOOT_HALF_WIDTH, STONE, false);
 
-    // Coping stones on edge along the top.
-    let mut distance = random.range(0.0, 0.1);
-    while distance < length {
-        let thickness = random.range(0.09, 0.15);
-        let middle = distance + thickness / 2.0;
-        if !path.open_between(distance, distance + thickness) && middle < length {
+    // Coping stones on edge along the top, end to end along each run.
+    for run in &runs {
+        let mut distance = run.start + random.range(0.0, 0.03);
+        loop {
+            let thickness = random.range(0.09, 0.15);
+            if distance + thickness > run.end + END_PROUD {
+                break;
+            }
+            let middle = distance + thickness / 2.0;
             let (at, ground) = path.at(middle);
             let along = path.along(middle);
             let stone_height = coping * random.range(0.85, 1.15);
@@ -220,9 +299,19 @@ fn dry_stone(path: &Path, height: f32, builder: &mut Builder, random: &mut Rando
             let uv = [random.range(0.0, 4.0), random.range(0.0, 4.0)];
             let (stretch, local) = builder.place(middle, centre);
             stretch.full.block(local, facing(along) * lean, size, lumps, uv, linear(STONE.map(|c| c * shade)));
+            distance += thickness + random.range(0.01, 0.03);
         }
-        distance += thickness + random.range(0.01, 0.03);
     }
+}
+
+/// Adds a stone: a lumpy block, shaded a little differently from the next.
+fn stone(builder: &mut Builder, random: &mut Random, distance: f32, centre: Vec3, rotation: Quat, size: Vec3) {
+    let lumps = std::array::from_fn(|_| random.signed() * 0.12);
+    let shade = random.range(0.72, 1.05);
+    let tint = [STONE[0] * shade, STONE[1] * shade * random.range(0.97, 1.02), STONE[2] * shade];
+    let uv = [random.range(0.0, 4.0), random.range(0.0, 4.0)];
+    let (stretch, local) = builder.place(distance, centre);
+    stretch.full.block(local, rotation, size, lumps, uv, linear(tint));
 }
 
 /// Adds a band along the path, from `bottom` to `top` (metres above the
@@ -300,60 +389,55 @@ fn band(
 }
 
 fn fence(path: &Path, height: f32, builder: &mut Builder, random: &mut Random) {
-    let length = path.length();
-    // Where the posts go: evenly, give or take, and one at each end and each side of a gap.
-    let mut posts: Vec<f32> = Vec::new();
-    let mut distance = 0.0;
-    while distance < length {
-        posts.push(distance);
-        distance += POST_SPACING * random.range(0.9, 1.1);
-    }
-    posts.push(length);
-    posts.retain(|&at| !path.open_between(at, at));
     let rails: &[f32] = if height > 1.15 { &[0.3, 0.6, 0.9] } else { &[0.35, 0.82] };
-
-    let mut tops = Vec::with_capacity(posts.len());
-    for &at in &posts {
-        let (place, ground) = path.at(at);
-        let along = path.along(at);
-        let post_height = (height + POST_SUNK) * random.range(0.96, 1.04);
-        let centre = lift(place, ground - POST_SUNK + post_height / 2.0);
-        let lean = Quat::from_rotation_x(random.signed() * 0.035) * Quat::from_rotation_z(random.signed() * 0.035);
-        let size = Vec3::new(random.range(0.11, 0.14), post_height, random.range(0.11, 0.14));
-        let lumps = std::array::from_fn(|_| random.signed() * 0.05);
-        let shade = random.range(0.8, 1.05);
-        let uv = [random.range(0.0, 4.0), random.range(0.0, 4.0)];
-        let (stretch, local) = builder.place(at, centre);
-        let tint = linear(WOOD.map(|c| c * shade));
-        stretch.full.block(local, facing(along) * lean, size, lumps, uv, tint);
-        stretch.far.block(local, facing(along) * lean, size, lumps, uv, tint);
-        tops.push((at, place, ground, along));
-    }
-
-    // Rails from post to post (not across gaps), nailed to one side.
-    for pair in tops.windows(2) {
-        let ((from, a, ground_a, along), (to, b, ground_b, _)) = (pair[0], pair[1]);
-        if path.open_between(from, to) || to - from > POST_SPACING * 1.6 {
-            continue;
+    for run in path.runs() {
+        // Posts at each end of the run (so each side of a gap), and evenly
+        // between, give or take. Where a ring comes back round, its end is
+        // its start's post, so there's no second post there.
+        let spans = ((run.end - run.start) / POST_SPACING).round().max(1.0);
+        let spacing = (run.end - run.start) / spans;
+        let mut posts = vec![run.start];
+        posts.extend((1..spans as usize).map(|i| run.start + (i as f32 + random.signed() * 0.08) * spacing));
+        posts.push(run.end);
+        let drawn = if run.capped_end { posts.len() } else { posts.len() - 1 };
+        for &at in &posts[..drawn] {
+            let (place, ground) = path.at(at);
+            let along = path.along(at);
+            let post_height = (height + POST_SUNK) * random.range(0.96, 1.04);
+            let centre = lift(place, ground - POST_SUNK + post_height / 2.0);
+            let lean = Quat::from_rotation_x(random.signed() * 0.035) * Quat::from_rotation_z(random.signed() * 0.035);
+            let size = Vec3::new(random.range(0.11, 0.14), post_height, random.range(0.11, 0.14));
+            wood(builder, random, at, centre, facing(along) * lean, size);
         }
-        let side = Vec2::new(along.y, -along.x) * 0.075;
-        for &share in rails {
-            let rise = height * share + random.signed() * 0.02;
-            let start = lift(a + side, ground_a + rise);
-            let end = lift(b + side, ground_b + rise);
-            let run = end - start;
-            let rotation = Quat::from_rotation_arc(Vec3::Z, run.normalize_or(Vec3::Z))
-                * Quat::from_rotation_z(random.signed() * 0.04);
-            let size = Vec3::new(0.05, random.range(0.09, 0.12), run.length() + 0.12);
-            let lumps = std::array::from_fn(|_| random.signed() * 0.04);
-            let shade = random.range(0.8, 1.05);
-            let uv = [random.range(0.0, 4.0), random.range(0.0, 4.0)];
-            let (stretch, local) = builder.place((from + to) / 2.0, (start + end) / 2.0);
-            let tint = linear(WOOD.map(|c| c * shade));
-            stretch.full.block(local, rotation, size, lumps, uv, tint);
-            stretch.far.block(local, rotation, size, lumps, uv, tint);
+
+        // Rails from post to post, nailed to one side.
+        for pair in posts.windows(2) {
+            let (from, to) = (pair[0], pair[1]);
+            let ((a, ground_a), (b, ground_b)) = (path.at(from), path.at(to));
+            let side = path.along(from).perp() * -0.075;
+            for &share in rails {
+                let rise = height * share + random.signed() * 0.02;
+                let start = lift(a + side, ground_a + rise);
+                let end = lift(b + side, ground_b + rise);
+                let run = end - start;
+                let rotation = Quat::from_rotation_arc(Vec3::Z, run.normalize_or(Vec3::Z))
+                    * Quat::from_rotation_z(random.signed() * 0.04);
+                let size = Vec3::new(0.05, random.range(0.09, 0.12), run.length() + 0.12);
+                wood(builder, random, (from + to) / 2.0, (start + end) / 2.0, rotation, size);
+            }
         }
     }
+}
+
+/// Adds a piece of a fence (the same close up and far away).
+fn wood(builder: &mut Builder, random: &mut Random, distance: f32, centre: Vec3, rotation: Quat, size: Vec3) {
+    let lumps = std::array::from_fn(|_| random.signed() * 0.05);
+    let shade = random.range(0.8, 1.05);
+    let uv = [random.range(0.0, 4.0), random.range(0.0, 4.0)];
+    let (stretch, local) = builder.place(distance, centre);
+    let tint = linear(WOOD.map(|c| c * shade));
+    stretch.full.block(local, rotation, size, lumps, uv, tint);
+    stretch.far.block(local, rotation, size, lumps, uv, tint);
 }
 
 #[cfg(test)]
@@ -405,5 +489,69 @@ mod tests {
         assert!((13..=24).contains(&blocks), "{blocks} posts and rails");
         let again = build_wall(&straight(WallKind::Fence, 10, None));
         assert_eq!(fence[0].full, again[0].full);
+    }
+
+    /// The world positions of a stretch's full mesh whose colour isn't the core's (stones or wood).
+    fn pieces(stretch: &Stretch) -> Vec<Vec3> {
+        let origin = Vec3::from(stretch.origin);
+        let core = linear(CORE);
+        stretch
+            .full
+            .positions
+            .iter()
+            .zip(&stretch.full.colours)
+            .filter(|(_, colour)| **colour != core)
+            .map(|(p, _)| Vec3::from(*p) + origin)
+            .collect()
+    }
+
+    #[test]
+    fn stones_finish_the_ends_so_the_core_never_shows() {
+        // Open from 6 to 10 m, so the runs are 0 to 5.5 m and 10 to 16 m.
+        let wall = build_wall(&straight(WallKind::DryStone, 16, Some(12..20)));
+        let stones: Vec<Vec3> = wall.iter().flat_map(pieces).collect();
+        for (end, beyond) in [(0.0, -1.0), (5.5, 1.0), (10.0, -1.0), (16.0, 1.0)] {
+            // The stones at the end reach past the core's end, all the way across and up.
+            let at_end: Vec<Vec3> = stones
+                .iter()
+                .filter(|p| (p.x - end) * beyond > -0.01 && (p.x - end) * beyond < 0.12)
+                .copied()
+                .collect();
+            let across = at_end.iter().map(|p| p.z).fold(f32::MIN, f32::max)
+                - at_end.iter().map(|p| p.z).fold(f32::MAX, f32::min);
+            let ground = end * 0.1;
+            let top = at_end.iter().map(|p| p.y - ground).fold(f32::MIN, f32::max);
+            assert!(across > 0.55, "the end at {end} m is covered across ({across} m)");
+            assert!(top > 0.9, "and up ({top} m)");
+            let past = |p: &&Vec3| (0.15..2.0).contains(&((p.x - end) * beyond));
+            assert!(!stones.iter().any(|p| past(&p)), "nothing well past the end at {end} m");
+        }
+    }
+
+    #[test]
+    fn rings_have_no_ends_where_they_come_back_round() {
+        let samples: Vec<WallSample> = (0..=40)
+            .map(|i| {
+                let angle = i as f32 / 40.0 * std::f32::consts::TAU;
+                WallSample { x: angle.cos() * 3.2, y: angle.sin() * 3.2, ground: 0.0, open: false }
+            })
+            .collect();
+        let path = Path { samples: &samples };
+        let runs = path.runs();
+        assert_eq!(runs.len(), 1);
+        assert!(!runs[0].capped_start && !runs[0].capped_end);
+        let line = straight(WallKind::DryStone, 10, None);
+        let runs = Path { samples: &line.samples }.runs();
+        assert!(runs[0].capped_start && runs[0].capped_end);
+    }
+
+    #[test]
+    fn fences_have_a_post_each_side_of_a_gap() {
+        let fence = build_wall(&straight(WallKind::Fence, 16, Some(12..20)));
+        let wood: Vec<Vec3> = fence.iter().flat_map(pieces).collect();
+        for end in [0.0, 5.5, 10.0, 16.0] {
+            assert!(wood.iter().any(|p| (p.x - end).abs() < 0.1 && p.y < end * 0.1), "a post at {end} m");
+        }
+        assert!(!wood.iter().any(|p| p.x > 5.7 && p.x < 9.8), "nothing across the gap");
     }
 }
