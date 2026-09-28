@@ -17,6 +17,10 @@ const LEVEL_EDGE: f32 = 0.4;
 /// clip into them), in metres.
 const WALL_REACH: f32 = 0.25;
 
+/// A wall as it blocks cells: along its middle from one point to another,
+/// its half-thickness, and its doorways (from and to, along it).
+type WallBand = (Vec2, Vec2, f32, Vec<(f32, f32)>);
+
 /// Reads the authored buildings file.
 pub fn parse_buildings(text: &str) -> Result<Vec<BuildingPlan>, String> {
     ron::from_str(text).map_err(|error| error.to_string())
@@ -109,7 +113,7 @@ pub fn building_cells(building: &BakedBuilding, style: &BuildingStyle) -> Vec<(i
     let Some(footprint) = Footprint::of(plan, style.wall_thickness) else { return Vec::new() };
     let frame = footprint.frame;
     // Every wall, along its middle, with its half-thickness and its doorways (along it).
-    let mut walls: Vec<(Vec2, Vec2, f32, Vec<(f32, f32)>)> = Vec::new();
+    let mut walls: Vec<WallBand> = Vec::new();
     let doors_on = |wall: WallRef| -> Vec<f32> {
         plan.doors.iter().filter(|door| door.wall == wall).map(|door| door.along).collect()
     };
