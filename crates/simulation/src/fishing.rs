@@ -25,16 +25,37 @@ use serde::{Deserialize, Serialize};
 
 use crate::TICK_RATE;
 
-/// How fast reeling draws line in, in metres a second (less whatever a
-/// running fish takes).
-pub const REEL_SPEED: f32 = 3.0;
-/// How much reeling adds to the tension, as a share of the line's strength.
-pub const REEL_EFFORT: f32 = 0.3;
-/// How much of the fish's pull reaches the line while it's let run.
-pub const SLACK_SHARE: f32 = 0.35;
-/// How long the tension may stay over the line's strength before it snaps,
-/// in seconds (a moment to stop reeling).
-pub const SNAP_GRACE: f32 = 0.3;
+/// How the fight feels to play (tuned in playtests: the server's come from
+/// `server.ron`, and travel with each fight, so the client runs it the same).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FightTuning {
+    /// How fast reeling draws line in, in metres a second (less whatever a
+    /// running fish takes).
+    pub reel_speed: f32,
+    /// How much reeling adds to the tension, as a share of the line's strength.
+    pub reel_effort: f32,
+    /// How much of the fish's pull reaches the line while it's let run.
+    pub slack_share: f32,
+    /// How long the tension may stay over the line's strength before it
+    /// snaps, in seconds (a moment to stop reeling).
+    pub snap_grace: f32,
+}
+
+impl Default for FightTuning {
+    fn default() -> Self {
+        Self { reel_speed: 3.0, reel_effort: 0.3, slack_share: 0.35, snap_grace: 0.3 }
+    }
+}
+
+impl FightTuning {
+    /// What's wrong with these numbers, if anything (for the server's settings).
+    pub fn problems(&self) -> Option<String> {
+        let numbers = [self.reel_speed, self.reel_effort, self.slack_share, self.snap_grace];
+        (!numbers.iter().all(|value| *value > 0.0 && value.is_finite()))
+            .then(|| "the fight's reel_speed, reel_effort, slack_share and snap_grace must be more than 0".to_string())
+    }
+}
 /// How close the fish must come to be landed, in metres.
 pub const LAND_DISTANCE: f32 = 1.5;
 /// How much of its strength a resting fish regains a second.
@@ -58,6 +79,8 @@ pub struct FightSetup {
     pub distance: f32,
     /// Seeds the fish's runs and rests.
     pub seed: u64,
+    /// How the fight feels.
+    pub tuning: FightTuning,
 }
 
 /// How a fight is going.
@@ -117,6 +140,7 @@ impl Fight {
     pub fn step(&mut self, reeling: bool) -> Option<FightEnd> {
         let dt = 1.0 / TICK_RATE;
         let setup = self.setup;
+        let tuning = setup.tuning;
         self.ticks += 1;
 
         // The fish: running (strong, swimming away) or resting (weak, still).
@@ -137,10 +161,10 @@ impl Fight {
         // The line: reeling draws it in, against the fish's weight in the
         // water (however tired it is) and its pull; letting it run pays out.
         if reeling {
-            self.tension = setup.pull + 0.5 * pull + REEL_EFFORT * setup.strength;
-            self.distance += (away - REEL_SPEED) * dt;
+            self.tension = setup.pull + 0.5 * pull + tuning.reel_effort * setup.strength;
+            self.distance += (away - tuning.reel_speed) * dt;
         } else {
-            self.tension = pull * SLACK_SHARE;
+            self.tension = pull * tuning.slack_share;
             self.distance += away * dt;
         }
 
@@ -151,7 +175,7 @@ impl Fight {
         }
 
         self.over = if self.tension > setup.strength { self.over + dt } else { 0.0 };
-        if self.over >= SNAP_GRACE {
+        if self.over >= tuning.snap_grace {
             Some(FightEnd::Snapped)
         } else if self.distance > setup.capacity {
             Some(FightEnd::SpooledOut)
@@ -356,7 +380,16 @@ mod tests {
 
     /// A small fish on the first reel (see `venture_rpg::fishing`).
     fn small_fish() -> FightSetup {
-        FightSetup { pull: 1.2, run: 15.0, stamina: 8.0, strength: 3.0, capacity: 30.0, distance: 8.0, seed: 42 }
+        FightSetup {
+            pull: 1.2,
+            run: 15.0,
+            stamina: 8.0,
+            strength: 3.0,
+            capacity: 30.0,
+            distance: 8.0,
+            seed: 42,
+            tuning: FightTuning::default(),
+        }
     }
 
     /// Plays a fight with a player who reels only while the fish rests.
