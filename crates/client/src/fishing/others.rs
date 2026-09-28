@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{EntityId, ServerMessage};
 
-use crate::characters::model::RodTip;
+use crate::characters::model::{Gait, RodTip};
 use crate::characters::player::LocalPlayer;
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::fishing::{LineAssets, line_between, rod_tip};
@@ -42,9 +42,16 @@ fn follow_server(
     mut events: MessageReader<FromServer>,
     assets: Res<LineAssets>,
     mut lines: ResMut<OtherLines>,
+    mut anglers: Query<(&Targetable, &mut Gait), Without<LocalPlayer>>,
 ) {
     for FromServer(message) in events.read() {
         let ServerMessage::Angler { id, at } = message else { continue };
+        // A cast: a swing of the rod.
+        if at.is_some()
+            && let Some((_, mut gait)) = anglers.iter_mut().find(|(targetable, _)| targetable.id == *id)
+        {
+            gait.swing();
+        }
         match (at, lines.0.get_mut(id)) {
             (Some(at), Some(line)) => line.at = *at,
             (Some(at), None) => {

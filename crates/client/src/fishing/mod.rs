@@ -26,6 +26,7 @@ use venture_rpg::fishing::Method;
 use venture_simulation::TICK_RATE;
 use venture_simulation::fishing::{Fight, reeling_at};
 
+use crate::characters::model::Gait;
 use crate::characters::model::{ROD_ANGLE, RodGrip, RodTip};
 use crate::characters::player::LocalPlayer;
 use crate::common::coords::{from_bevy, to_bevy};
@@ -182,7 +183,12 @@ pub fn rod_in_hand(sheet: &Sheet, content: &ContentStore) -> Option<Method> {
     }
 }
 
-fn follow_server(mut events: MessageReader<FromServer>, time: Res<Time>, mut angling: ResMut<Angling>) {
+fn follow_server(
+    mut events: MessageReader<FromServer>,
+    time: Res<Time>,
+    mut angling: ResMut<Angling>,
+    mut gait: Option<Single<&mut Gait, With<LocalPlayer>>>,
+) {
     for FromServer(message) in events.read() {
         let ServerMessage::Fishing(state) = message else { continue };
         match state {
@@ -190,6 +196,10 @@ fn follow_server(mut events: MessageReader<FromServer>, time: Res<Time>, mut ang
                 angling.line = Some(LineView { at: *at, method: *method, stage: Stage::Waiting, nibbled: None });
                 angling.reeling = false;
                 angling.prediction = None;
+                // The cast: a swing of the rod.
+                if let Some(gait) = &mut gait {
+                    gait.swing();
+                }
             }
             FishingState::Nibble => {
                 if let Some(line) = &mut angling.line {
