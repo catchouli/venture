@@ -39,8 +39,7 @@
 //! - `VENTURE_FISH_AUTO=1`: and strike at the bite, and reel while the fish
 //!   rests (to see a fight).
 //! - `VENTURE_CHOP=1`: once loaded, take the first axe in the bag in hand,
-//!   select the nearest tree, and fell it (with `/setskill woodworking 99`
-//!   and `--admin` for any tree).
+//!   select the nearest tree the character can fell, and fell it.
 //! - `VENTURE_TRAP=1`: once loaded, set the first fishing trap in the bag in
 //!   the nearest water.
 //!

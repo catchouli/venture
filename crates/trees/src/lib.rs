@@ -87,7 +87,8 @@ mod tests {
                 assert!(tree.height > 0.5 && tree.height < tallest, "{} at {age}: {} m", species.id, tree.height);
                 let triangles = tree.meshes.bark.triangles() + tree.meshes.leaves.triangles();
                 assert!(triangles < 60_000, "{} at {age} has {triangles} triangles", species.id);
-                assert!(!tree.meshes.leaves.indices.is_empty(), "{} at {age} has no leaves", species.id);
+                let leafy = species.leaves.per_metre > 0.0;
+                assert_eq!(!tree.meshes.leaves.indices.is_empty(), leafy, "{} at {age}: leaves?", species.id);
             }
         }
     }

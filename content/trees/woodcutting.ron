@@ -7,6 +7,7 @@
 // - hardness: how many bites of an axe fell a mature one (young ones take
 //   half as many, old ones more; see venture_rpg::woodcutting)
 [
+    (species: "dead_tree", level: 1, log: "deadwood", experience: 5.0, hardness: 2),
     (species: "hazel", level: 1, log: "hazel_rods", experience: 6.0, hardness: 2),
     (species: "birch", level: 5, log: "birch_logs", experience: 10.0, hardness: 3),
     (species: "willow", level: 10, log: "willow_logs", experience: 15.0, hardness: 3),

@@ -21,7 +21,7 @@ use crate::common::coords::from_bevy;
 use crate::content::ContentStore;
 use crate::dev::settings::DevSettings;
 use crate::interaction::orders::Orders;
-use crate::interaction::targeting::{Target, Targetable, nearest};
+use crate::interaction::targeting::{Level, Target, Targetable, nearest};
 use crate::network::ToServer;
 use crate::network::{ClientState, FromServer};
 use crate::ui::character_window::Sheet;
@@ -69,7 +69,7 @@ pub fn axe_in_hand(sheet: &Sheet, content: &ContentStore) -> Option<(f32, u32)> 
 }
 
 /// For development (`VENTURE_CHOP`): once loaded, takes an axe in hand,
-/// selects the nearest tree, and fells it.
+/// selects the nearest tree the player's level can fell, and fells it.
 fn chop_on_startup_if_requested(
     dev: Res<DevSettings>,
     progress: Res<StreamingProgress>,
@@ -77,7 +77,7 @@ fn chop_on_startup_if_requested(
     content: Res<ContentStore>,
     inventory: Res<PlayerInventory>,
     player: Option<Single<&GlobalTransform, With<LocalPlayer>>>,
-    trees: Query<(Entity, &GlobalTransform), With<StandingTree>>,
+    trees: Query<(Entity, &GlobalTransform, &Level), With<StandingTree>>,
     mut target: ResMut<Target>,
     mut to_server: MessageWriter<ToServer>,
     mut chops: MessageWriter<ChopClicked>,
@@ -99,8 +99,12 @@ fn chop_on_startup_if_requested(
         }
         return;
     }
+    // The nearest the player's woodworking level can fell.
+    let skill = sheet.0.as_ref().and_then(|sheet| sheet.skills.iter().find(|progress| progress.skill == "woodworking"));
+    let level = skill.map_or(1, |progress| progress.level);
+    let fellable = trees.iter().filter(|(.., tree_level)| tree_level.0 <= level);
     let Some((tree, _)) =
-        nearest(player.translation(), trees.iter().map(|(entity, place)| (entity, place.translation())))
+        nearest(player.translation(), fellable.map(|(entity, place, _)| (entity, place.translation())))
     else {
         return;
     };

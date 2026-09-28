@@ -41,7 +41,7 @@ use venture_rpg::woodcutting::FALLEN_LENGTHS;
 use venture_trees::impostor::{Impostor, impostor};
 use venture_trees::photos::{LeafPhotos, Photos};
 use venture_trees::{Detail, MeshPart, TreeParams, TreeTextures, grow, textures};
-use venture_world::{BUSH_SCALE, CHUNK_SIZE, Chunk, Prop, PropKind};
+use venture_world::{CHUNK_SIZE, Chunk, Prop, PropKind};
 
 use crate::common::coords::to_bevy;
 use crate::common::mipmaps::{add_mipmaps, add_mipmaps_keeping_coverage};
@@ -162,7 +162,7 @@ struct GrownVariant {
     impostor: Impostor,
 }
 
-/// A standing tree (not a bush) that can be selected and felled: its id.
+/// A standing tree (or bush) that can be selected and felled: its id.
 #[derive(Component)]
 pub struct StandingTree(pub TreeId);
 
@@ -516,9 +516,9 @@ fn plant_chunk(
                 ChildOf(entity),
             ))
             .id();
-        // Trees (not bushes) of species that can be felled can be selected.
+        // Trees (and bushes: small young trees) of species that can be felled can be selected.
         let facts = species_ids.get(usize::from(species)).and_then(|id| facts.get(id));
-        if let Some((name, level)) = facts.filter(|_| prop.scale >= BUSH_SCALE) {
+        if let Some((name, level)) = facts {
             let id = TreeId { chunk_x: chunk.pos.x, chunk_y: chunk.pos.y, index: index as u16 };
             commands.entity(root).insert((
                 StandingTree(id),

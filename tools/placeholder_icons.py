@@ -642,6 +642,7 @@ def stone_axe():
 
 
 WOOD_ICONS = {
+    "deadwood.png": logs((150, 146, 138), (196, 188, 172)),
     "hazel_rods.png": hazel_rods,
     "birch_logs.png": logs((225, 222, 210), (236, 222, 190)),
     "willow_logs.png": logs((120, 110, 90), (226, 206, 170)),

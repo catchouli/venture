@@ -85,7 +85,6 @@ pub fn scatter_props(generator: &WorldGenerator, chunk: &Chunk, overlay: &LocalO
             let (kind, scale) = match choice {
                 // Mostly small rocks, with the odd huge one.
                 Choice::Boulder => (Some(PropKind::Boulder), 0.5 + size * size * size * 2.5),
-                Choice::DeadTree => (Some(PropKind::DeadTree), 0.75 + size * 0.55),
                 Choice::Tree => {
                     let id =
                         if waterside() { config.waterside_tree } else { pick(settings.trees, hash(salt::SPECIES)) };
@@ -115,7 +114,6 @@ enum Choice {
     Tree,
     Bush,
     Boulder,
-    DeadTree,
 }
 
 /// Decides what (if anything) grows at a spot. `choice` is a random number in `0.0..1.0`.
@@ -143,8 +141,8 @@ fn choose_kind(
     let bush_chance = if can_grow { settings.bushes * 0.07 * (0.5 + woodland) } else { 0.0 };
 
     if choice < tree_chance {
-        // Volcanic land's trees are dead.
-        return Some(if biome == Biome::Volcanic { Choice::DeadTree } else { Choice::Tree });
+        // (Volcanic land's trees are dead ones: see its mix.)
+        return Some(Choice::Tree);
     }
     if choice < tree_chance + boulder_chance {
         return Some(Choice::Boulder);
