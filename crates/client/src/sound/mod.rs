@@ -28,7 +28,33 @@ pub struct SoundPlugin;
 
 impl Plugin for SoundPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, play_sounds.run_if(in_state(ClientState::Playing)));
+        app.add_systems(Update, (play_sounds, play_when_due).run_if(in_state(ClientState::Playing)));
+    }
+}
+
+/// How long after a swing starts the axe comes down, in seconds (see
+/// `characters::model`'s swing: raised over the first third, then down).
+const CHOP_DELAY: f32 = 0.22;
+/// How loud a swing that doesn't bite is, compared with one that does.
+const GLANCE_VOLUME: f32 = 0.5;
+
+/// A sound to play in a moment.
+#[derive(Component)]
+struct Due {
+    in_seconds: f32,
+    sound: Handle<AudioSource>,
+    volume: Volume,
+}
+
+/// Plays sounds once they're due.
+fn play_when_due(mut commands: Commands, time: Res<Time>, mut due: Query<(Entity, &mut Due)>) {
+    for (entity, mut sound) in &mut due {
+        sound.in_seconds -= time.delta_secs();
+        if sound.in_seconds <= 0.0 {
+            commands.entity(entity).despawn();
+            commands
+                .spawn((AudioPlayer::new(sound.sound.clone()), PlaybackSettings::DESPAWN.with_volume(sound.volume)));
+        }
     }
 }
 
@@ -71,6 +97,15 @@ fn play_sounds(
                 (file.as_ref(), *target)
             }
             ServerMessage::Died { id } => (sounds.death.as_ref(), *id),
+            ServerMessage::Chopped { id, bit, .. } => {
+                // In time with the swing: when the axe comes down (a swing that
+                // doesn't bite glances, more quietly).
+                let Some(sound) = sounds.chop.as_ref().and_then(|file| content.sounds.get(file)) else { continue };
+                let quieter = if *bit { 1.0 } else { GLANCE_VOLUME };
+                let volume = Volume::Linear(VOLUME * loudness(*id) * quieter);
+                commands.spawn(Due { in_seconds: CHOP_DELAY, sound: sound.clone(), volume });
+                continue;
+            }
             ServerMessage::PlayerChanged { id, celebrate: true, .. } if *id == me => (sounds.level_up.as_ref(), *id),
             ServerMessage::Fishing(state) => {
                 let file = match state {
