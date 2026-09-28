@@ -203,11 +203,14 @@ from smaller, quicker trees and need a lower level:
 | Hawthorn | 20 | hard, small |
 | Sycamore | 25 | medium |
 | Ash | 30 | hard, springy |
-| Beech | 40 | hard |
-| Oak | 50 | very hard |
-| Yew | 60 | very hard, prized for bows |
+| Beech | 35 | hard |
+| Oak | 40 | very hard |
+| Yew | 45 | very hard, prized for bows |
 
-(Making things from wood comes later, in the same skill.)
+(Making things from wood comes later, in the same skill. The higher levels
+are more about making things than felling harder trees; rarer, more
+fantastical trees, for special materials, will come.) Felling a tree gives
+experience, and so does each log cut from it.
 
 **Axes:** the first is a **stone axe**: a knapped stone head bound to a
 haft, for the lowest levels. Metal axes come later, made by
@@ -367,7 +370,7 @@ Things seen in playtest screenshots that want work:
 - **Selecting:** standing trees near the player (within 40 m) can be
   selected, bushes included (they're small young trees: mostly hazel, level
   1, and hawthorn). The target frame shows the tree's name and Woodworking
-  level ("Yew tree, Level 60").
+  level ("Yew tree, Level 45").
 - **Felling:** clicking a selected tree again with an axe in hand (the
   cursor is an axe) runs the player beside it and chops. When it falls, a
   stump is left, and the fallen tree tips over, slowly then faster, landing
@@ -378,7 +381,7 @@ Things seen in playtest screenshots that want work:
 - **Growing back:** after 3 minutes the fallen tree goes, and a minute later
   the tree grows back.
 - **Gear:** new characters carry a stone axe. There are eleven kinds of
-  wood, from deadwood and hazel rods (level 1) to yew (level 60).
+  wood, from deadwood and hazel rods (level 1) to yew (level 45).
 - **Something to start on:** dead trees (a bare, grey species of their own,
   5–10 m tall, level 1) stand among the living in every biome's woods, and
   are volcanic land's only trees. Near the starting town there are about
@@ -392,3 +395,20 @@ Things seen in playtest screenshots that want work:
   - a woodsman who sells axes and buys logs;
   - fallen trees and felled lists surviving a server restart;
   - making things from wood.
+
+**The first playtest's round** (2026-09-28):
+- **Levels:** the top levels are lower: beech 35, oak 40, yew 45. Higher
+  levels are for making things, and rarer, fantastical trees.
+- **Small trees:** young trees and bushes are "small" ("Small silver
+  birch"). They take 10 levels less to fell (at least 1), and give half the
+  experience.
+- **Experience:** felling gives experience (`felling_experience` in
+  `trees/woodcutting.ron`) as well as each log.
+- **Starting to chop:** the first swing comes at once, and the chopper
+  turns to face the tree (every swing says where it's aimed). Clicking
+  again while chopping carries on, rather than starting over.
+- **Selection:** a felled tree stops being selected (and selectable).
+- **Fallen trees:** a fallen tree goes once its logs are all cut (and grows
+  back as usual). It rests on its foot and the highest ground under it
+  (sampled along where it lies, and to each side under the crown) instead
+  of lying through a hillside.

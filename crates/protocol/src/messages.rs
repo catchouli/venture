@@ -787,6 +787,9 @@ pub enum ServerMessage {
         id: EntityId,
         /// Whether it bit.
         bit: bool,
+        /// Where they swung at (the trunk, or the nearest point of a fallen
+        /// one), in metres, so they can be turned to face it.
+        at: (f32, f32),
     },
     /// The player has started chopping (at this tree or fallen tree), or stopped (`None`).
     Chopping {

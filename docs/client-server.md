@@ -625,15 +625,19 @@ Felling trees and cutting them up for logs, part of the Woodworking skill
     in hand (and the player has its level), the tree is within reach
     (`server.ron`), and their woodworking level is the tree's.
   - The player is told when they start and stop (`Chopping { at }`).
-  - Each swing, every `swing_seconds`, may bite (`venture_rpg::woodcutting`),
-    and everyone nearby sees it (`Chopped { id, bit }`).
+  - The first swing comes at once, then one every `swing_seconds`. Each may
+    bite (`venture_rpg::woodcutting`), and everyone nearby sees it
+    (`Chopped { id, bit, at }`, turning the chopper to face `at`). Asking
+    again to chop the same thing carries on.
+  - Small (young) trees take 10 levels less (at least 1) and give half the
+    experience. Felling gives experience as well as each log.
   - Moving, attacking or dying stops chopping.
 - **A felled tree's trunk is an entity** (`EntityKind::FallenTree { tree,
   toward, level }`), lying the way it fell (away from the feller), so
   selecting it and seeing it work as for any entity. Each bite into it
   gives a log (through `Inventory::apply`) and its experience, until its
-  logs run out. It goes after `fallen_seconds`, and the tree grows back
-  `regrow_seconds` after that.
+  logs run out, when it goes. Otherwise it goes after `fallen_seconds`. Either
+  way, the tree grows back `regrow_seconds` after that.
 - **Selecting:** clients make standing trees (not bushes) selectable, with
   their name and level from the content (`trees/woodcutting.ron`). Since
   they aren't the server's entities, their `Targetable` id is
