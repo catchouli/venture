@@ -158,7 +158,10 @@ Any chunk can be generated at any time, in any order. For each chunk:
 5. **Props** (`props.rs`): candidate spots on a jittered 4 m grid. Woodland
    noise groups trees into woods and clearings, and the biome decides the
    species (oaks in grassland, birches in meadows, pines in the highlands,
-   dead trees in volcanic land). Boulders favour rocky ground.
+   dead trees in volcanic land). Only `tree_share` of the spots that could
+   have a tree get one, since real trees need room. Boulders favour rocky
+   ground. (The client grows the trees themselves: see
+   [plan-trees.md](plan-trees.md).)
 
 Heights and liquids are worked out for a margin around the chunk as well
 (needed for beaches), so neighbouring chunks agree.

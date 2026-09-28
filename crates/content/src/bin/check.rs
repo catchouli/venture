@@ -14,7 +14,7 @@ fn main() -> ExitCode {
     match ContentPack::load(&folder) {
         Ok(pack) => {
             println!(
-                "{} is fine: {} classes, {} abilities, {} skills, {} appearances, {} items, {} shops, {} quests, {} monsters, {} spawners, {} NPCs, {} scripts, {} dialogue files.",
+                "{} is fine: {} classes, {} abilities, {} skills, {} appearances, {} items, {} shops, {} quests, {} monsters, {} spawners, {} NPCs, {} scripts, {} dialogue files, {} tree species.",
                 folder.display(),
                 pack.classes.len(),
                 pack.abilities.len(),
@@ -27,7 +27,8 @@ fn main() -> ExitCode {
                 pack.spawners.len(),
                 pack.npcs.len(),
                 pack.scripts.len(),
-                pack.dialogue.len()
+                pack.dialogue.len(),
+                pack.tree_species.len()
             );
             ExitCode::SUCCESS
         }

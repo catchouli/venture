@@ -40,6 +40,8 @@ const MOST_OF_PARENT: f32 = 0.8;
 const TIP_RADIUS: f32 = 0.004;
 /// Branches shorter than this are left out, in metres.
 const SHORTEST_BRANCH: f32 = 0.08;
+/// Extra rings through a stem's flare, as shares of the flare's height.
+const FLARE_RINGS: [f32; 4] = [0.08, 0.2, 0.4, 0.7];
 /// The golden angle, in degrees: each branch of a spiral is turned this far from the last.
 const GOLDEN_ANGLE: f32 = 137.507_77;
 /// How strongly tropism bends a branch in a segment, for a tropism of 1.
@@ -319,6 +321,19 @@ impl Grower<'_> {
             points.push(position);
             orientations.push(orientation);
             radii.push(radius_at(&sprout, (segment + 1) as f32 / segments as f32, flare));
+        }
+        // A stem's flare happens low down (within an eighth of its length):
+        // rings through it, so it curves out smoothly into the roots.
+        if flare > 0.0 {
+            let (base, next) = (points[0], points[1]);
+            let first = 1.0 / segments as f32;
+            let extra: Vec<f32> =
+                FLARE_RINGS.iter().map(|share| share / 8.0).filter(|&along| along < first * 0.9).collect();
+            for (i, along) in extra.iter().enumerate() {
+                points.insert(1 + i, base.lerp(next, along / first));
+                radii.insert(1 + i, radius_at(&sprout, *along, flare));
+                orientations.insert(1 + i, orientations[0]);
+            }
         }
         let index = self.skeleton.branches.len();
         self.skeleton.branches.push(Branch {

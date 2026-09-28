@@ -11,6 +11,7 @@ pub mod streaming;
 pub mod terrain_material;
 pub mod terrain_mesh;
 pub mod time_of_day;
+pub mod trees;
 pub mod water_material;
 
 use bevy::prelude::*;
@@ -28,6 +29,7 @@ impl Plugin for WorldPlugin {
             terrain_material::TerrainMaterialPlugin,
             water_material::WaterMaterialPlugin,
             streaming::ChunkStreamingPlugin,
+            trees::TreesPlugin,
         ));
     }
 }

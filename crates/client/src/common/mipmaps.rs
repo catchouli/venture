@@ -28,6 +28,46 @@ pub fn add_mipmaps(image: &mut Image) -> bool {
     true
 }
 
+/// Adds mipmaps to an alpha-tested picture (leaves), keeping how much of
+/// each level passes the test (alpha at least `cutoff`, 0 to 1) the same as
+/// the full-size picture. Plain averaging lets coverage fall away level by
+/// level, so leaves thin out into nothing in the distance. Each level's
+/// alpha is scaled to make up for it (Castaño, "Computing Alpha Mipmaps",
+/// 2010). Returns whether it could (see [`add_mipmaps`]).
+pub fn add_mipmaps_keeping_coverage(image: &mut Image, cutoff: f32) -> bool {
+    let (width, height) = (image.texture_descriptor.size.width, image.texture_descriptor.size.height);
+    let threshold = (cutoff.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let wanted = image.data.as_ref().map_or(0.0, |data| coverage(data, threshold, 1.0));
+    if !add_mipmaps(image) {
+        return false;
+    }
+    let Some(data) = image.data.as_mut() else { return false };
+    let (mut offset, mut level_width, mut level_height) = (0, width, height);
+    while level_width > 1 || level_height > 1 {
+        offset += (level_width * level_height * 4) as usize;
+        (level_width, level_height) = ((level_width / 2).max(1), (level_height / 2).max(1));
+        let level = &mut data[offset..offset + (level_width * level_height * 4) as usize];
+        // The scale that brings coverage closest to the full picture's (by bisection).
+        let (mut low, mut high) = (0.0f32, 8.0f32);
+        for _ in 0..12 {
+            let middle = (low + high) / 2.0;
+            if coverage(level, threshold, middle) < wanted { low = middle } else { high = middle }
+        }
+        for pixel in level.as_chunks_mut::<4>().0 {
+            pixel[3] = (f32::from(pixel[3]) * high).round().min(255.0) as u8;
+        }
+    }
+    true
+}
+
+/// The share of pixels whose alpha, scaled by `scale`, reaches `threshold`.
+fn coverage(pixels: &[u8], threshold: u8, scale: f32) -> f32 {
+    let count = pixels.len() / 4;
+    let covered =
+        pixels.as_chunks::<4>().0.iter().filter(|pixel| f32::from(pixel[3]) * scale >= f32::from(threshold)).count();
+    covered as f32 / count.max(1) as f32
+}
+
 /// The average colour of a picture with mipmaps (its smallest level), as
 /// stored (sRGB for sRGB pictures).
 pub fn average_colour(image: &Image) -> Option<[u8; 4]> {
@@ -130,6 +170,21 @@ mod tests {
         assert_eq!(image.data.as_ref().unwrap().len(), (32 + 8 + 2 + 1) * 4);
         assert_eq!(average_colour(&image), Some([10, 20, 30, 255]));
         assert!(!add_mipmaps(&mut image), "only once");
+    }
+
+    #[test]
+    fn leaves_keep_their_coverage_down_the_mipmaps() {
+        // A quarter of the picture solid, in scattered specks that plain averaging would fade.
+        let specks =
+            |x: u32, y: u32| if x.is_multiple_of(2) && y.is_multiple_of(2) { [0, 200, 0, 255] } else { [0, 200, 0, 0] };
+        let mut image = picture(16, 16, specks, TextureFormat::Rgba8UnormSrgb);
+        assert!(add_mipmaps_keeping_coverage(&mut image, 0.5));
+        let data = image.data.as_ref().unwrap();
+        // The second level (8 × 8): averaged, every pixel is a quarter covered (alpha 64);
+        // scaled, about a quarter of it passes.
+        let second = &data[16 * 16 * 4..16 * 16 * 4 + 8 * 8 * 4];
+        let share = coverage(second, 128, 1.0);
+        assert!(share > 0.2, "coverage kept: {share}");
     }
 
     #[test]

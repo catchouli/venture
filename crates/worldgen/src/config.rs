@@ -132,6 +132,10 @@ pub struct WorldGenConfig {
     pub prop_spacing: f32,
     /// Frequency of the noise that groups trees into woods and clearings.
     pub forest_frequency: f64,
+    /// Of the spots where a tree could grow, the share that gets one. Real
+    /// trees need room (a mature oak's crown is 15 to 20 m across), so a
+    /// wood has a tree every 8 to 10 m, not every spot on the grid.
+    pub tree_share: f32,
 }
 
 /// How a biome shapes and dresses the land. Neighbouring biomes blend their
@@ -266,6 +270,7 @@ impl Default for WorldGenConfig {
 
             prop_spacing: 4.0,
             forest_frequency: 1.0 / 180.0,
+            tree_share: 0.22,
         }
     }
 }

@@ -26,6 +26,7 @@
 //!   quests/*.ron        quests and their stages (server only)
 //!   scripts/*.rhai      how NPCs behave (server only)
 //!   dialogue/*.yarn     conversations with NPCs (server only)
+//!   trees/species.ron   tree species, and trees/bark, trees/leaves their photographs (sent to clients)
 //! ```
 //!
 //! [`ContentPack::load`] reads and checks everything, and reports every
@@ -45,6 +46,7 @@ mod load;
 #[cfg(feature = "scripts")]
 pub mod script_hooks;
 pub mod sky;
+pub mod trees;
 
 pub use client::{
     CLIENT_MANIFEST_FILE, ClientContent, ContentManifest, ManifestFile, parse_abilities, parse_appearances,

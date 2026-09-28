@@ -57,8 +57,19 @@ impl View {
 
 /// Draws a picture `width` × `height` pixels: `things` over a sky, seen from `view`.
 pub fn render(things: &[Drawable], view: View, width: u32, height: u32) -> RgbaImage {
+    draw(things, view, width, height, false)
+}
+
+/// Draws a cut-out picture: `things`' own colours (unlit, as the game will
+/// light them) with their coverage as alpha, and nothing behind. See-through
+/// pixels take the average colour, so mipmaps don't darken the edges.
+pub fn render_cutout(things: &[Drawable], view: View, width: u32, height: u32) -> RgbaImage {
+    draw(things, view, width, height, true)
+}
+
+fn draw(things: &[Drawable], view: View, width: u32, height: u32, cutout: bool) -> RgbaImage {
     let (big_width, big_height) = (width * OVERSAMPLE, height * OVERSAMPLE);
-    let mut picture = Picture::new(big_width, big_height);
+    let mut picture = Picture::new(big_width, big_height, cutout);
     let (right, up) = view.axes();
     let scale = 1.0 / (view.metres_per_pixel / OVERSAMPLE as f32);
     let to_screen = |p: Vec3| {
@@ -84,12 +95,14 @@ pub fn render(things: &[Drawable], view: View, width: u32, height: u32) -> RgbaI
 struct Picture {
     width: u32,
     height: u32,
+    /// Whether it's a cut-out (unlit colours, and nothing behind).
+    cutout: bool,
     colours: Vec<Vec3>,
     depths: Vec<f32>,
 }
 
 impl Picture {
-    fn new(width: u32, height: u32) -> Self {
+    fn new(width: u32, height: u32, cutout: bool) -> Self {
         // The sky: pale at the horizon, bluer above.
         let colours = (0..height)
             .flat_map(|y| {
@@ -98,7 +111,7 @@ impl Picture {
                 std::iter::repeat_n(sky, width as usize)
             })
             .collect();
-        Self { width, height, colours, depths: vec![f32::INFINITY; (width * height) as usize] }
+        Self { width, height, cutout, colours, depths: vec![f32::INFINITY; (width * height) as usize] }
     }
 
     fn triangle(&mut self, thing: &Drawable, screen: [Vec3; 3], corners: [usize; 3], looking: Vec3) {
@@ -141,6 +154,11 @@ impl Picture {
                     }
                     albedo *= texel;
                 }
+                if self.cutout {
+                    self.colours[index] = albedo;
+                    self.depths[index] = depth;
+                    continue;
+                }
                 let normals = corners.map(|i| Vec3::from(mesh.normals[i]));
                 let mut normal = (normals[0] * w0 + normals[1] * w1 + normals[2] * w2).normalize_or(Vec3::Y);
                 let sun = SUN.normalize();
@@ -162,16 +180,38 @@ impl Picture {
 
     /// Scales it down to `width` × `height` and turns it into sRGB.
     fn finish(self, width: u32, height: u32) -> RgbaImage {
-        RgbaImage::from_fn(width, height, |x, y| {
-            let mut sum = Vec3::ZERO;
-            for sy in 0..OVERSAMPLE {
-                for sx in 0..OVERSAMPLE {
-                    sum += self.colours[((y * OVERSAMPLE + sy) * self.width + x * OVERSAMPLE + sx) as usize];
+        let samples = (OVERSAMPLE * OVERSAMPLE) as f32;
+        let mut covered_sum = Vec3::ZERO;
+        let mut covered_count = 0.0;
+        let mut pixels = Vec::with_capacity((width * height) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                let (mut sum, mut covered) = (Vec3::ZERO, 0.0);
+                for sy in 0..OVERSAMPLE {
+                    for sx in 0..OVERSAMPLE {
+                        let index = ((y * OVERSAMPLE + sy) * self.width + x * OVERSAMPLE + sx) as usize;
+                        if !self.cutout || self.depths[index].is_finite() {
+                            sum += self.colours[index];
+                            covered += 1.0;
+                        }
+                    }
                 }
+                let colour = if covered > 0.0 { sum / covered } else { Vec3::ZERO };
+                if covered > 0.0 {
+                    covered_sum += colour;
+                    covered_count += 1.0;
+                }
+                pixels.push((colour, covered / samples));
             }
-            let colour = sum / (OVERSAMPLE * OVERSAMPLE) as f32;
-            Rgba([to_srgb(colour.x), to_srgb(colour.y), to_srgb(colour.z), 255])
-        })
+        }
+        let average = covered_sum / f32::max(covered_count, 1.0);
+        let mut image = RgbaImage::new(width, height);
+        for (pixel, (colour, coverage)) in image.pixels_mut().zip(pixels) {
+            let colour = if coverage > 0.0 { colour } else { average };
+            let alpha = if self.cutout { (coverage * 255.0).round() as u8 } else { 255 };
+            *pixel = Rgba([to_srgb(colour.x), to_srgb(colour.y), to_srgb(colour.z), alpha]);
+        }
+        image
     }
 }
 
