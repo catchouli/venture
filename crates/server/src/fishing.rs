@@ -86,6 +86,8 @@ pub struct FishingRules(pub FishingConfig);
 pub struct Fishing {
     line: Line,
     stage: Stage,
+    /// When the line was cast (seconds of game time).
+    cast_at: f32,
 }
 
 /// The trap a player has set, if any (saved with them).
@@ -419,6 +421,7 @@ fn act_on_requests(
     game_rules: Res<GameRules>,
     mut players: Query<(
         &Player,
+        &DisplayName,
         &Position,
         &Equipment,
         &mut Character,
@@ -430,8 +433,16 @@ fn act_on_requests(
     let now = time.elapsed_secs();
     let items = &content.pack.items;
     for request in requests.read() {
-        let Ok((player, &Position(from), equipment, mut character, mut inventory, mut placed, fishing)) =
-            players.get_mut(request.player)
+        let Ok((
+            player,
+            DisplayName(player_name),
+            &Position(from),
+            equipment,
+            mut character,
+            mut inventory,
+            mut placed,
+            fishing,
+        )) = players.get_mut(request.player)
         else {
             continue;
         };
@@ -468,7 +479,7 @@ fn act_on_requests(
                     connection,
                     &ServerMessage::Fishing(FishingState::Waiting { at: line.at, method: line.method }),
                 );
-                commands.entity(request.player).insert(Fishing { line, stage });
+                commands.entity(request.player).insert(Fishing { line, stage, cast_at: now });
             }
             FishingAction::Strike => {
                 let Some(mut fishing) = fishing else { continue };
@@ -485,6 +496,7 @@ fn act_on_requests(
                         // (Too late is noticed by `run_lines`.)
                     }
                     Stage::Waiting { .. } => {
+                        info!("Fishing: {} ({method:?}): struck too early.", player_name);
                         let text = if method == Method::Lure {
                             "You strike at nothing.".to_string()
                         } else {
@@ -584,6 +596,7 @@ fn act_on_requests(
                     })
                     .sum();
                 let levels = character.add_skill_experience(SKILL, experience);
+                info!("Fishing: {player_name} emptied a trap: {caught:?} (+{experience} experience).");
                 let names: Vec<String> = caught.iter().map(|fish| a(&named(fish, items))).collect();
                 let mut text = format!("You empty your trap: {}. (+{experience} fishing experience)", names.join(", "));
                 if levels > 0 {
@@ -621,11 +634,11 @@ fn run_lines(
     content: Res<LoadedContent>,
     rules: Res<FishingRules>,
     time: Res<Time>,
-    mut players: Query<(Entity, &Player, &mut Fishing, &mut Inventory, &mut Character)>,
+    mut players: Query<(Entity, &Player, &DisplayName, &mut Fishing, &mut Inventory, &mut Character)>,
 ) {
     let now = time.elapsed_secs();
     let items = &content.pack.items;
-    for (entity, player, mut fishing, mut inventory, mut character) in &mut players {
+    for (entity, player, name, mut fishing, mut inventory, mut character) in &mut players {
         let connection = player.connection;
         let send = |link: &mut Link, state: FishingState| link.send(connection, &ServerMessage::Fishing(state));
         let method = fishing.line.method;
@@ -635,6 +648,19 @@ fn run_lines(
             _ => None,
         };
         let line = fishing.line.clone();
+        let since_cast = now - fishing.cast_at;
+        // For playtests: one line for each outcome (see docs/plan-fishing.md).
+        let log = |outcome: &str, fish: &str, fight: Option<&Fight>| {
+            let fight = fight.map_or(String::new(), |fight| {
+                format!(", fought {:.1} s", fight.ticks as f32 / venture_simulation::TICK_RATE)
+            });
+            info!(
+                "Fishing: {} ({method:?}, {}, level {}): {outcome} {fish} {since_cast:.1} s after casting{fight}.",
+                name.0,
+                line.tackle,
+                character.skill(SKILL).level
+            );
+        };
         match &mut fishing.stage {
             Stage::Waiting { fish, bite_at, nibbles } => {
                 if nibbles.last().is_some_and(|&nibble| now >= nibble) {
@@ -645,6 +671,7 @@ fn run_lines(
                     continue;
                 }
                 let Some(fish) = fish.take() else {
+                    log("nothing bit", "", None);
                     let text = format!("Nothing here takes the {tackle_name}.");
                     end(&mut commands, &mut link, entity, connection, text);
                     continue;
@@ -661,6 +688,7 @@ fn run_lines(
             Stage::Biting { since, .. } => {
                 let window = fishing::strike_window(method).unwrap_or(0.0) + rules.0.strike_allowance;
                 if now - *since > window {
+                    log("struck too late for", &fishing_fish(&fishing.stage), None);
                     let text = format!("Too late: the fish got away with your {tackle_name}.");
                     end(&mut commands, &mut link, entity, connection, text);
                 }
@@ -669,6 +697,12 @@ fn run_lines(
                 let outcome = fight.step(*reeling);
                 send(&mut link, FishingState::Fight(**fight));
                 let Some(outcome) = outcome else { continue };
+                let what = match outcome {
+                    FightEnd::Landed => "landed",
+                    FightEnd::Snapped => "snapped the line on",
+                    FightEnd::SpooledOut => "was spooled out by",
+                };
+                log(what, fish, Some(fight));
                 let fish_name = format!("the {}", named(fish, items));
                 let text = match outcome {
                     FightEnd::Landed => {
@@ -722,6 +756,14 @@ fn tell_others(
         }
         told.insert(entity, (id, fishing.line.at));
         link.broadcast(others(id), &ServerMessage::Angler { id, at: Some(fishing.line.at) });
+    }
+}
+
+/// The fish on a line (biting or hooked), if any.
+fn fishing_fish(stage: &Stage) -> String {
+    match stage {
+        Stage::Biting { fish, .. } | Stage::Fighting { fish, .. } => fish.clone(),
+        Stage::Waiting { fish, .. } => fish.clone().unwrap_or_default(),
     }
 }
 

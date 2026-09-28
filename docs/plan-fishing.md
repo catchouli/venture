@@ -117,7 +117,12 @@ Each step ends playable or testable, and is committed.
    how to fish. The kit has a cage trap and shrimp bits too.)
 8. **Playtest tools.** Logging catches per hour, XP per hour and losses by
    cause; admin commands (set a skill's level, give gear); every number in
-   content, so it can be tuned without code.
+   content, so it can be tuned without code. (Done: the server logs a line
+   for each outcome, such as `Fishing: Wynra (Ledger, worm, level 10):
+   landed dace 21.9 s after casting, fought 6.9 s.`, so `grep Fishing:`
+   gives catches, losses by cause, waits and fights; `/setskill fishing 20`
+   and `/give ITEM [COUNT]`. Not yet: the rules' numbers (bite waits, strike
+   windows, fight) in `server.ron` or content.)
 
 ## What the slice answers
 
