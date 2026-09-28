@@ -103,7 +103,8 @@ fn choose_kind(
     let can_grow = slope < MAX_TREE_SLOPE && !matches!(ground, Ground::Rock | Ground::Snow | Ground::Sand);
     let tree_chance = if can_grow {
         // Dense in woods, with the odd lone tree in the open.
-        (settings.forest_cover * smoothstep(0.35, 0.75, woodland) * 1.6).min(0.85) + 0.01
+        ((settings.forest_cover * smoothstep(0.35, 0.75, woodland) * 1.6).min(0.85) + 0.01)
+            * generator.config().tree_share
     } else {
         0.0
     };

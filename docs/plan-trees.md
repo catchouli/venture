@@ -192,6 +192,9 @@ over 10,000 trees. The plan:
 6. **The editor:** a Trees tab with a live preview, and the World tab's
    area-drawing and placing tools, with affected chunks re-made at once.
 7. **Impostors** for the far LOD, and **wind**.
+7½. **Trees in the way fade** (asked for on 2026-09-28): where a tree comes
+   between the camera and the player, it fades out smoothly the closer it is
+   to the line between them.
 8. **Seasons and health** (autumn colours, bare winter branches, dead
    trees), blossom on hawthorn, more species.
 
@@ -199,16 +202,18 @@ over 10,000 trees. The plan:
 
 - [x] 1. The generator crate (first form; see "Where it stands")
 - [x] 2. The ten species (first tuning pass)
-- [ ] 3. In the game
-- [ ] 4. World data
+- [x] 3. In the game (first form)
+- [ ] 4. World data (partly: trees are thinned to real spacing; species still come from the old prop kinds)
 - [ ] 5. Authored trees
-- [ ] 6. The editor
-- [ ] 7. Impostors and wind
+- [ ] 6. The editor (it shows the new trees; no tree tools yet)
+- [ ] 7. Impostors and wind (impostors are in; no wind yet)
+- [x] 7½. Trees in the way fade
 - [ ] 8. Seasons, health, more species
 
 ## Where it stands
 
-Steps 1 and 2 are in, in a first form. Try them:
+Steps 1 to 3 are in, in a first form, with impostors and the fade. Try the
+generator on its own:
 
 ```sh
 cargo run --release -p venture_trees --bin tree -- gallery        # preview/trees.png
@@ -230,3 +235,49 @@ cargo run --release -p venture_trees --bin tree -- oak --age 1.5 --seed 7 --out 
     rather than hanging from a flat top);
   - ash (a little upright);
   - hawthorn and yew (they could do with a more gnarled trunk showing).
+
+**In the game** (`crates/client/src/world/trees.rs`):
+- The content sends `trees/species.ron` and the photographs to clients (the
+  content check reads and checks them). Each species grows in three
+  variants (young, mature, old) in the background as the content arrives,
+  a task per species.
+- Each tree is drawn at three levels of detail, switched by Bevy's
+  `VisibilityRange` with a dithered crossfade:
+  - the full tree to 45–55 m;
+  - the reduced one (a quarter of the bark, half the leaf cards, each
+    bigger) to 110–130 m;
+  - then an **impostor** to 330–360 m. That's two crossed cards with
+    pictures of the tree from the front and side, drawn unlit by the
+    generator's own rasteriser and lit by the game with crown normals.
+  
+  Trees of a template share meshes and materials, so they batch.
+- Leaves and bark use alpha to coverage (the game has 4× MSAA). Leaves have
+  mipmaps that keep their coverage (Castaño's method), so distant crowns
+  don't thin away.
+- **Trees in the way fade** (`shaders/tree.wgsl`):
+  - Within 1.5 m of the line from the camera to the player's chest, trees
+    are gone. Beyond 5 m they're whole, and in between they fade smoothly.
+  - The fade goes through alpha to coverage, so it's a smooth dissolve,
+    with no sorting and no dots.
+  - Their shadows stay.
+- Until the world names species (step 4), each old prop kind stands for a
+  mix, chosen by place and biome:
+  - "oak": oak, ash, beech and sycamore, with the odd yew, and willow in
+    meadows;
+  - "birch": birch and hazel;
+  - "pine": Scots pine;
+  - bushes: young hawthorn and hazel.
+- Worldgen plants a tree on only 22% of the spots it used to
+  (`tree_share`), so woods have a tree every 8 to 10 m. This is generator
+  version 3: rebake the world (`cargo run --release -p venture_worldgen --bin bake`).
+- Trees sink into the ground by the slope under them, and stems have extra
+  rings through their flare, so trunk bases sit in the ground.
+
+Next:
+- step 4 (tree props naming a species and variant, spaced by their crowns);
+- then tree areas (step 5) and the editor's tools (step 6).
+
+Things seen in playtest screenshots that want work:
+- pine sprays look coarse close up (a photographed pine spray would help);
+- willow's shape;
+- measuring how long the templates take to grow in the browser.

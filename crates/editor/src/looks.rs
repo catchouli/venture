@@ -51,6 +51,18 @@ fn load_character_models(mut commands: Commands, project: Res<crate::Project>) {
     store.skies = read_skies(&project.content);
     store.sky_cycle =
         std::fs::read_to_string(project.content.join(SKY_CYCLE_FILE)).ok().and_then(|text| parse_sky_cycle(&text).ok());
+    // The tree species and their photographs, for the world's trees.
+    let trees = venture_content::trees::load_trees(&project.content);
+    for (file, problem) in trees.problems {
+        warn!("{file}: {problem}");
+    }
+    store.tree_species = trees.species;
+    store.tree_photos = trees
+        .files
+        .into_iter()
+        .filter(|(path, _)| path != venture_content::trees::TREE_SPECIES_FILE)
+        .map(|(path, bytes)| (path, std::sync::Arc::new(bytes)))
+        .collect();
     commands.insert_resource(store);
 }
 

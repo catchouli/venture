@@ -12,7 +12,7 @@
 //! further-away detail. `--content FOLDER` reads the species (and their
 //! photographs) from somewhere other than `content`. For galleries, `--only oak,ash` picks
 //! some species, and `--seed` still applies. `--textures FOLDER` also saves
-//! a tree's painted bark and sprig pictures.
+//! a tree's bark, sprig and impostor pictures.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -105,6 +105,8 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
     std::fs::write(&out, bytes).map_err(|error| format!("Can't write {}: {error}", out.display()))?;
     println!("Wrote {}.", out.display());
     if let Some(folder) = textures_folder {
+        let impostor = venture_trees::impostor::impostor(&tree, &textures);
+        save_picture(&impostor.texture, &folder.join(format!("{}_impostor.png", species.id)))?;
         save_picture(&textures.bark, &folder.join(format!("{}_bark.png", species.id)))?;
         save_picture(&textures.leaves, &folder.join(format!("{}_leaves.png", species.id)))?;
     }

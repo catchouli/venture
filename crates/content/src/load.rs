@@ -117,6 +117,8 @@ pub struct ContentPack {
     pub textures: BTreeSet<String>,
     /// Skies (by name: folders in `skies/`).
     pub skies: BTreeSet<String>,
+    /// Tree species (`trees/species.ron`), in file order.
+    pub tree_species: Vec<crate::trees::Species>,
     /// The part clients download.
     pub client: ClientContent,
 }
@@ -551,6 +553,11 @@ impl ContentPack {
             }
             client_files.push((SKY_CYCLE_FILE.to_string(), bytes));
         }
+
+        let trees = crate::trees::load_trees(folder);
+        errors.extend(trees.problems.into_iter().map(|(file, message)| error(Path::new(&file), message)));
+        client_files.extend(trees.files);
+        pack.tree_species = trees.species;
 
         if let Ok(text) = std::fs::read_to_string(folder.join(CHARACTERS_FILE)) {
             let file = Path::new(CHARACTERS_FILE);

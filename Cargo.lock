@@ -6948,12 +6948,14 @@ dependencies = [
  "bevy",
  "ehttp",
  "ewebsock",
+ "image",
  "venture_content",
  "venture_navigation",
  "venture_protocol",
  "venture_rpg",
  "venture_server",
  "venture_simulation",
+ "venture_trees",
  "venture_world",
  "web-sys",
 ]
@@ -6970,6 +6972,7 @@ dependencies = [
  "venture_protocol",
  "venture_rpg",
  "venture_simulation",
+ "venture_trees",
  "venture_world",
  "yarnspinner",
 ]

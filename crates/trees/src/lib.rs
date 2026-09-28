@@ -13,9 +13,11 @@
 //! 3. [`textures`]: the species' bark and sprig pictures, painted, or
 //!    made from photographs ([`photos`]).
 //!
-//! Then [`gltf`] writes it as a `.glb`, and [`preview`] draws it.
+//! Then [`gltf`] writes it as a `.glb`, [`preview`] draws it, and
+//! [`impostor`] makes the crossed cards it's drawn as far away.
 
 pub mod gltf;
+pub mod impostor;
 pub mod mesh;
 pub mod params;
 pub mod photos;
