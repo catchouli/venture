@@ -12,7 +12,7 @@ use crate::definitions::{
     MAX_ITEM_DESCRIPTION_CHARS, MAX_ITEM_NAME_CHARS, MAX_NPC_NAME_CHARS, MAX_WANDER_RADIUS, NewCharacterDef, NpcDef,
     QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef, THEME_PIECES, ThemeDef,
 };
-use crate::definitions::{FishingPart, MonsterDef};
+use crate::definitions::{FishingPart, MonsterDef, WoodworkingPart};
 use crate::layout::{UiNode, UiStyles, check_layout, check_styles, parse_layout, parse_styles};
 use crate::sky::{SKY_CYCLE_FILE, SKY_FILES, SkyLight, parse_sky, parse_sky_cycle};
 use venture_protocol::EquipSlot;
@@ -119,6 +119,8 @@ pub struct ContentPack {
     pub skies: BTreeSet<String>,
     /// Tree species (`trees/species.ron`), in file order.
     pub tree_species: Vec<crate::trees::Species>,
+    /// What each tree species is to woodworking (`trees/woodcutting.ron`).
+    pub tree_woodcutting: Vec<crate::trees::TreeWoodcutting>,
     /// The part clients download.
     pub client: ClientContent,
 }
@@ -557,7 +559,12 @@ impl ContentPack {
         let trees = crate::trees::load_trees(folder);
         errors.extend(trees.problems.into_iter().map(|(file, message)| error(Path::new(&file), message)));
         client_files.extend(trees.files);
+        for entry in trees.woodcutting.iter().filter(|entry| !pack.items.contains_key(&entry.log)) {
+            let file = Path::new(crate::trees::TREE_WOODCUTTING_FILE);
+            errors.push(error(file, format!("{}: there's no item \"{}\" for its logs", entry.species, entry.log)));
+        }
         pack.tree_species = trees.species;
+        pack.tree_woodcutting = trees.woodcutting;
 
         if let Ok(text) = std::fs::read_to_string(folder.join(CHARACTERS_FILE)) {
             let file = Path::new(CHARACTERS_FILE);
@@ -630,8 +637,11 @@ fn check_item(item: &ItemDef, icons: &HashSet<String>, file: &Path, errors: &mut
             Some(weapon) if !(weapon.speed > 0.0 && weapon.speed.is_finite()) => {
                 problem("its weapon speed must be more than 0".to_string());
             }
-            None if wielded && !matches!(item.fishing, Some(FishingPart::Rod { .. })) => {
-                problem("items in the DominantHand slot need weapon stats (or to be fishing rods)".to_string());
+            None if wielded
+                && !matches!(item.fishing, Some(FishingPart::Rod { .. }))
+                && !matches!(item.woodworking, Some(WoodworkingPart::Axe { .. })) =>
+            {
+                problem("items in the DominantHand slot need weapon stats (or to be fishing rods or axes)".to_string());
             }
             _ => {}
         }

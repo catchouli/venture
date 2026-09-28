@@ -9,6 +9,8 @@
         // And a trap: use it from the bag at the water's edge, and come back later.
         (item: "cage_trap", count: 1),
         (item: "shrimp_bits", count: 10),
+        // A stone axe: take it in hand, select a tree, and click it to fell it.
+        (item: "stone_axe", count: 1),
     ],
     abilities: ["rest"],
 )

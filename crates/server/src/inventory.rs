@@ -237,6 +237,7 @@ mod tests {
             equip: None,
             on_use: Default::default(),
             fishing: None,
+            woodworking: None,
             notes: String::new(),
         };
         BTreeMap::from([("arrows".to_string(), item("arrows", true)), ("bread".to_string(), item("bread", false))])

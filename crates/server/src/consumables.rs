@@ -139,6 +139,7 @@ mod tests {
             equip: None,
             on_use,
             fishing: None,
+            woodworking: None,
             notes: String::new(),
         };
         [

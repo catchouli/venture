@@ -1,0 +1,20 @@
+// What felling each tree species is like, for the Woodworking skill (see
+// docs/plan-trees.md). Soft woods come from smaller, quicker trees and need
+// a lower level; hard woods from bigger, slower ones.
+// - level: the woodworking level it takes to fell one
+// - log: the logs it gives (an item)
+// - experience: the woodworking experience each log gives
+// - hardness: how many bites of an axe fell a mature one (young ones take
+//   half as many, old ones more; see venture_rpg::woodcutting)
+[
+    (species: "hazel", level: 1, log: "hazel_rods", experience: 6.0, hardness: 2),
+    (species: "birch", level: 5, log: "birch_logs", experience: 10.0, hardness: 3),
+    (species: "willow", level: 10, log: "willow_logs", experience: 15.0, hardness: 3),
+    (species: "scots_pine", level: 15, log: "pine_logs", experience: 20.0, hardness: 4),
+    (species: "hawthorn", level: 20, log: "hawthorn_logs", experience: 26.0, hardness: 6),
+    (species: "sycamore", level: 25, log: "sycamore_logs", experience: 32.0, hardness: 5),
+    (species: "ash", level: 30, log: "ash_logs", experience: 40.0, hardness: 6),
+    (species: "beech", level: 40, log: "beech_logs", experience: 52.0, hardness: 7),
+    (species: "oak", level: 50, log: "oak_logs", experience: 66.0, hardness: 9),
+    (species: "yew", level: 60, log: "yew_logs", experience: 90.0, hardness: 10),
+]

@@ -1,0 +1,22 @@
+// Wood: logs from felling trees (see trees/woodcutting.ron), and axes to fell them with.
+[
+    (id: "hazel_rods", name: "Hazel rods", description: "Straight, springy rods of coppiced hazel: for hurdles, baskets and bean poles.", icon: "hazel_rods.png", stackable: true, value: 2),
+    (id: "birch_logs", name: "Birch logs", description: "Pale, soft birch. It burns hot and quick, and its bark lights even when damp.", icon: "birch_logs.png", stackable: true, value: 4),
+    (id: "willow_logs", name: "Willow logs", description: "Light, soft willow, cut from the waterside.", icon: "willow_logs.png", stackable: true, value: 6),
+    (id: "pine_logs", name: "Pine logs", description: "Resinous Scots pine: soft, straight-grained and easy to work.", icon: "pine_logs.png", stackable: true, value: 8),
+    (id: "hawthorn_logs", name: "Hawthorn logs", description: "Small, twisted lengths of hawthorn, hard and fine-grained.", icon: "hawthorn_logs.png", stackable: true, value: 12),
+    (id: "sycamore_logs", name: "Sycamore logs", description: "Pale, even sycamore, good for turning bowls and spoons.", icon: "sycamore_logs.png", stackable: true, value: 16),
+    (id: "ash_logs", name: "Ash logs", description: "Tough, springy ash: the wood for handles, hafts and shafts.", icon: "ash_logs.png", stackable: true, value: 22),
+    (id: "beech_logs", name: "Beech logs", description: "Hard, close-grained beech, for furniture and tools.", icon: "beech_logs.png", stackable: true, value: 30),
+    (id: "oak_logs", name: "Oak logs", description: "Heavy, hard English oak, that builds halls and ships and lasts for centuries.", icon: "oak_logs.png", stackable: true, value: 45),
+    (id: "yew_logs", name: "Yew logs", description: "Dense, golden-hearted yew, prized above all for bows.", icon: "yew_logs.png", stackable: true, value: 80),
+    (
+        id: "stone_axe",
+        name: "Stone axe",
+        description: "A knapped flint head lashed to an ash haft. Crude, but it bites.",
+        icon: "stone_axe.png",
+        value: 25,
+        equip: Some((slots: [DominantHand], look: (style: Axe, main: (0.5, 0.36, 0.24), trim: (0.45, 0.45, 0.47)))),
+        woodworking: Some(Axe(power: 1.0, level: 1)),
+    ),
+]
