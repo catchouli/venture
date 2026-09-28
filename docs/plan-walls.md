@@ -149,11 +149,14 @@ In the World tab:
   `walls.ron` tidily, so its comments go.
 - [x] Rebaking only the chunks walls touch (`bake --walls`), and a running
   server (and clients, and the editor) loading the new world by itself.
-- [x] Hedges (`kind: Hedge`): a body textured with ambientCG's Grass002
-  (`content/textures/hedge/`, laid in metres along the hedge and round its
-  outline), lumpy (each point of its outline wobbles in and out on its
-  own), full at the shoulders, rounded over a clipped top, and rounded off
-  where it ends; drawn at any distance. Small sprigs of hawthorn's leaves
+- [x] Hedges (`kind: Hedge`): a body textured with hawthorn foliage
+  (`content/textures/hedge/`, made from hawthorn's own sprigs by
+  `cargo run --release -p venture_trees --bin tree -- hawthorn --foliage content/textures/hedge`:
+  sprigs overlapping at every angle, layered darker inwards, with a normal
+  map and ambient occlusion from the layers; it tiles a metre across, laid
+  in metres along the hedge and round its outline; matte), lumpy (each point of its outline wobbles in and out on its
+  own), full at the shoulders, rounded over a clipped top, and closed by a
+  rounded dome where it ends; drawn at any distance. Small sprigs of hawthorn's leaves
   (cards from the tree's own leaf atlas and material, drawn to 110 m) lie
   along its shoulders and top to soften its outline. 1.7 m tall by default,
   1.2 m wide. A test hedgerow runs south of the village, open where the road

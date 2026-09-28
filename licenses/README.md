@@ -85,7 +85,7 @@ opacity as alpha). The tree generator arranges the leaves into sprigs:
 | LeafSet010 | Sycamore leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 | LeafSet013 | Willow leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 | LeafSet014 | Beech leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
-| LeafSet016 | Oak and hawthorn leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| LeafSet016 | Oak and hawthorn leaves; hedges' `content/textures/hedge/` (made from hawthorn's sprigs by `tree hawthorn --foliage`) | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 | LeafSet019 | Yew foliage | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 | LeafSet024 | Hazel leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 
@@ -96,7 +96,6 @@ Walls and fences use ambientCG materials too, downloaded (2K PNG) to
 | --- | --- | --- |
 | Rock051 | `content/textures/drystone/`: dry stone walls | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 | Wood059 | `content/textures/fence_wood/`: fences | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
-| Grass002 | `content/textures/hedge/`: hedges | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 
 ## Everything else
 
