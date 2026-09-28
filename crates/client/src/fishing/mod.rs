@@ -23,7 +23,8 @@ use venture_content::FishingPart;
 use venture_navigation::Point;
 use venture_protocol::{ClientMessage, EquipSlot, FishingCommand, FishingState, ServerMessage};
 use venture_rpg::fishing::Method;
-use venture_simulation::fishing::Fight;
+use venture_simulation::TICK_RATE;
+use venture_simulation::fishing::{Fight, reeling_at};
 
 use crate::characters::model::{ROD_ANGLE, RodGrip, RodTip};
 use crate::characters::player::LocalPlayer;
@@ -79,6 +80,7 @@ impl Plugin for FishingPlugin {
                     fish_on_startup_if_requested,
                     cast_where_clicked,
                     strike_and_reel,
+                    predict_fight,
                     face_the_line,
                     show_float_and_line,
                     bend_the_rod,
@@ -98,7 +100,29 @@ pub struct Angling {
     last_tackle: Option<String>,
     /// Whether they're reeling (as last told to the server).
     reeling: bool,
+    /// The fight, run ahead of the server (see [`predict_fight`]).
+    prediction: Option<Prediction>,
 }
+
+/// A fight run ahead of the server, from the player's own reeling, so
+/// reeling shows at once. Whenever the server says how the fight stands,
+/// the player's changes of reeling are replayed on top of that.
+struct Prediction {
+    /// The fight as predicted.
+    fight: Fight,
+    /// The player's changes of reeling this fight: (the tick from, reeling).
+    changes: Vec<(u32, bool)>,
+    /// Ticks of time not yet stepped.
+    clock: f32,
+    /// How the fight stood when the server last said (to replay from).
+    server: Option<Fight>,
+    /// Whether the prediction has ended the fight (it waits for the server).
+    ended: bool,
+}
+
+/// How many ticks ahead of the server's last word the fight is run when it
+/// starts (about the time a message takes to arrive).
+const LEAD_TICKS: u32 = 2;
 
 /// A line in the water.
 pub struct LineView {
@@ -124,6 +148,19 @@ pub enum Stage {
 }
 
 impl Angling {
+    /// Starts or stops reeling, from the next tick of the predicted fight,
+    /// and tells the server which tick that is.
+    fn set_reeling(&mut self, reeling: bool, to_server: &mut MessageWriter<ToServer>) {
+        // (Until the fight's first word from the server, there's no tick to
+        // count from: this is tried again next frame.)
+        let Some(prediction) = &mut self.prediction else { return };
+        self.reeling = reeling;
+        let tick = prediction.fight.ticks + 1;
+        prediction.changes.retain(|&(from, _)| from < tick);
+        prediction.changes.push((tick, reeling));
+        to_server.write(ToServer(ClientMessage::Fishing(FishingCommand::Reel { reeling, tick })));
+    }
+
     /// Whether a fish is biting or hooked, so clicks strike and reel rather
     /// than doing their usual things.
     pub fn busy(&self) -> bool {
@@ -152,6 +189,7 @@ fn follow_server(mut events: MessageReader<FromServer>, time: Res<Time>, mut ang
             FishingState::Waiting { at, method } => {
                 angling.line = Some(LineView { at: *at, method: *method, stage: Stage::Waiting, nibbled: None });
                 angling.reeling = false;
+                angling.prediction = None;
             }
             FishingState::Nibble => {
                 if let Some(line) = &mut angling.line {
@@ -164,6 +202,18 @@ fn follow_server(mut events: MessageReader<FromServer>, time: Res<Time>, mut ang
                 }
             }
             FishingState::Fight(fight) => {
+                match &mut angling.prediction {
+                    Some(prediction) => prediction.server = Some(*fight),
+                    None => {
+                        angling.prediction = Some(Prediction {
+                            fight: *fight,
+                            changes: Vec::new(),
+                            clock: LEAD_TICKS as f32,
+                            server: None,
+                            ended: false,
+                        });
+                    }
+                }
                 if let Some(line) = &mut angling.line {
                     line.stage = Stage::Fighting(*fight);
                 }
@@ -172,6 +222,7 @@ fn follow_server(mut events: MessageReader<FromServer>, time: Res<Time>, mut ang
             FishingState::Ended => {
                 angling.line = None;
                 angling.reeling = false;
+                angling.prediction = None;
             }
         }
     }
@@ -256,8 +307,8 @@ fn fish_on_startup_if_requested(
             to_server.write(ToServer(ClientMessage::Fishing(FishingCommand::Strike)));
         }
         Stage::Fighting(fight) if angling.reeling == fight.running => {
-            angling.reeling = !fight.running;
-            to_server.write(ToServer(ClientMessage::Fishing(FishingCommand::Reel(angling.reeling))));
+            let reeling = !fight.running;
+            angling.set_reeling(reeling, &mut to_server);
         }
         _ => {}
     }
@@ -286,11 +337,41 @@ fn strike_and_reel(
             to_server.write(ToServer(ClientMessage::Fishing(FishingCommand::Strike)));
         }
         Stage::Fighting(_) if held != angling.reeling => {
-            angling.reeling = held;
-            to_server.write(ToServer(ClientMessage::Fishing(FishingCommand::Reel(held))));
+            angling.set_reeling(held, &mut to_server);
         }
         _ => {}
     }
+}
+
+/// Runs the fight ahead of the server at the server's pace, from the
+/// player's reeling, replaying their changes on top of what the server last
+/// said; what's shown is the prediction.
+fn predict_fight(time: Res<Time>, mut angling: ResMut<Angling>) {
+    let Angling { line, prediction, .. } = &mut *angling;
+    let (Some(line), Some(prediction)) = (line, prediction) else { return };
+    if let Some(server) = prediction.server.take() {
+        // Replay from the server's word up to where the prediction had got.
+        let target = prediction.fight.ticks.max(server.ticks);
+        let mut fight = server;
+        prediction.ended = false;
+        while fight.ticks < target {
+            if fight.step(reeling_at(&prediction.changes, false, fight.ticks + 1)).is_some() {
+                prediction.ended = true;
+                break;
+            }
+        }
+        prediction.fight = fight;
+    }
+    prediction.clock += time.delta_secs() * TICK_RATE;
+    while prediction.clock >= 1.0 {
+        prediction.clock -= 1.0;
+        if prediction.ended {
+            continue;
+        }
+        let reeling = reeling_at(&prediction.changes, false, prediction.fight.ticks + 1);
+        prediction.ended = prediction.fight.step(reeling).is_some();
+    }
+    line.stage = Stage::Fighting(prediction.fight);
 }
 
 /// Turns the player to face their line (while standing: moving ends fishing).

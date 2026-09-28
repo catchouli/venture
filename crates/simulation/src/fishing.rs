@@ -182,6 +182,93 @@ impl Fight {
     }
 }
 
+/// How late (in ticks) a change of reeling may arrive and still count from
+/// the tick it was made on: about half a second.
+pub const LATE_TICKS: u32 = 10;
+/// How far ahead (in ticks) a change may be made for.
+const EARLY_TICKS: u32 = 20;
+
+/// A fight as the server runs it, from each change of the player's reeling
+/// at the tick they made it (the client runs the fight ahead, so its changes
+/// are for ticks the server may already have run). A change up to
+/// [`LATE_TICKS`] late is replayed from the tick it was made on, so the
+/// server and the client agree exactly; one later counts from the oldest
+/// tick that can still change.
+#[derive(Clone, Debug)]
+pub struct FightTimeline {
+    /// The fight at the last tick that can no longer change.
+    settled: Fight,
+    /// Whether the player was reeling then.
+    settled_reeling: bool,
+    /// Changes of reeling since: (the tick they count from, reeling).
+    changes: Vec<(u32, bool)>,
+    /// The fight now.
+    now: Fight,
+    /// How it ended, if it has (and at which tick).
+    ended: Option<(u32, FightEnd)>,
+}
+
+impl FightTimeline {
+    /// A fight just hooked.
+    pub fn new(setup: FightSetup) -> Self {
+        let fight = Fight::new(setup);
+        Self { settled: fight, settled_reeling: false, changes: Vec::new(), now: fight, ended: None }
+    }
+
+    /// The fight as it stands.
+    pub fn now(&self) -> &Fight {
+        &self.now
+    }
+
+    /// The player started (or stopped) reeling from `tick` (the tick their
+    /// client stepped next: see [`reeling_at`]). Returns the tick it counts
+    /// from, after keeping it within what can still change.
+    pub fn reel(&mut self, reeling: bool, tick: u32) -> u32 {
+        let tick = tick.clamp(self.settled.ticks + 1, self.now.ticks + EARLY_TICKS);
+        self.changes.retain(|&(from, _)| from < tick);
+        self.changes.push((tick, reeling));
+        tick
+    }
+
+    /// Runs the fight on one tick. Returns how it ended, if it has.
+    pub fn step(&mut self) -> Option<FightEnd> {
+        if let Some((_, end)) = self.ended {
+            return Some(end);
+        }
+        let target = self.now.ticks + 1;
+        // Replay from the settled tick, so late changes count.
+        let mut fight = self.settled;
+        while fight.ticks < target {
+            let reeling = reeling_at(&self.changes, self.settled_reeling, fight.ticks + 1);
+            if let Some(end) = fight.step(reeling) {
+                self.now = fight;
+                self.ended = Some((fight.ticks, end));
+                return Some(end);
+            }
+        }
+        self.now = fight;
+        // Settle what's too old to change.
+        while self.settled.ticks + LATE_TICKS < self.now.ticks {
+            let tick = self.settled.ticks + 1;
+            let reeling = reeling_at(&self.changes, self.settled_reeling, tick);
+            self.settled.step(reeling);
+            self.settled_reeling = reeling;
+            self.changes.retain(|&(from, _)| from > tick);
+        }
+        None
+    }
+}
+
+/// Whether the player is reeling on `tick` (the tick a step makes), from
+/// the changes since a time they were reeling (`before`) or not.
+pub fn reeling_at(changes: &[(u32, bool)], before: bool, tick: u32) -> bool {
+    changes
+        .iter()
+        .filter(|&&(from, _)| from <= tick)
+        .max_by_key(|&&(from, _)| from)
+        .map_or(before, |&(_, reeling)| reeling)
+}
+
 /// The side of a shoaling region, in metres.
 pub const SHOAL_REGION: f32 = 12.0;
 /// The most shoals a region has at once.
@@ -351,6 +438,73 @@ mod tests {
         assert_eq!(most_common_water(&['a', 'b', 'b', 'a', 'c']), Some('a'), "ties go to the first");
         assert_eq!(most_common_water(&['a', 'b', 'b']), Some('b'));
         assert_eq!(most_common_water::<char>(&[]), None);
+    }
+
+    /// The fight played straight through, reeling on the ticks `reeling` says.
+    fn played(setup: FightSetup, reeling: impl Fn(u32) -> bool) -> (Fight, Option<FightEnd>) {
+        let mut fight = Fight::new(setup);
+        for _ in 0..2000 {
+            if let Some(end) = fight.step(reeling(fight.ticks + 1)) {
+                return (fight, Some(end));
+            }
+        }
+        (fight, None)
+    }
+
+    #[test]
+    fn a_timeline_with_changes_on_time_is_the_fight_played_straight() {
+        let reeling = |tick: u32| (tick / 15) % 2 == 1;
+        let mut timeline = FightTimeline::new(small_fish());
+        let mut end = None;
+        for tick in 1..2000 {
+            if reeling(tick) != reeling(tick - 1) {
+                timeline.reel(reeling(tick), tick);
+            }
+            end = timeline.step();
+            if end.is_some() {
+                break;
+            }
+        }
+        let (fight, straight) = played(small_fish(), reeling);
+        assert_eq!((timeline.now(), end), (&fight, straight));
+    }
+
+    #[test]
+    fn late_changes_count_from_when_they_were_made() {
+        // Reeling from tick 40 on, but the server hears at tick 45.
+        let reeling = |tick: u32| (40..60).contains(&tick);
+        let mut timeline = FightTimeline::new(small_fish());
+        for tick in 1..=80 {
+            if tick == 45 {
+                assert_eq!(timeline.reel(true, 40), 40, "five ticks late still counts from 40");
+            }
+            if tick == 62 {
+                timeline.reel(false, 60);
+            }
+            if timeline.step().is_some() {
+                break;
+            }
+        }
+        let (fight, _) = played(small_fish(), reeling);
+        let mut straight = Fight::new(small_fish());
+        while straight.ticks < timeline.now().ticks {
+            straight.step(reeling(straight.ticks + 1));
+        }
+        assert!(fight.ticks >= straight.ticks);
+        assert_eq!(timeline.now(), &straight);
+    }
+
+    #[test]
+    fn changes_too_late_count_from_the_oldest_tick_that_can_change() {
+        let mut timeline = FightTimeline::new(small_fish());
+        for _ in 0..50 {
+            timeline.step();
+        }
+        assert_eq!(timeline.reel(true, 3), 50 - LATE_TICKS + 1);
+        assert_eq!(timeline.reel(true, 500), 50 + EARLY_TICKS, "and changes can't be made far ahead");
+        assert!(reeling_at(&[(5, true), (9, false)], false, 7));
+        assert!(!reeling_at(&[(5, true), (9, false)], false, 9));
+        assert!(reeling_at(&[], true, 1));
     }
 
     #[test]

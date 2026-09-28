@@ -282,8 +282,13 @@ pub enum FishingAction {
     },
     /// Strike.
     Strike,
-    /// Reel (or stop reeling).
-    Reel(bool),
+    /// Reel (or stop reeling), from a tick of the fight.
+    Reel {
+        /// Whether reeling.
+        reeling: bool,
+        /// The fight's tick it's from.
+        tick: u32,
+    },
     /// Stop fishing.
     Stop,
     /// Set a trap at this point.
@@ -623,7 +628,7 @@ fn judge_player_message(
                 }
                 FishingCommand::CollectTrap => FishingAction::CollectTrap,
                 FishingCommand::Strike => FishingAction::Strike,
-                FishingCommand::Reel(reeling) => FishingAction::Reel(reeling),
+                FishingCommand::Reel { reeling, tick } => FishingAction::Reel { reeling, tick },
                 FishingCommand::Stop => FishingAction::Stop,
             };
             return Verdict::Fishing(FishingRequest { player, action });

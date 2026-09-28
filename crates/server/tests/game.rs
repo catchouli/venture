@@ -1592,7 +1592,10 @@ fn a_player_catches_a_fish_with_rod_reel_and_worm() {
                     client.send(&ClientMessage::Fishing(FishingCommand::Strike));
                 }
                 ServerMessage::Fishing(FishingState::Fight(fight)) => {
-                    client.send(&ClientMessage::Fishing(FishingCommand::Reel(!fight.running)));
+                    client.send(&ClientMessage::Fishing(FishingCommand::Reel {
+                        reeling: !fight.running,
+                        tick: fight.ticks + 1,
+                    }));
                 }
                 ServerMessage::Fishing(FishingState::Caught { item }) => caught = Some(item),
                 ServerMessage::Fishing(FishingState::Ended) => {}
