@@ -867,6 +867,8 @@ pub enum LookStyle {
     Club,
     /// A small round shield, strapped to the left forearm.
     Buckler,
+    /// A fishing rod, held out over the water in the right hand.
+    Rod,
 }
 
 /// How a worn item looks: its shape and colours (sRGB, each 0 to 1).

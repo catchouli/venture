@@ -348,7 +348,7 @@ impl CharacterAssets {
         for look in looks {
             let shape = worn(materials, look);
             match (look.style, hand, forearm) {
-                (LookStyle::Sword | LookStyle::Staff | LookStyle::Club, Some(hand), _) => {
+                (LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Rod, Some(hand), _) => {
                     commands
                         .spawn((HAND_FRAME, Visibility::default(), ChildOf(hand)))
                         .with_children(|frame| spawn_weapon(frame, &self.meshes, &shape));
@@ -502,8 +502,10 @@ fn build_body(commands: &mut Commands, owner: Entity, assets: &CharacterAssets, 
     let robe = look.wearing(LookStyle::Robe);
     let plates = look.wearing(LookStyle::Plates);
     let leg_plates = look.wearing(LookStyle::LegPlates);
-    let weapon =
-        look.worn.iter().find(|item| matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club));
+    let weapon = look
+        .worn
+        .iter()
+        .find(|item| matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Rod));
     let shield = look.wearing(LookStyle::Buckler);
     let joint = |kind| Joint { owner, kind };
 
@@ -673,8 +675,16 @@ fn spawn_buckler(elbow: &mut ChildSpawnerCommands, m: &CharacterMeshes, shield: 
     ));
 }
 
+/// How far a held fishing rod leans from upright towards the front, in radians.
+pub const ROD_ANGLE: f32 = 1.3;
+
+/// The tip of a held fishing rod, where a line leaves it.
+#[derive(Component)]
+pub struct RodTip;
+
 /// Puts a weapon in the hand at the end of a forearm (the elbow's space).
-/// Swords point forward, as if ready; staves stand upright.
+/// Swords point forward, as if ready; staves stand upright; rods reach up
+/// and out, over the water.
 fn spawn_weapon(elbow: &mut ChildSpawnerCommands, m: &CharacterMeshes, weapon: &Worn) {
     let hand = Vec3::new(0.0, -0.29, 0.0);
     let part = |mesh: &Handle<Mesh>, material: &Handle<StandardMaterial>, position: Vec3, size: Vec3| {
@@ -702,6 +712,29 @@ fn spawn_weapon(elbow: &mut ChildSpawnerCommands, m: &CharacterMeshes, weapon: &
                     Vec3::new(0.025, 0.3, 0.025),
                 ));
                 club.spawn(part(&m.unit_sphere, &weapon.main, Vec3::new(0.0, 0.33, 0.0), Vec3::new(0.06, 0.11, 0.06)));
+            });
+        }
+        LookStyle::Rod => {
+            // A long, thin, tapering pole, angled up and forward, with a cork
+            // grip (the trim) and a reel just above the hand.
+            let grip = Transform::from_translation(hand).with_rotation(Quat::from_rotation_x(ROD_ANGLE));
+            elbow.spawn((grip, Visibility::default())).with_children(|rod| {
+                rod.spawn(part(&m.unit_cylinder, &weapon.trim, Vec3::new(0.0, 0.05, 0.0), Vec3::new(0.02, 0.3, 0.02)));
+                rod.spawn(part(&m.unit_cylinder, &weapon.main, Vec3::new(0.0, 0.8, 0.0), Vec3::new(0.013, 1.2, 0.013)));
+                rod.spawn(part(
+                    &m.unit_cylinder,
+                    &weapon.main,
+                    Vec3::new(0.0, 1.95, 0.0),
+                    Vec3::new(0.007, 1.1, 0.007),
+                ));
+                rod.spawn(part(
+                    &m.unit_sphere,
+                    &weapon.trim,
+                    Vec3::new(0.0, 0.25, 0.04),
+                    Vec3::new(0.02, 0.045, 0.045),
+                ));
+                // Where a fishing line leaves it.
+                rod.spawn((RodTip, Transform::from_xyz(0.0, 2.5, 0.0), Visibility::default()));
             });
         }
         LookStyle::Staff => {

@@ -25,6 +25,7 @@ use venture_protocol::{ClientMessage, EquipSlot, FishingCommand, FishingState, S
 use venture_rpg::fishing::Method;
 use venture_simulation::fishing::Fight;
 
+use crate::characters::model::RodTip;
 use crate::characters::player::LocalPlayer;
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::content::ContentStore;
@@ -47,10 +48,10 @@ const NIBBLE_DIP: f32 = 0.08;
 const BITE_DIP: f32 = 0.25;
 /// How long a nibble's dip lasts, in seconds.
 const NIBBLE_SECONDS: f32 = 0.5;
-/// Where the rod's tip is, from the player's feet: how high, and how far in
-/// front, in metres.
-const ROD_TIP_HEIGHT: f32 = 1.9;
-const ROD_TIP_REACH: f32 = 0.7;
+/// About where a held rod's tip is, from the player's feet (how high, and
+/// how far in front, in metres), for before the rod is drawn.
+const ROD_TIP_HEIGHT: f32 = 2.4;
+const ROD_TIP_REACH: f32 = 1.0;
 /// How quickly the player turns to face their line (per second).
 const TURN_RATE: f32 = 8.0;
 /// The line's thickness, in metres.
@@ -369,11 +370,21 @@ impl LineAssets {
     }
 }
 
-/// Where a line from a character standing at `feet` (facing `rotation`) to
-/// a float at `float` runs: the line's transform (a unit cylinder stretched
-/// from the rod's tip to the float).
-pub fn line_between(feet: Vec3, rotation: Quat, float: Vec3) -> Transform {
-    let tip = feet + Vec3::Y * ROD_TIP_HEIGHT + rotation * Vec3::Z * ROD_TIP_REACH;
+/// Where the tip of the rod held by a character standing at `feet` (facing
+/// `rotation`) is: the nearest rod tip drawn, or if there's none (the rod
+/// isn't drawn yet), about where it would be.
+pub fn rod_tip(tips: &Query<&GlobalTransform, With<RodTip>>, feet: Vec3, rotation: Quat) -> Vec3 {
+    let guess = feet + Vec3::Y * ROD_TIP_HEIGHT + rotation * Vec3::Z * ROD_TIP_REACH;
+    tips.iter()
+        .map(GlobalTransform::translation)
+        .filter(|tip| tip.distance(guess) < 3.0)
+        .min_by(|a, b| a.distance(guess).total_cmp(&b.distance(guess)))
+        .unwrap_or(guess)
+}
+
+/// Where a line from a rod's tip to a float runs: the line's transform (a
+/// unit cylinder stretched from one to the other).
+pub fn line_between(tip: Vec3, float: Vec3) -> Transform {
     let span = float - tip;
     Transform {
         translation: tip + span / 2.0,
@@ -391,6 +402,7 @@ fn show_float_and_line(
     player: Option<Single<&Transform, (With<LocalPlayer>, Without<Float>, Without<FishingLine>)>>,
     mut float: Single<(&mut Transform, &mut Visibility), (With<Float>, Without<FishingLine>)>,
     mut line_mesh: Single<(&mut Transform, &mut Visibility), (With<FishingLine>, Without<Float>)>,
+    tips: Query<&GlobalTransform, With<RodTip>>,
 ) {
     let (Some(line), Some(player)) = (&angling.line, player) else {
         *float.1 = Visibility::Hidden;
@@ -423,6 +435,6 @@ fn show_float_and_line(
     *float.1 = Visibility::Inherited;
 
     // The line: from the rod's tip, up and in front of the player, to the float.
-    *line_mesh.0 = line_between(standing, player.rotation, at);
+    *line_mesh.0 = line_between(rod_tip(&tips, standing, player.rotation), at);
     *line_mesh.1 = Visibility::Inherited;
 }
