@@ -213,7 +213,7 @@ impl HumanLook {
 /// Whether a worn item is held in the hand (and drawn as a shape of its own
 /// where it has no model).
 fn is_held(item: &ItemLook) -> bool {
-    matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Buckler)
+    matches!(item.style, LookStyle::Sword | LookStyle::Staff | LookStyle::Club | LookStyle::Buckler | LookStyle::Rod)
 }
 
 /// A person dressed in models (so their placeholder body goes).

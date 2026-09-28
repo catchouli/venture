@@ -7,9 +7,10 @@ use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{EntityId, ServerMessage};
 
+use crate::characters::model::RodTip;
 use crate::characters::player::LocalPlayer;
 use crate::common::coords::{from_bevy, to_bevy};
-use crate::fishing::{LineAssets, line_between};
+use crate::fishing::{LineAssets, line_between, rod_tip};
 use crate::interaction::targeting::Targetable;
 use crate::network::{ClientState, FromServer};
 use crate::world::query::water_level;
@@ -69,6 +70,7 @@ fn show_lines(
     mut lines: ResMut<OtherLines>,
     mut anglers: Query<(&Targetable, &mut Transform), Without<LocalPlayer>>,
     mut parts: Query<(&mut Transform, &mut Visibility), (Without<Targetable>, Without<LocalPlayer>)>,
+    tips: Query<&GlobalTransform, With<RodTip>>,
 ) {
     let bob = (time.elapsed_secs() * 2.4).sin() * 0.03;
     lines.0.retain(|id, line| {
@@ -89,7 +91,7 @@ fn show_lines(
             *visibility = Visibility::Inherited;
         }
         if let Ok((mut transform, mut visibility)) = parts.get_mut(line.line) {
-            *transform = line_between(angler.translation, angler.rotation, float_at);
+            *transform = line_between(rod_tip(&tips, angler.translation, angler.rotation), float_at);
             *visibility = Visibility::Inherited;
         }
         true
