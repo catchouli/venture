@@ -13,12 +13,15 @@ venture_editor ──► venture_client (its world rendering), venture_content (
    (Bevy, egui)
 
 venture_worldgen ──► venture_world     (the bake tool; nothing at runtime depends on it)
+
+venture_trees                          (the tree generator; depends on nothing of ours)
 ```
 
 | Crate | Purpose |
 | --- | --- |
 | `venture_world` | Core world data: units, coordinates, chunks, terrain cells, biomes, liquids, props, and the baked world file format. Plain data that every other part of the game shares. |
 | `venture_worldgen` | The world generation engine, and the `bake` tool that writes the world (and its map) to disk. |
+| `venture_trees` | The tree generator: realistic procedural trees from a species (data in `content/trees/`) and a few choices (age, height, branchiness, fullness, lean, seed), as meshes, textures (painted, or from photographs), preview pictures and glTF models, with the `tree` tool. See [plan-trees.md](plan-trees.md). |
 | `venture_navigation` | Where characters can walk (blocked cells per chunk) and pathfinding (A* plus line-of-sight smoothing). |
 | `venture_simulation` | Game rules both sides run: movement, speed and input validation, the day cycle, and the fight with a hooked fish. The client uses them to predict, and the server to decide. |
 | `venture_rpg` | The RPG rules: stats and modifiers, dice, experience and levels, points per level, health, mana, armour class, attack speed, attack resolution, and fishing (what bites, hooks, strikes, shadows, reels, traps). Based on the SRD 5.1 (CC BY 4.0), adapted for real time. |

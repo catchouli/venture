@@ -7060,6 +7060,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "venture_trees"
+version = "0.1.0"
+dependencies = [
+ "bevy_reflect",
+ "glam",
+ "image",
+ "ron",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "venture_world"
 version = "0.1.0"
 dependencies = [

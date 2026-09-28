@@ -12,6 +12,7 @@ members = [
     "crates/client",
     "crates/editor",
     "crates/tools",
+    "crates/trees",
 ]
 
 [workspace.package]
@@ -28,6 +29,7 @@ venture_simulation = { path = "crates/simulation" }
 venture_rpg = { path = "crates/rpg" }
 venture_protocol = { path = "crates/protocol" }
 venture_content = { path = "crates/content" }
+venture_trees = { path = "crates/trees" }
 venture_server = { path = "crates/server", default-features = false }
 serde = { version = "1", features = ["derive"] }
 postcard = { version = "1", default-features = false, features = ["use-std"] }
@@ -40,6 +42,8 @@ noise = "0.9"
 image = { version = "0.25", default-features = false, features = ["png"] }
 bevy = { version = "0.19", default-features = false }
 bevy_reflect = "0.19"
+glam = "0.32"
+serde_json = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -59,6 +63,10 @@ opt-level = 3
 # World generation is heavy number crunching: always optimise it, or chunk
 # streaming stalls (especially on the web, where it runs on the main thread).
 [profile.dev.package.venture_worldgen]
+opt-level = 3
+
+# So is growing trees (the client grows its tree templates as it loads).
+[profile.dev.package.venture_trees]
 opt-level = 3
 
 # Small, fast WebAssembly builds: `trunk build --release --cargo-profile wasm-release`.

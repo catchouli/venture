@@ -65,6 +65,30 @@ Skies are ambientCG HDRIs too, downloaded to `~/assets/skies/` and baked into
 | EveningSkyHDRI047B | `content/skies/evening/`: dusk (and dawn, turned east) | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 | NightSkyHDRI008 | `content/skies/night/`: the night sky (its meteor and satellite trails painted out) | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
 
+Tree textures are ambientCG bark materials and leaf sets, downloaded (2K PNG)
+to `~/assets/trees/` and imported into `content/trees/` by `import_tree_texture`
+(bark as 512-pixel-wide JPEGs, leaf sets as 1024-pixel PNGs with their
+opacity as alpha). The tree generator arranges the leaves into sprigs:
+
+| Texture | What we use it for | Licence |
+| --- | --- | --- |
+| Bark001 | Oak bark | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Bark002 | Willow bark | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Bark004 | Ash bark | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Bark006 | Hawthorn bark | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Bark009 | Sycamore bark | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Bark010 | (imported, not used yet) | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Bark014 | Scots pine bark | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| Bark015 | Yew bark | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| LeafSet003 | Ash leaflets | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| LeafSet004 | Birch leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| LeafSet010 | Sycamore leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| LeafSet013 | Willow leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| LeafSet014 | Beech leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| LeafSet016 | Oak and hawthorn leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| LeafSet019 | Yew foliage | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+| LeafSet024 | Hazel leaves | CC0 ([ambientcg/license.txt](ambientcg/license.txt)) |
+
 ## Everything else
 
 Everything else in the repository (code, content, placeholder icons, sounds

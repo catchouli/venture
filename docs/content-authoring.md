@@ -53,6 +53,10 @@ content/
   skies/cycle.ron      which sky shows at which time of day, and how bright (see
                        plan-day-night.md)
   skills/*.ron         gathering and making skills (sent to clients)
+  trees/species.ron    tree species: shape, branching, leaves and bark, for the tree
+                       generator (see plan-trees.md; try them with the `tree` tool)
+  trees/bark/*.jpg,    photographed bark and leaf sets the species use (imported by
+  trees/leaves/*.png   `import_tree_texture`; see plan-trees.md)
   sounds/*.wav         sounds (sent to clients)
   sounds.ron           the game's own sounds: hits, misses, levelling up
   ui/theme.ron, ui/*   the interface's look: frame pictures, tab icons, font (sent to clients)
