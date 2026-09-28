@@ -195,6 +195,7 @@ from smaller, quicker trees and need a lower level:
 
 | Tree | Level | Wood |
 | --- | --- | --- |
+| Dead tree | 1 | dry deadwood (firewood) |
 | Hazel | 1 | soft (coppice rods) |
 | Birch | 5 | soft |
 | Willow | 10 | soft |
@@ -363,8 +364,9 @@ Things seen in playtest screenshots that want work:
 
 **Woodcutting** (step 9, first form; see "Woodcutting" above and
 `docs/client-server.md`):
-- **Selecting:** standing trees near the player (within 40 m; not bushes)
-  can be selected. The target frame shows the tree's name and Woodworking
+- **Selecting:** standing trees near the player (within 40 m) can be
+  selected, bushes included (they're small young trees: mostly hazel, level
+  1, and hawthorn). The target frame shows the tree's name and Woodworking
   level ("Yew tree, Level 60").
 - **Felling:** clicking a selected tree again with an axe in hand (the
   cursor is an axe) runs the player beside it and chops. When it falls, a
@@ -375,11 +377,16 @@ Things seen in playtest screenshots that want work:
   by the tree's size) and Woodworking experience.
 - **Growing back:** after 3 minutes the fallen tree goes, and a minute later
   the tree grows back.
-- **Gear:** new characters carry a stone axe. There are ten kinds of logs,
-  from hazel rods (level 1) to yew (level 60).
+- **Gear:** new characters carry a stone axe. There are eleven kinds of
+  wood, from deadwood and hazel rods (level 1) to yew (level 60).
+- **Something to start on:** dead trees (a bare, grey species of their own,
+  5–10 m tall, level 1) stand among the living in every biome's woods, and
+  are volcanic land's only trees. Near the starting town there are about
+  ten dead trees and sixteen hazel bushes within 150 m (generator version 4:
+  rebake).
 - **Trying it without a keyboard:**
-  `VENTURE_CHOP=1 VENTURE_SAY="/setskill woodworking 99" ... --local --admin`
-  fells the nearest tree.
+  `VENTURE_CHOP=1 ... --local` fells the nearest tree the character's level
+  can fell.
 - **Still to come:**
   - chopping sounds;
   - a woodsman who sells axes and buys logs;

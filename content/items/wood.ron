@@ -1,5 +1,6 @@
 // Wood: logs from felling trees (see trees/woodcutting.ron), and axes to fell them with.
 [
+    (id: "deadwood", name: "Deadwood", description: "Dry, grey wood from a tree that died standing. It burns well.", icon: "deadwood.png", stackable: true, value: 1),
     (id: "hazel_rods", name: "Hazel rods", description: "Straight, springy rods of coppiced hazel: for hurdles, baskets and bean poles.", icon: "hazel_rods.png", stackable: true, value: 2),
     (id: "birch_logs", name: "Birch logs", description: "Pale, soft birch. It burns hot and quick, and its bark lights even when damp.", icon: "birch_logs.png", stackable: true, value: 4),
     (id: "willow_logs", name: "Willow logs", description: "Light, soft willow, cut from the waterside.", icon: "willow_logs.png", stackable: true, value: 6),

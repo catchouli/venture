@@ -8,8 +8,8 @@ use bevy::prelude::*;
 use venture_navigation::{ChunkObstacles, WalkingLimits};
 use venture_protocol::TreeId;
 use venture_world::{
-    BUSH_SCALE, Biome, CHUNK_SIZE, CellPos, Chunk, ChunkPos, FluidBody, FluidKind, MANIFEST_FILE, PropKind,
-    WorldManifest, chunk_file_path, decode_chunk,
+    Biome, CHUNK_SIZE, CellPos, Chunk, ChunkPos, FluidBody, FluidKind, MANIFEST_FILE, PropKind, WorldManifest,
+    chunk_file_path, decode_chunk,
 };
 
 /// The loaded world.
@@ -21,7 +21,7 @@ pub struct ServerWorld {
     obstacles: Vec<ChunkObstacles>,
     /// Each cell's water, for every chunk (see [`Waters`]), in the same order.
     waters: Vec<Waters>,
-    /// Each chunk's trees (not bushes), by their place among its props, in the same order.
+    /// Each chunk's trees (bushes too: they're small trees), by their place among its props, in the same order.
     trees: Vec<Vec<WorldTree>>,
 }
 
@@ -38,14 +38,14 @@ pub struct WorldTree {
     pub variant: u8,
 }
 
-/// A chunk's trees (props that are trees, and not bushes).
+/// A chunk's trees (props that are trees, bushes included).
 fn trees_in(chunk: &Chunk) -> Vec<WorldTree> {
     chunk
         .props
         .iter()
         .enumerate()
         .filter_map(|(index, prop)| match prop.kind {
-            PropKind::Tree { species, variant } if prop.scale >= BUSH_SCALE => {
+            PropKind::Tree { species, variant } => {
                 Some(WorldTree { index: index as u16, at: (prop.x, prop.y), species, variant })
             }
             _ => None,
@@ -175,7 +175,7 @@ impl ServerWorld {
         Some((body, Biome::ALL[(byte / 4) as usize % Biome::COUNT]))
     }
 
-    /// A standing tree (not a bush), if there's one with this id.
+    /// A standing tree (or bush), if there's one with this id.
     pub fn tree(&self, id: TreeId) -> Option<WorldTree> {
         let chunk = ChunkPos::new(id.chunk_x, id.chunk_y);
         if !self.manifest.contains_chunk(chunk) {

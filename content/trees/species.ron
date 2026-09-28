@@ -194,4 +194,23 @@
         bark: (style: Plated, colours: ((0.55, 0.32, 0.24), (0.3, 0.16, 0.12)), scale: 0.6,
             texture: "trees/bark/Bark015.jpg"),
     ),
+    (
+        // A tree that died standing: bare, grey and weathered, smaller than
+        // the living ones. The easiest wood to cut (see trees/woodcutting.ron).
+        id: "dead_tree",
+        name: "Dead tree",
+        height: (5.0, 10.0),
+        trunk: (radius: 0.035, taper: 0.85, flare: 0.3, clear: 0.3, wander: 9.0, lean: 9.0,
+            fork_at: 0.45, fork_limbs: (2, 3), fork_angle: 35.0, segments: 8),
+        crown: Spherical,
+        branches: [
+            (count: 9.0, angle: 55.0, top_angle: 40.0, length: 0.45, length_variation: 0.35, wander: 16.0,
+                segments: 5),
+            (count: 5.0, angle: 50.0, top_angle: 40.0, length: 0.45, length_variation: 0.35, wander: 22.0,
+                segments: 3),
+        ],
+        // Bare: no leaves.
+        leaves: (per_metre: 0.0),
+        bark: (style: Fissured, colours: ((0.56, 0.54, 0.5), (0.2, 0.19, 0.18)), scale: 0.8),
+    ),
 ]
