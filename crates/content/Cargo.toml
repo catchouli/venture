@@ -14,6 +14,7 @@ reflect = [
     "venture_protocol/reflect",
     "venture_rpg/reflect",
     "venture_trees/reflect",
+    "venture_structures/reflect",
 ]
 # Checking scripts compile. The server and the `check` tool need it; the
 # client doesn't (it only reads presentation data), so it's optional.
@@ -29,6 +30,7 @@ venture_protocol.workspace = true
 venture_simulation.workspace = true
 venture_world.workspace = true
 venture_trees.workspace = true
+venture_structures.workspace = true
 rhai = { workspace = true, optional = true }
 yarnspinner = { workspace = true, optional = true }
 

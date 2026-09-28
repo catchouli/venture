@@ -6973,6 +6973,7 @@ dependencies = [
  "venture_protocol",
  "venture_rpg",
  "venture_simulation",
+ "venture_structures",
  "venture_trees",
  "venture_world",
  "yarnspinner",

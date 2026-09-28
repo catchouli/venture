@@ -33,6 +33,7 @@ fn flat_world() -> ServerWorld {
         map: None,
         tree_species: Vec::new(),
         walls: Vec::new(),
+        buildings: Vec::new(),
     };
     let chunks: Vec<Chunk> = (0..16).map(|i| Chunk::new(ChunkPos::new(i % 4, i / 4))).collect();
     ServerWorld::from_chunks(manifest, &chunks)
@@ -61,6 +62,7 @@ fn wood_chunks() -> (WorldManifest, Vec<Chunk>) {
         map: None,
         tree_species: vec!["birch".to_string()],
         walls: Vec::new(),
+        buildings: Vec::new(),
     };
     let mut chunks: Vec<Chunk> = (0..16).map(|i| Chunk::new(ChunkPos::new(i % 4, i / 4))).collect();
     let kind = PropKind::Tree { species: 0, variant: 1 };
@@ -92,6 +94,7 @@ fn river_world() -> ServerWorld {
         map: None,
         tree_species: Vec::new(),
         walls: Vec::new(),
+        buildings: Vec::new(),
     };
     let chunks: Vec<Chunk> = (0..16)
         .map(|i| {

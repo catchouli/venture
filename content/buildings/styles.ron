@@ -1,0 +1,41 @@
+// Building styles (see docs/plan-buildings.md): how buildings are built,
+// apart from their plans. Colours are sRGB (0 to 1), multiplying the
+// textures; each pair is a range the building's seed picks from.
+[
+    (
+        id: "stone_cottage",
+        name: "Stone cottage",
+        walls: Stone,
+        wall_thickness: 0.5,
+        storey: 2.7,
+        roof: (pitch: (46.0, 54.0), eaves: 0.45, verge: 0.3, thickness: 0.35),
+        door: (size: (1.15, 2.05)),
+        window: (size: (0.7, 0.9), sill: 0.95, gap: 1.5, corner: 0.9, chance: 0.8, shutters: false),
+        chimney: (chance: 0.85, size: (0.9, 0.7), above_ridge: 0.9),
+        colours: (
+            walls: ((0.95, 0.93, 0.88), (0.78, 0.74, 0.68)),
+            roof: ((0.95, 0.9, 0.8), (0.72, 0.66, 0.56)),
+            trim: ((0.6, 0.5, 0.4), (0.42, 0.35, 0.3)),
+            doors: [(0.35, 0.42, 0.3), (0.5, 0.35, 0.25), (0.3, 0.35, 0.45), (0.55, 0.5, 0.42)],
+            plaster: (0.92, 0.9, 0.84),
+        ),
+    ),
+    (
+        id: "wooden_cottage",
+        name: "Wooden cottage",
+        walls: Timber,
+        wall_thickness: 0.3,
+        storey: 2.6,
+        roof: (pitch: (44.0, 52.0), eaves: 0.5, verge: 0.35, thickness: 0.35),
+        door: (size: (1.15, 2.0)),
+        window: (size: (0.7, 0.85), sill: 0.95, gap: 1.6, corner: 0.8, chance: 0.75, shutters: true),
+        chimney: (chance: 0.4, size: (0.8, 0.65), above_ridge: 0.8),
+        colours: (
+            walls: ((0.85, 0.72, 0.58), (0.6, 0.48, 0.38)),
+            roof: ((0.95, 0.9, 0.8), (0.72, 0.66, 0.56)),
+            trim: ((0.45, 0.36, 0.28), (0.32, 0.26, 0.2)),
+            doors: [(0.3, 0.4, 0.28), (0.45, 0.3, 0.22), (0.35, 0.36, 0.42)],
+            plaster: (0.88, 0.84, 0.76),
+        ),
+    ),
+]

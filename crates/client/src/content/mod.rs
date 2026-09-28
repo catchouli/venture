@@ -30,6 +30,9 @@ use venture_content::{
     ThemeDef, parse_abilities, parse_appearances, parse_game_sounds, parse_items, parse_skills, parse_theme,
 };
 use venture_protocol::ServerMessage;
+use venture_structures::buildings::{
+    BuildingStyle, STYLES_FILE as BUILDING_STYLES_FILE, parse_styles as parse_building_styles,
+};
 
 use crate::network::launch::ServerChoice;
 use crate::network::{FromServer, NetworkSystems};
@@ -95,6 +98,8 @@ pub struct ContentStore {
     pub tree_drawing: TreeDrawing,
     /// What each tree species is to woodworking (`trees/woodcutting.ron`).
     pub tree_woodcutting: Vec<TreeWoodcutting>,
+    /// Building styles (`buildings/styles.ron`).
+    pub building_styles: Vec<BuildingStyle>,
     /// Tree photographs (bark and leaf sets), by path in the content.
     pub tree_photos: HashMap<String, Arc<Vec<u8>>>,
     /// Model files that changed in the last download (to reload).
@@ -182,6 +187,8 @@ enum FileData {
     SkyCycle(SkyCycle),
     /// Tree species (`trees/species.ron`).
     TreeSpecies(Vec<Species>),
+    /// Building styles (`buildings/styles.ron`).
+    BuildingStyles(Vec<BuildingStyle>),
     /// How trees are drawn (`trees/drawing.ron`).
     TreeDrawing(TreeDrawing),
     /// What each tree is to woodworking (`trees/woodcutting.ron`).
@@ -376,6 +383,7 @@ fn parse_file(path: &str, hash: &str, bytes: &[u8]) -> Result<ContentFile, Strin
         Some("skies") => FileData::Model(bytes.to_vec()),
         Some("sounds.ron") => FileData::GameSounds(parse_game_sounds(&text())?),
         Some("skills") => FileData::Skills(parse_skills(&text())?),
+        Some("buildings") if path == BUILDING_STYLES_FILE => FileData::BuildingStyles(parse_building_styles(&text())?),
         Some("trees") if path == TREE_SPECIES_FILE => FileData::TreeSpecies(parse_species(&text())?),
         Some("trees") if path == TREE_DRAWING_FILE => FileData::TreeDrawing(parse_tree_drawing(&text())?),
         Some("trees") if path == TREE_WOODCUTTING_FILE => FileData::TreeWoodcutting(parse_tree_woodcutting(&text())?),
@@ -419,6 +427,7 @@ fn finish_download(
             store.skies.clear();
             store.sky_cycle = None;
             store.tree_species.clear();
+            store.building_styles.clear();
             store.tree_drawing = TreeDrawing::default();
             store.tree_woodcutting.clear();
             store.tree_photos.clear();
@@ -470,6 +479,7 @@ fn finish_download(
                     FileData::Sky(def) => store.skies.entry(sky_name(path)).or_default().def = Some(def.clone()),
                     FileData::SkyCycle(cycle) => store.sky_cycle = Some(cycle.clone()),
                     FileData::TreeSpecies(species) => store.tree_species = species.clone(),
+                    FileData::BuildingStyles(styles) => store.building_styles = styles.clone(),
                     FileData::TreeDrawing(drawing) => store.tree_drawing = drawing.clone(),
                     FileData::TreeWoodcutting(entries) => store.tree_woodcutting = entries.clone(),
                     FileData::TreePhoto(bytes) => {

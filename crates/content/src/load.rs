@@ -121,6 +121,8 @@ pub struct ContentPack {
     pub tree_species: Vec<crate::trees::Species>,
     /// What each tree species is to woodworking (`trees/woodcutting.ron`).
     pub tree_woodcutting: Vec<crate::trees::TreeWoodcutting>,
+    /// Building styles (`buildings/styles.ron`), in file order.
+    pub building_styles: Vec<venture_structures::buildings::BuildingStyle>,
     /// The part clients download.
     pub client: ClientContent,
 }
@@ -565,6 +567,19 @@ impl ContentPack {
         }
         pack.tree_species = trees.species;
         pack.tree_woodcutting = trees.woodcutting;
+
+        if let Ok(text) = std::fs::read_to_string(folder.join(venture_structures::buildings::STYLES_FILE)) {
+            let file = Path::new(venture_structures::buildings::STYLES_FILE);
+            match venture_structures::buildings::parse_styles(&text) {
+                Ok(styles) => {
+                    let problems = venture_structures::buildings::check_styles(&styles);
+                    errors.extend(problems.into_iter().map(|message| error(file, message)));
+                    pack.building_styles = styles;
+                }
+                Err(problem) => errors.push(error(file, problem)),
+            }
+            client_files.push((venture_structures::buildings::STYLES_FILE.to_string(), text.into_bytes()));
+        }
 
         if let Ok(text) = std::fs::read_to_string(folder.join(CHARACTERS_FILE)) {
             let file = Path::new(CHARACTERS_FILE);

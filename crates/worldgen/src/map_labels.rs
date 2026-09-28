@@ -355,6 +355,7 @@ mod tests {
             map: None,
             tree_species: Vec::new(),
             walls: Vec::new(),
+            buildings: Vec::new(),
         }
     }
 
