@@ -11,6 +11,7 @@
 //! - [`items`]: what using an item (eating, drinking) heals.
 //! - [`fishing`]: what bites (bait and lures against fish traits), hooks,
 //!   strikes, shadows, reels and traps.
+//! - [`woodcutting`]: felling trees and cutting them up (part of Woodworking).
 //!
 //! The server uses these to decide what happens; the client uses them to show
 //! the same numbers. The crate has no engine or networking code, and every
@@ -40,6 +41,7 @@ pub mod fishing;
 pub mod items;
 pub mod progression;
 pub mod stats;
+pub mod woodcutting;
 
 pub use abilities::Power;
 pub use class::ClassRules;

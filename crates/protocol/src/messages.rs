@@ -908,6 +908,8 @@ pub enum LookStyle {
     Buckler,
     /// A fishing rod, held out over the water in the right hand.
     Rod,
+    /// An axe, held in the right hand.
+    Axe,
 }
 
 /// How a worn item looks: its shape and colours (sRGB, each 0 to 1).

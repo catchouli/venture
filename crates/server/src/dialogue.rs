@@ -373,6 +373,7 @@ mod tests {
             equip: None,
             on_use: Default::default(),
             fishing: None,
+            woodworking: None,
             notes: String::new(),
         };
         let stage = |id: &str| venture_content::QuestStage { id: id.to_string(), journal: String::new() };

@@ -609,6 +609,54 @@ FISHING_ICONS = {
 ICONS.update(FISHING_ICONS)
 
 
+def logs(bark, heart):
+    """A stack of three logs, their cut ends showing rings."""
+
+    def draw():
+        layers = []
+        for cx, cy in [(10, 21), (22, 21), (16, 11)]:
+            layers.append((circle(cx, cy, 6.2), bark))
+            layers.append((detail(circle(cx, cy, 4.6)), heart))
+            layers.append((detail(ring(cx, cy, 2.6, 0.7)), tuple(max(0, c - 40) for c in heart)))
+            layers.append((detail(circle(cx, cy, 0.9)), tuple(max(0, c - 60) for c in heart)))
+        return layers
+
+    return draw
+
+
+def hazel_rods():
+    hazel = (150, 104, 70)
+    return [(capsule(6 + i * 3, 27, 12 + i * 3, 4, 1.4), hazel) for i in range(5)] + [
+        (detail(capsule(5, 16, 27, 16, 0.8)), (120, 150, 80)),  # the twine binding them
+    ]
+
+
+def stone_axe():
+    flint = (120, 118, 124)
+    return [
+        (capsule(10, 28, 20, 6, 1.7), WOOD),  # the haft
+        (polygon([(15, 5), (27, 4), (29, 12), (24, 15), (16, 11)]), flint),  # the knapped head
+        (detail(capsule(15, 9, 20, 11, 0.7)), (150, 120, 80)),  # the lashing
+        (detail(polygon([(20, 6), (25, 6), (26, 9)])), (160, 158, 166)),  # a knapped facet
+    ]
+
+
+WOOD_ICONS = {
+    "hazel_rods.png": hazel_rods,
+    "birch_logs.png": logs((225, 222, 210), (236, 222, 190)),
+    "willow_logs.png": logs((120, 110, 90), (226, 206, 170)),
+    "pine_logs.png": logs((170, 96, 60), (232, 196, 140)),
+    "hawthorn_logs.png": logs((110, 100, 92), (214, 180, 140)),
+    "sycamore_logs.png": logs((150, 140, 128), (238, 226, 200)),
+    "ash_logs.png": logs((150, 150, 142), (230, 212, 176)),
+    "beech_logs.png": logs((160, 160, 156), (222, 176, 130)),
+    "oak_logs.png": logs((96, 84, 72), (196, 150, 96)),
+    "yew_logs.png": logs((140, 76, 56), (220, 150, 70)),
+    "stone_axe.png": stone_axe,
+}
+ICONS.update(WOOD_ICONS)
+
+
 # Drawing --------------------------------------------------------------------
 
 def render(layers):

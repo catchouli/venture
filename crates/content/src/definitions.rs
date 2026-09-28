@@ -227,6 +227,9 @@ pub struct ItemDef {
     /// trap, or a fish (fish are items: they go in the bag and sell).
     #[serde(default, skip_serializing_if = "is_default")]
     pub fishing: Option<FishingPart>,
+    /// What it is to woodworking, if anything: an axe.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub woodworking: Option<WoodworkingPart>,
     /// Notes for authors (the game ignores them).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
@@ -298,6 +301,35 @@ pub enum FishingPart {
     },
     /// A fish (or crab, or anything else that can be caught).
     Fish(FishDef),
+}
+
+/// What an item is to woodworking.
+///
+/// ```ron
+/// woodworking: Some(Axe(power: 1.0, level: 1))
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+pub enum WoodworkingPart {
+    /// An axe, for felling trees and cutting them up: how well it bites (1
+    /// for a stone axe; better ones more), and the woodworking level it needs.
+    Axe {
+        /// How well it bites (1 for a stone axe).
+        power: f32,
+        /// The woodworking level it needs.
+        level: u32,
+    },
+}
+
+impl WoodworkingPart {
+    /// What it is to woodworking, in a line for a tooltip.
+    pub fn describe(&self) -> String {
+        match self {
+            WoodworkingPart::Axe { power, level } => {
+                format!("An axe, for felling trees (power {power}). Needs woodworking level {level}.")
+            }
+        }
+    }
 }
 
 impl FishingPart {

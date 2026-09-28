@@ -14,6 +14,33 @@ pub use venture_trees::{Species, parse_species};
 pub const TREE_SPECIES_FILE: &str = "trees/species.ron";
 /// How the game draws trees.
 pub const TREE_DRAWING_FILE: &str = "trees/drawing.ron";
+/// What each species is to woodworking.
+pub const TREE_WOODCUTTING_FILE: &str = "trees/woodcutting.ron";
+
+/// What felling a species is like, for woodworking (`trees/woodcutting.ron`).
+///
+/// ```ron
+/// (species: "oak", level: 50, log: "oak_logs", experience: 90.0, hardness: 8)
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+pub struct TreeWoodcutting {
+    /// The species (an id in `trees/species.ron`).
+    pub species: String,
+    /// The woodworking level it takes to fell it.
+    pub level: u32,
+    /// The logs it gives (an item id).
+    pub log: String,
+    /// The woodworking experience each log gives.
+    pub experience: f32,
+    /// How hard its wood is: how many bites fell a mature tree (see `venture_rpg::woodcutting`).
+    pub hardness: u32,
+}
+
+/// Reads `trees/woodcutting.ron`.
+pub fn parse_tree_woodcutting(text: &str) -> Result<Vec<TreeWoodcutting>, String> {
+    ron::from_str(text).map_err(|error| error.to_string())
+}
 
 /// How the game draws trees (`trees/drawing.ron`). Distances are in metres
 /// from the camera, each a pair: where a change starts and where it's done.
@@ -82,6 +109,8 @@ pub struct LoadedTrees {
     pub files: Vec<(String, Vec<u8>)>,
     /// How the game draws trees.
     pub drawing: TreeDrawing,
+    /// What each species is to woodworking (checked against the items by the pack).
+    pub woodcutting: Vec<TreeWoodcutting>,
 }
 
 /// Reads and checks the tree species, if the pack has any.
@@ -108,6 +137,27 @@ pub fn load_trees(folder: &Path) -> LoadedTrees {
             Err(message) => problems.push((TREE_DRAWING_FILE.to_string(), message)),
         }
         files.push((TREE_DRAWING_FILE.to_string(), text.into_bytes()));
+    }
+    let mut woodcutting = Vec::new();
+    if let Ok(text) = std::fs::read_to_string(folder.join(TREE_WOODCUTTING_FILE)) {
+        match parse_tree_woodcutting(&text) {
+            Ok(read) => woodcutting = read,
+            Err(message) => problems.push((TREE_WOODCUTTING_FILE.to_string(), message)),
+        }
+        files.push((TREE_WOODCUTTING_FILE.to_string(), text.into_bytes()));
+    }
+    let mut problem = |message: String| problems.push((TREE_WOODCUTTING_FILE.to_string(), message));
+    let mut seen = BTreeSet::new();
+    for entry in &woodcutting {
+        if !species.iter().any(|tree| tree.id == entry.species) {
+            problem(format!("there's no tree species \"{}\"", entry.species));
+        }
+        if !seen.insert(entry.species.clone()) {
+            problem(format!("\"{}\" is listed twice", entry.species));
+        }
+        if !(entry.experience >= 0.0 && entry.experience.is_finite()) || entry.hardness == 0 {
+            problem(format!("{}: experience can't be negative, and hardness must be at least 1", entry.species));
+        }
     }
     let mut ids = BTreeSet::new();
     let mut photos_sent = BTreeSet::new();
@@ -153,5 +203,5 @@ pub fn load_trees(folder: &Path) -> LoadedTrees {
             }
         }
     }
-    LoadedTrees { species, problems, files, drawing }
+    LoadedTrees { species, problems, files, drawing, woodcutting }
 }

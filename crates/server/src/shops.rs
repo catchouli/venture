@@ -180,6 +180,7 @@ mod tests {
             equip: None,
             on_use: Default::default(),
             fishing: None,
+            woodworking: None,
             notes: String::new(),
         };
         BTreeMap::from([("bread".to_string(), item("bread", false, 4)), ("pipe".to_string(), item("pipe", false, 0))])
