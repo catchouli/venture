@@ -364,6 +364,13 @@ fn fill_slots(
                 let title =
                     if stack.count > 1 { format!("{} ({})", item.name, stack.count) } else { item.name.clone() };
                 let mut body = item.description.clone();
+                if let Some(fishing) = &item.fishing {
+                    body.push('\n');
+                    body.push_str(&fishing.describe());
+                    if matches!(fishing, venture_content::FishingPart::Trap { .. }) && shop.0.is_none() {
+                        body.push_str(" Click to set it at the water's edge.");
+                    }
+                }
                 if let Some(shop) = &shop.0 {
                     match item.sell_price() {
                         Some(price) => body.push_str(&format!("\nSells for {price} Miasma.")),
