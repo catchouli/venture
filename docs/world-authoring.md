@@ -97,7 +97,9 @@ fences and so on) has its own **generator**:
   mesh-data types. It knows nothing of the world, the generator or Bevy, like
   `venture_world` and `venture_worldgen`.
 - **Parameterised and deterministic:** the same parameters and seed always
-  give the same object.
+  give the same object. **Every generated thing has a seed** (a tree, a tree
+  area, a building, a rock), shown and editable wherever it's authored, so
+  an author can reroll for a new take, or keep one they like.
 - **Output:** plain mesh data (positions, normals, colours or material
   slots), plus the facts the world needs: its footprint (what it blocks) and,
   for structures, walkable floors, stairs and doors for the navigation grid.
