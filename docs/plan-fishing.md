@@ -92,8 +92,14 @@ Each step ends playable or testable, and is committed.
    bag, and click the water. Not yet: the client running the fight ahead
    (reeling waits for the server's answer, a round trip), others seeing
    you fish.
-4. **Shadows.** What's in the water for each player, and how it's drawn
-   (solid, faint), moving and gathering round the bait.
+4. **Done: shadows.** What's in the water for each player, and how it's
+   drawn (solid, faint), moving and gathering round the bait. The water is
+   divided into 12-metre regions; which fish shoal in each, and how many,
+   changes with the hour of the day, and is worked out from the world's
+   seed (`venture_simulation::fishing::shoals`) by both the server and the
+   client, so it takes no messages and each client shows its own player's
+   view. A line cast into a region where a fish shoals makes that fish three
+   times as likely to bite (and bite sooner): shadows show where to cast.
 5. **Looks and feel.** The line and float, the rod bending, splashes, fight
    animation, sounds, icons for each fish (the placeholder icon tool).
 6. **Traps.** Placing, soaking (saved), harvesting, bycatch.

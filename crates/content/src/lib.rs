@@ -54,7 +54,7 @@ pub use definitions::{
     AbilityDef, AbilityEffect, AbilityVisual, AppearanceDef, ClassAbility, ClassDef, Colour, Equippable, FishDef,
     FishingPart, GameSounds, ItemCount, ItemDef, ItemEffect, MonsterAttack, MonsterDef, NewCharacterDef, NpcDef,
     OutfitStyle, QuestDef, QuestStage, RespawnPoint, ShopDef, ShopItem, SkillDef, SpawnerDef, THEME_PIECES,
-    ThemeBorder, ThemeDef, ThemePiece, WeaponDef,
+    ThemeBorder, ThemeDef, ThemePiece, WeaponDef, fish_living_in,
 };
 pub use load::{ContentError, ContentPack};
 pub use venture_protocol::Refers;
