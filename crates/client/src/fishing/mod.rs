@@ -12,6 +12,7 @@
 //! [`panel`] shows how it's going: what's happening, and in a fight the
 //! line's tension and how much is out.
 
+pub mod others;
 pub mod panel;
 pub mod ripples;
 pub mod shadows;
@@ -62,7 +63,13 @@ impl Plugin for FishingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Angling>()
             .add_message::<CastAt>()
-            .add_plugins((panel::PanelPlugin, ripples::RipplesPlugin, shadows::ShadowsPlugin, traps::TrapsPlugin))
+            .add_plugins((
+                panel::PanelPlugin,
+                ripples::RipplesPlugin,
+                shadows::ShadowsPlugin,
+                traps::TrapsPlugin,
+                others::OthersPlugin,
+            ))
             .add_systems(Startup, make_float)
             .add_systems(
                 Update,
@@ -315,23 +322,64 @@ fn make_float(
         ..default()
     });
     let line = materials.add(StandardMaterial { base_color: Color::srgb(0.9, 0.9, 0.88), unlit: true, ..default() });
-    commands.spawn((
-        Float,
-        Mesh3d(meshes.add(Sphere::new(FLOAT_RADIUS).mesh().uv(16, 8))),
-        MeshMaterial3d(float),
-        Transform::default(),
-        Visibility::Hidden,
-    ));
-    commands.spawn((
-        FishingLine,
+    let assets = LineAssets {
+        float_mesh: meshes.add(Sphere::new(FLOAT_RADIUS).mesh().uv(16, 8)),
+        float,
         // A unit-long cylinder, stretched between the rod tip and the float.
-        Mesh3d(meshes.add(Cylinder::new(LINE_RADIUS, 1.0).mesh().resolution(4))),
-        MeshMaterial3d(line),
-        // (A shadow of a line this thin would only be a dotted streak.)
-        bevy::light::NotShadowCaster,
-        Transform::default(),
-        Visibility::Hidden,
-    ));
+        line_mesh: meshes.add(Cylinder::new(LINE_RADIUS, 1.0).mesh().resolution(4)),
+        line,
+    };
+    let (float, line) = assets.spawn(&mut commands);
+    commands.entity(float).insert(Float);
+    commands.entity(line).insert(FishingLine);
+    commands.insert_resource(assets);
+}
+
+/// The float's and line's meshes and materials.
+#[derive(Resource)]
+pub struct LineAssets {
+    float_mesh: Handle<Mesh>,
+    float: Handle<StandardMaterial>,
+    line_mesh: Handle<Mesh>,
+    line: Handle<StandardMaterial>,
+}
+
+impl LineAssets {
+    /// A float and a line (hidden until placed).
+    pub fn spawn(&self, commands: &mut Commands) -> (Entity, Entity) {
+        let float = commands
+            .spawn((
+                Mesh3d(self.float_mesh.clone()),
+                MeshMaterial3d(self.float.clone()),
+                Transform::default(),
+                Visibility::Hidden,
+            ))
+            .id();
+        let line = commands
+            .spawn((
+                Mesh3d(self.line_mesh.clone()),
+                MeshMaterial3d(self.line.clone()),
+                // (A shadow of a line this thin would only be a dotted streak.)
+                bevy::light::NotShadowCaster,
+                Transform::default(),
+                Visibility::Hidden,
+            ))
+            .id();
+        (float, line)
+    }
+}
+
+/// Where a line from a character standing at `feet` (facing `rotation`) to
+/// a float at `float` runs: the line's transform (a unit cylinder stretched
+/// from the rod's tip to the float).
+pub fn line_between(feet: Vec3, rotation: Quat, float: Vec3) -> Transform {
+    let tip = feet + Vec3::Y * ROD_TIP_HEIGHT + rotation * Vec3::Z * ROD_TIP_REACH;
+    let span = float - tip;
+    Transform {
+        translation: tip + span / 2.0,
+        rotation: Quat::from_rotation_arc(Vec3::Y, span.normalize_or(Vec3::Y)),
+        scale: Vec3::new(1.0, span.length(), 1.0),
+    }
 }
 
 /// Places the float where the line is (coming in as a fish is reeled), and
@@ -375,12 +423,6 @@ fn show_float_and_line(
     *float.1 = Visibility::Inherited;
 
     // The line: from the rod's tip, up and in front of the player, to the float.
-    let tip = standing + Vec3::Y * ROD_TIP_HEIGHT + player.rotation * Vec3::Z * ROD_TIP_REACH;
-    let span = at - tip;
-    *line_mesh.0 = Transform {
-        translation: tip + span / 2.0,
-        rotation: Quat::from_rotation_arc(Vec3::Y, span.normalize_or(Vec3::Y)),
-        scale: Vec3::new(1.0, span.length(), 1.0),
-    };
+    *line_mesh.0 = line_between(standing, player.rotation, at);
     *line_mesh.1 = Visibility::Inherited;
 }

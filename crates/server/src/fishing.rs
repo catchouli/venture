@@ -70,7 +70,9 @@ impl Plugin for FishingPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             FixedUpdate,
-            (act_on_requests, stop_when_busy, run_lines, show_traps).chain().in_set(ServerSystems::Fishing),
+            (act_on_requests, stop_when_busy, run_lines, show_traps, tell_others)
+                .chain()
+                .in_set(ServerSystems::Fishing),
         );
     }
 }
@@ -694,6 +696,32 @@ fn run_lines(
                 end(&mut commands, &mut link, entity, connection, capitalised(&text));
             }
         }
+    }
+}
+
+/// Tells everyone else when a player casts a line, or stops fishing, so they
+/// see the line.
+fn tell_others(
+    mut link: ResMut<Link>,
+    players: Query<(&Player, &NetworkId)>,
+    lines: Query<(Entity, &NetworkId, &Fishing), Changed<Fishing>>,
+    mut stopped: RemovedComponents<Fishing>,
+    mut told: Local<std::collections::HashMap<Entity, (EntityId, Point)>>,
+) {
+    let others = |id: EntityId| {
+        players.iter().filter(|(_, other)| other.0 != id).map(|(player, _)| player.connection).collect::<Vec<_>>()
+    };
+    for entity in stopped.read() {
+        if let Some((id, _)) = told.remove(&entity) {
+            link.broadcast(others(id), &ServerMessage::Angler { id, at: None });
+        }
+    }
+    for (entity, &NetworkId(id), fishing) in &lines {
+        if told.get(&entity).is_some_and(|&(_, at)| at == fishing.line.at) {
+            continue;
+        }
+        told.insert(entity, (id, fishing.line.at));
+        link.broadcast(others(id), &ServerMessage::Angler { id, at: Some(fishing.line.at) });
     }
 }
 

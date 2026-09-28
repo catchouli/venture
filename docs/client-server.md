@@ -573,7 +573,9 @@ each tick from whether the player is reeling (`Reel(true)` and
 `Reel(false)` when they start and stop), and the server sends its state
 (`Fight`) every tick for the client to show. It ends `Caught` (the fish in
 the bag, its experience to the fishing skill) or with the fish lost, then
-`Ended` and a notice saying why. `Stop` reels in; moving, attacking or
+`Ended` and a notice saying why. Everyone else is told when a player casts
+(`Angler { id, at: Some(point) }`) and stops (`at: None`), to draw their
+line and float. `Stop` reels in; moving, attacking or
 dying ends fishing too. The fight is deterministic, from a seed the server
 sends with it, so the client can later run it ahead to make reeling feel
 instant. Fish shadows take no messages at all: which fish shoal where is

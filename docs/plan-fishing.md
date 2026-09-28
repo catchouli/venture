@@ -90,8 +90,8 @@ Each step ends playable or testable, and is committed.
    sense?) before any polish. To try it: `/give ledger_rod`, `/give
    wooden_reel`, `/give worm 20` (admins), take the rod in hand from the
    bag, and click the water. Not yet: the client running the fight ahead
-   (reeling waits for the server's answer, a round trip), others seeing
-   you fish.
+   (reeling waits for the server's answer, a round trip). (Others see your
+   line and float: done with step 5.)
 4. **Done: shadows.** What's in the water for each player, and how it's
    drawn (solid, faint), moving and gathering round the bait. The water is
    divided into 12-metre regions; which fish shoal in each, and how many,

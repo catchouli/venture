@@ -672,6 +672,13 @@ pub enum ServerMessage {
     PartyInvite(Option<PartyInvite>),
     /// How the player's fishing is going.
     Fishing(FishingState),
+    /// Another player has cast a line (to this point), or stopped fishing (`None`).
+    Angler {
+        /// Who.
+        id: EntityId,
+        /// Where their line is.
+        at: Option<(f32, f32)>,
+    },
 }
 
 /// One entity's state in a [`ServerMessage::Snapshot`].
