@@ -6,7 +6,7 @@
 //!   beside its trunk, then asks the server to chop it: to fell a standing
 //!   tree, or cut a fallen one up for logs.
 //! - Every swing of an axe nearby ([`ServerMessage::Chopped`]) swings the
-//!   chopper's arms, and sounds.
+//!   chopper's arms, turned to face what they chop.
 //!
 //! Trees themselves (standing, felled, fallen and tipping over) are drawn by
 //! [`crate::world::trees`].
@@ -179,21 +179,35 @@ fn chop_once_there(mut pending: ResMut<PendingChop>, mut orders: Orders) {
     }
 }
 
-/// Swings the arms of whoever chopped.
+/// Swings the arms of whoever chopped, turned to face what they chop.
 fn swing_axes(
     mut events: MessageReader<FromServer>,
-    mut me: Option<Single<(&LocalPlayer, &mut Gait)>>,
-    mut others: Query<(&Targetable, &mut Gait), Without<LocalPlayer>>,
+    mut me: Option<Single<(&LocalPlayer, &mut Gait, &mut Transform)>>,
+    mut others: Query<(&Targetable, &mut Gait, &mut Transform), Without<LocalPlayer>>,
 ) {
     for FromServer(message) in events.read() {
-        let ServerMessage::Chopped { id, .. } = message else { continue };
+        let ServerMessage::Chopped { id, at, .. } = message else { continue };
         if let Some(me) = me.as_mut()
             && me.0.id == *id
         {
-            me.1.swing();
-        } else if let Some((_, mut gait)) = others.iter_mut().find(|(targetable, _)| targetable.id == *id) {
-            gait.swing();
+            let (_, gait, transform) = &mut **me;
+            swing_at(gait, transform, *at);
+        } else if let Some((_, mut gait, mut transform)) =
+            others.iter_mut().find(|(targetable, ..)| targetable.id == *id)
+        {
+            swing_at(&mut gait, &mut transform, *at);
         }
+    }
+}
+
+/// Swings a character's arms, turned to face `at`.
+fn swing_at(gait: &mut Gait, transform: &mut Transform, at: (f32, f32)) {
+    gait.swing();
+    // (Characters face +Z in their own space, which is the world's +y.)
+    let (x, y) = from_bevy(transform.translation);
+    let (dx, dy) = (at.0 - x, at.1 - y);
+    if dx.hypot(dy) > 0.05 {
+        transform.rotation = Quat::from_rotation_y(dx.atan2(dy));
     }
 }
 

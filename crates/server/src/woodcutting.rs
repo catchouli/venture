@@ -4,16 +4,19 @@
 //!
 //! - **Felling:** a player with an axe in hand asks to fell a standing tree
 //!   ([`WoodcuttingCommand::Fell`]) beside them. If their woodworking level
-//!   is the tree's or more, they chop, a swing every
+//!   is the tree's or more (small, young trees' is lower than their
+//!   species', and they give half the experience), they chop: a swing at
+//!   once, and then one every
 //!   [`WoodcuttingConfig::swing_seconds`]. Each swing may bite
 //!   (`venture_rpg::woodcutting`), and everyone nearby sees it
 //!   ([`ServerMessage::Chopped`]). After enough bites the tree falls, away
 //!   from them: it's felled ([`FelledTrees`], which everyone is told about)
 //!   and its trunk becomes a **fallen tree**, an entity like any other
-//!   ([`EntityKind::FallenTree`]).
+//!   ([`EntityKind::FallenTree`]). Felling gives experience too.
 //! - **Cutting up:** chopping a fallen tree ([`WoodcuttingCommand::Cut`])
 //!   gives a log a bite (through [`Inventory::apply`]), with its experience
-//!   (through [`Character::add_skill_experience`]), until its logs run out.
+//!   (through [`Character::add_skill_experience`]), until its logs run out,
+//!   when it goes.
 //! - **Growing back:** a fallen tree goes after
 //!   [`WoodcuttingConfig::fallen_seconds`], and the tree grows back
 //!   [`WoodcuttingConfig::regrow_seconds`] after that.
@@ -28,7 +31,9 @@ use bevy::prelude::*;
 use venture_content::WoodworkingPart;
 use venture_content::trees::{TreeWoodcutting, common_name, fallen_name};
 use venture_protocol::{ChopTarget, EntityKind, ServerMessage, TreeId, WoodcuttingCommand};
-use venture_rpg::woodcutting::{FALLEN_LENGTHS, TreeSize, bite_chance, bites_to_fell, can_fell, logs_in};
+use venture_rpg::woodcutting::{
+    FALLEN_LENGTHS, TreeSize, bite_chance, bites_to_fell, can_fell, logs_in, tree_experience, tree_level,
+};
 
 use crate::ServerSystems;
 use crate::character::Character;
@@ -86,6 +91,8 @@ pub struct FallenTree {
     size: TreeSize,
     /// What it is to woodworking.
     woodcutting: TreeWoodcutting,
+    /// The level it takes to cut it up (small trees' is lower than their species').
+    level: u32,
     /// The logs left in it.
     logs_left: u32,
 }
@@ -93,15 +100,20 @@ pub struct FallenTree {
 impl FallenTree {
     /// How clients are told about it.
     pub fn kind(&self) -> EntityKind {
-        EntityKind::FallenTree { tree: self.tree, toward: self.toward, level: self.woodcutting.level }
+        EntityKind::FallenTree { tree: self.tree, toward: self.toward, level: self.level }
+    }
+
+    /// The nearest point to `point` on its trunk, lying from `base` the way it fell.
+    fn nearest_point(&self, base: (f32, f32), point: (f32, f32)) -> (f32, f32) {
+        let length = FALLEN_LENGTHS[self.size as usize];
+        let (dx, dy) = (self.toward.sin(), self.toward.cos());
+        let along = ((point.0 - base.0) * dx + (point.1 - base.1) * dy).clamp(0.0, length);
+        (base.0 + dx * along, base.1 + dy * along)
     }
 
     /// How far a point is from its trunk, lying from `base` the way it fell.
     fn distance_from(&self, base: (f32, f32), point: (f32, f32)) -> f32 {
-        let length = FALLEN_LENGTHS[self.size as usize];
-        let (dx, dy) = (self.toward.sin(), self.toward.cos());
-        let along = ((point.0 - base.0) * dx + (point.1 - base.1) * dy).clamp(0.0, length);
-        let nearest = (base.0 + dx * along, base.1 + dy * along);
+        let nearest = self.nearest_point(base, point);
         (point.0 - nearest.0).hypot(point.1 - nearest.1)
     }
 }
@@ -144,7 +156,7 @@ fn act_on_requests(
     content: Res<LoadedContent>,
     time: Res<Time>,
     felled: Res<FelledTrees>,
-    players: Query<(&Player, &Position, &Equipment, &Character, Has<Chopping>)>,
+    players: Query<(&Player, &Position, &Equipment, &Character, Option<&Chopping>)>,
     fallen: Query<(Entity, &NetworkId, &FallenTree, &Position)>,
 ) {
     let pack = &content.pack;
@@ -156,7 +168,7 @@ fn act_on_requests(
         let mut tell = |text: String| link.send(connection, &ServerMessage::Notice { text });
         let target = match request.command {
             WoodcuttingCommand::Stop => {
-                if chopping {
+                if chopping.is_some() {
                     commands.entity(request.player).remove::<Chopping>();
                     link.send(connection, &ServerMessage::Chopping { at: None });
                 }
@@ -165,6 +177,10 @@ fn act_on_requests(
             WoodcuttingCommand::Fell { tree } => ChopTarget::Standing(tree),
             WoodcuttingCommand::Cut { fallen } => ChopTarget::Fallen(fallen),
         };
+        // Asking again to chop what they're chopping already carries on (clicks can repeat).
+        if chopping.is_some_and(|chopping| chopping.target == target) {
+            continue;
+        }
         // An axe in hand, that they can use.
         let axe = equipment.in_hand().and_then(|item| pack.items.get(item)).and_then(|item| item.woodworking);
         let Some(WoodworkingPart::Axe { power, level: axe_level }) = axe else {
@@ -185,11 +201,13 @@ fn act_on_requests(
                     tell("That tree can't be felled.".to_string());
                     continue;
                 };
+                let size = TreeSize::of_variant(tree.variant);
+                let name = sized_name(&species_name, size);
                 if (tree.at.0 - at.0).hypot(tree.at.1 - at.1) > reach {
-                    tell(format!("You're too far from the {} to chop it.", common_name(&species_name)));
+                    tell(format!("You're too far from the {name} to chop it."));
                     continue;
                 }
-                (common_name(&species_name), entry.level)
+                (name, tree_level(entry.level, size))
             }
             ChopTarget::Fallen(id) => {
                 let Some((_, _, tree, &Position(base))) = fallen.iter().find(|(_, network_id, ..)| network_id.0 == id)
@@ -204,7 +222,8 @@ fn act_on_requests(
                     tell("There's no more wood worth taking from it.".to_string());
                     continue;
                 }
-                (format!("fallen {}", common_name(&species_display(pack, &world, tree.tree))), tree.woodcutting.level)
+                let species_name = species_display(pack, &world, tree.tree);
+                (format!("fallen {}", sized_name(&species_name, tree.size)), tree.level)
             }
         };
         if !can_fell(skill, level) {
@@ -214,7 +233,8 @@ fn act_on_requests(
         let now = time.elapsed_secs();
         commands.entity(request.player).insert(Chopping {
             target,
-            next_swing: now + rules.0.swing_seconds,
+            // The first swing straight away, so it's clear chopping has started.
+            next_swing: now,
             bites: 0,
             power,
         });
@@ -233,6 +253,12 @@ fn woodcutting_of(
     let entry = pack.tree_woodcutting.iter().find(|entry| entry.species == id)?.clone();
     let name = pack.tree_species.iter().find(|species| species.id == id).map_or(id.to_string(), |s| s.name.clone());
     Some((name, entry))
+}
+
+/// How a tree reads in a sentence: "oak", or "small oak" if it's young.
+fn sized_name(species_name: &str, size: TreeSize) -> String {
+    let name = common_name(species_name);
+    if size == TreeSize::Young { format!("small {name}") } else { name }
 }
 
 /// A species' name, by a tree's id.
@@ -306,13 +332,14 @@ fn chop(
                     stop(&mut link, &mut commands, "The tree's already down.".to_string());
                     continue;
                 };
-                let bit = fastrand::f32() < bite_chance(skill, entry.level, chopping.power);
-                tell_nearby(&mut link, &everyone, at, &ServerMessage::Chopped { id, bit });
+                let size = TreeSize::of_variant(tree.variant);
+                let level = tree_level(entry.level, size);
+                let bit = fastrand::f32() < bite_chance(skill, level, chopping.power);
+                tell_nearby(&mut link, &everyone, at, &ServerMessage::Chopped { id, bit, at: tree.at });
                 if !bit {
                     continue;
                 }
                 chopping.bites += 1;
-                let size = TreeSize::of_variant(tree.variant);
                 if chopping.bites < bites_to_fell(size, entry.hardness) {
                     continue;
                 }
@@ -320,9 +347,15 @@ fn chop(
                 let (dx, dy) = (tree.at.0 - at.0, tree.at.1 - at.1);
                 let toward = if dx.hypot(dy) > 0.01 { dx.atan2(dy) } else { fastrand::f32() * TAU };
                 let fallen_id = ids.allocate();
-                let fallen_tree =
-                    FallenTree { tree: tree_id, toward, size, woodcutting: entry.clone(), logs_left: logs_in(size) };
-                let name = DisplayName(fallen_name(&species_name));
+                let fallen_tree = FallenTree {
+                    tree: tree_id,
+                    toward,
+                    size,
+                    woodcutting: entry.clone(),
+                    level,
+                    logs_left: logs_in(size),
+                };
+                let name = DisplayName(fallen_name(&species_name, size == TreeSize::Young));
                 let everyone_connection: Vec<_> = everyone.iter().map(|(player, _)| player.connection).collect();
                 link.broadcast(everyone_connection.iter().copied(), &ServerMessage::TreeFelled { tree: tree_id });
                 link.broadcast(everyone_connection, &appeared(fallen_id, &name, fallen_tree.kind(), Position(tree.at)));
@@ -336,16 +369,25 @@ fn chop(
                     },
                 );
                 info!("Woodcutting: {} felled a {} ({size:?}).", player_name.0, species_name);
-                stop(&mut link, &mut commands, format!("The {} falls!", common_name(&species_name)));
+                let experience = tree_experience(entry.felling_experience, size).round() as u64;
+                let levels = character.add_skill_experience(SKILL, experience);
+                let mut text =
+                    format!("The {} falls! (+{experience} woodworking experience)", sized_name(&species_name, size));
+                if levels > 0 {
+                    text += &format!(" Your woodworking level is now {}.", character.skill(SKILL).level);
+                }
+                stop(&mut link, &mut commands, text);
             }
             ChopTarget::Fallen(fallen_id) => {
-                let Some((_, _, mut tree, _)) = fallen.iter_mut().find(|(_, network_id, ..)| network_id.0 == fallen_id)
+                let Some((fallen_entity, _, mut tree, &Position(base))) =
+                    fallen.iter_mut().find(|(_, network_id, ..)| network_id.0 == fallen_id)
                 else {
                     stop(&mut link, &mut commands, "The fallen tree has gone.".to_string());
                     continue;
                 };
-                let bit = fastrand::f32() < bite_chance(skill, tree.woodcutting.level, chopping.power);
-                tell_nearby(&mut link, &everyone, at, &ServerMessage::Chopped { id, bit });
+                let bit = fastrand::f32() < bite_chance(skill, tree.level, chopping.power);
+                let aim = tree.nearest_point(base, at);
+                tell_nearby(&mut link, &everyone, at, &ServerMessage::Chopped { id, bit, at: aim });
                 if !bit {
                     continue;
                 }
@@ -355,7 +397,7 @@ fn chop(
                     continue;
                 }
                 tree.logs_left -= 1;
-                let experience = tree.woodcutting.experience.round() as u64;
+                let experience = tree_experience(tree.woodcutting.experience, tree.size).round() as u64;
                 let levels = character.add_skill_experience(SKILL, experience);
                 let log_name = pack.items.get(&log).map_or(log.clone(), |item| item.name.to_lowercase());
                 let mut text = format!("You cut some {log_name}. (+{experience} woodworking experience)");
@@ -364,7 +406,15 @@ fn chop(
                 }
                 link.send(connection, &ServerMessage::Notice { text });
                 if tree.logs_left == 0 {
-                    stop(&mut link, &mut commands, "There's no more wood worth taking from it.".to_string());
+                    // Cut up: it goes, and the tree starts growing back.
+                    stop(&mut link, &mut commands, "You've cut up all the wood worth taking from it.".to_string());
+                    let everyone_connection = everyone.iter().map(|(player, _)| player.connection);
+                    link.broadcast(everyone_connection, &ServerMessage::EntityLeft { id: fallen_id });
+                    commands.entity(fallen_entity).despawn();
+                    if let Some(state) = felled.0.get_mut(&tree.tree) {
+                        state.fallen = None;
+                        state.grows_back_at = now + rules.0.regrow_seconds;
+                    }
                 }
             }
         }

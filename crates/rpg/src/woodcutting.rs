@@ -45,6 +45,29 @@ impl TreeSize {
     }
 }
 
+/// How many levels lower a small (young) tree is than its species.
+const SMALL_TREE_LEVELS: u32 = 10;
+/// The share of its species' experience a small tree gives.
+pub const SMALL_TREE_EXPERIENCE: f32 = 0.5;
+
+/// The level it takes to fell a tree of `size`, of a species of
+/// `species_level`: small (young) trees are easier.
+pub fn tree_level(species_level: u32, size: TreeSize) -> u32 {
+    match size {
+        TreeSize::Young => species_level.saturating_sub(SMALL_TREE_LEVELS).max(1),
+        _ => species_level,
+    }
+}
+
+/// The experience felling (or a log from) a tree of `size` gives, for a
+/// species giving `experience`: small trees give less.
+pub fn tree_experience(experience: f32, size: TreeSize) -> f32 {
+    match size {
+        TreeSize::Young => experience * SMALL_TREE_EXPERIENCE,
+        _ => experience,
+    }
+}
+
 /// Whether a player of `skill_level` can fell a tree of `tree_level`.
 pub fn can_fell(skill_level: u32, tree_level: u32) -> bool {
     skill_level >= tree_level
@@ -95,6 +118,15 @@ mod tests {
     fn only_trees_at_or_below_your_level_can_be_felled() {
         assert!(can_fell(10, 10));
         assert!(!can_fell(9, 10));
+    }
+
+    #[test]
+    fn small_trees_are_easier_and_give_less() {
+        assert_eq!(tree_level(35, TreeSize::Young), 25);
+        assert_eq!(tree_level(5, TreeSize::Young), 1);
+        assert_eq!(tree_level(35, TreeSize::Old), 35);
+        assert_eq!(tree_experience(30.0, TreeSize::Young), 15.0);
+        assert_eq!(tree_experience(30.0, TreeSize::Mature), 30.0);
     }
 
     #[test]

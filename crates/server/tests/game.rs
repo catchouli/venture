@@ -1868,11 +1868,13 @@ fn trees_are_felled_cut_up_and_grow_back() {
         &mut server,
         &boss,
         20 * 30,
-        |m| matches!(m, ServerMessage::Notice { text } if text.ends_with("falls!")),
+        |m| matches!(m, ServerMessage::Notice { text } if text.contains("falls!")),
     );
     assert!(messages.iter().any(|m| matches!(m, ServerMessage::Chopping { at: Some(_) })));
     assert!(messages.iter().any(|m| matches!(m, ServerMessage::TreeFelled { tree } if *tree == BIRCH)));
-    assert!(notices(&messages).iter().any(|text| text == "The silver birch falls!"), "{:?}", notices(&messages));
+    // Felling gives experience too (a mature birch's 30).
+    let fell_notice = "The silver birch falls! (+30 woodworking experience)";
+    assert!(notices(&messages).iter().any(|text| text == fell_notice), "{:?}", notices(&messages));
     let seen = watcher.receive();
     assert!(seen.iter().any(|m| matches!(m, ServerMessage::Chopped { .. })), "the watcher saw the swings");
     let fallen = seen

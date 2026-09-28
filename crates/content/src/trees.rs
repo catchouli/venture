@@ -20,7 +20,7 @@ pub const TREE_WOODCUTTING_FILE: &str = "trees/woodcutting.ron";
 /// What felling a species is like, for woodworking (`trees/woodcutting.ron`).
 ///
 /// ```ron
-/// (species: "oak", level: 50, log: "oak_logs", experience: 90.0, hardness: 8)
+/// (species: "oak", level: 40, log: "oak_logs", felling_experience: 140.0, experience: 45.0, hardness: 9)
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
@@ -31,6 +31,9 @@ pub struct TreeWoodcutting {
     pub level: u32,
     /// The logs it gives (an item id).
     pub log: String,
+    /// The woodworking experience for felling one.
+    #[serde(default)]
+    pub felling_experience: f32,
     /// The woodworking experience each log gives.
     pub experience: f32,
     /// How hard its wood is: how many bites fell a mature tree (see `venture_rpg::woodcutting`).
@@ -52,9 +55,16 @@ pub fn common_name(species_name: &str) -> String {
     std::iter::once(first).chain(words.map(str::to_string)).collect::<Vec<_>>().join(" ")
 }
 
-/// What a fallen tree of a species is called ("Fallen oak").
-pub fn fallen_name(species_name: &str) -> String {
-    format!("Fallen {}", common_name(species_name))
+/// What a small (young) standing tree of a species is called ("Small oak
+/// tree", "Small silver birch").
+pub fn small_tree_name(species_name: &str) -> String {
+    format!("Small {}", common_name(&tree_name(species_name)))
+}
+
+/// What a fallen tree of a species is called ("Fallen oak", or "Fallen
+/// small oak" if it was small).
+pub fn fallen_name(species_name: &str, small: bool) -> String {
+    format!("Fallen {}{}", if small { "small " } else { "" }, common_name(species_name))
 }
 
 /// Reads `trees/woodcutting.ron`.
@@ -175,7 +185,8 @@ pub fn load_trees(folder: &Path) -> LoadedTrees {
         if !seen.insert(entry.species.clone()) {
             problem(format!("\"{}\" is listed twice", entry.species));
         }
-        if !(entry.experience >= 0.0 && entry.experience.is_finite()) || entry.hardness == 0 {
+        let fine = |experience: f32| experience >= 0.0 && experience.is_finite();
+        if !fine(entry.experience) || !fine(entry.felling_experience) || entry.hardness == 0 {
             problem(format!("{}: experience can't be negative, and hardness must be at least 1", entry.species));
         }
     }
@@ -236,6 +247,10 @@ mod tests {
         assert_eq!(tree_name("Silver birch"), "Silver birch");
         assert_eq!(common_name("Silver birch"), "silver birch");
         assert_eq!(common_name("Scots pine"), "Scots pine");
-        assert_eq!(fallen_name("Yew"), "Fallen yew");
+        assert_eq!(fallen_name("Yew", false), "Fallen yew");
+        assert_eq!(fallen_name("Silver birch", true), "Fallen small silver birch");
+        assert_eq!(small_tree_name("Silver birch"), "Small silver birch");
+        assert_eq!(small_tree_name("Oak"), "Small oak tree");
+        assert_eq!(small_tree_name("Scots pine"), "Small Scots pine");
     }
 }

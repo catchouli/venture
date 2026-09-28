@@ -1,21 +1,23 @@
 // What felling each tree species is like, for the Woodworking skill (see
 // docs/plan-trees.md). Soft woods come from smaller, quicker trees and need
-// a lower level; hard woods from bigger, slower ones.
+// a lower level; hard woods from bigger, slower ones. (Higher levels are
+// about making things, and rarer, more fantastical trees will come.)
 // - level: the woodworking level it takes to fell one
 // - log: the logs it gives (an item)
+// - felling_experience: the woodworking experience for felling one
 // - experience: the woodworking experience each log gives
 // - hardness: how many bites of an axe fell a mature one (young ones take
 //   half as many, old ones more; see venture_rpg::woodcutting)
 [
-    (species: "dead_tree", level: 1, log: "deadwood", experience: 5.0, hardness: 2),
-    (species: "hazel", level: 1, log: "hazel_rods", experience: 6.0, hardness: 2),
-    (species: "birch", level: 5, log: "birch_logs", experience: 10.0, hardness: 3),
-    (species: "willow", level: 10, log: "willow_logs", experience: 15.0, hardness: 3),
-    (species: "scots_pine", level: 15, log: "pine_logs", experience: 20.0, hardness: 4),
-    (species: "hawthorn", level: 20, log: "hawthorn_logs", experience: 26.0, hardness: 6),
-    (species: "sycamore", level: 25, log: "sycamore_logs", experience: 32.0, hardness: 5),
-    (species: "ash", level: 30, log: "ash_logs", experience: 40.0, hardness: 6),
-    (species: "beech", level: 40, log: "beech_logs", experience: 52.0, hardness: 7),
-    (species: "oak", level: 50, log: "oak_logs", experience: 66.0, hardness: 9),
-    (species: "yew", level: 60, log: "yew_logs", experience: 90.0, hardness: 10),
+    (species: "dead_tree", level: 1, log: "deadwood", felling_experience: 15.0, experience: 5.0, hardness: 2),
+    (species: "hazel", level: 1, log: "hazel_rods", felling_experience: 18.0, experience: 6.0, hardness: 2),
+    (species: "birch", level: 5, log: "birch_logs", felling_experience: 30.0, experience: 10.0, hardness: 3),
+    (species: "willow", level: 10, log: "willow_logs", felling_experience: 45.0, experience: 15.0, hardness: 3),
+    (species: "scots_pine", level: 15, log: "pine_logs", felling_experience: 60.0, experience: 20.0, hardness: 4),
+    (species: "hawthorn", level: 20, log: "hawthorn_logs", felling_experience: 75.0, experience: 25.0, hardness: 6),
+    (species: "sycamore", level: 25, log: "sycamore_logs", felling_experience: 90.0, experience: 30.0, hardness: 5),
+    (species: "ash", level: 30, log: "ash_logs", felling_experience: 105.0, experience: 35.0, hardness: 6),
+    (species: "beech", level: 35, log: "beech_logs", felling_experience: 120.0, experience: 40.0, hardness: 7),
+    (species: "oak", level: 40, log: "oak_logs", felling_experience: 140.0, experience: 45.0, hardness: 9),
+    (species: "yew", level: 45, log: "yew_logs", felling_experience: 160.0, experience: 55.0, hardness: 10),
 ]
