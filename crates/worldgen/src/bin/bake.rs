@@ -25,10 +25,14 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
+use venture_structures::buildings::{
+    BUILDINGS_FILE, BuildingStyle, STYLES_FILE, bake_building, building_cells, building_clearing, cell_bounds,
+    check_plan, levelled, parse_buildings, parse_styles,
+};
 use venture_structures::{WALLS_FILE, cells_near, check_walls, parse_walls, wall_cells};
 use venture_world::{
-    BakedWall, CHUNK_FORMAT_VERSION, CHUNK_SIZE, CellPos, Chunk, ChunkPos, MANIFEST_FILE, SettlementInfo,
-    WorldManifest, chunk_file_path, encode_chunk,
+    BakedBuilding, BakedWall, CHUNK_FORMAT_VERSION, CHUNK_SIZE, CellPos, Chunk, ChunkPos, Ground, MANIFEST_FILE,
+    SettlementInfo, WorldManifest, chunk_file_path, encode_chunk,
 };
 use venture_worldgen::map_render::bake_map;
 use venture_worldgen::structures::bake_authored_wall;
@@ -37,7 +41,8 @@ use venture_worldgen::{GENERATOR_VERSION, WorldGenConfig, WorldGenerator};
 fn main() -> std::io::Result<()> {
     let (flags, positional): (Vec<String>, Vec<String>) =
         std::env::args().skip(1).partition(|arg| arg.starts_with("--"));
-    let only_walls = flags.iter().any(|flag| flag == "--walls");
+    // (`--walls` is the old name for `--structures`.)
+    let only_structures = flags.iter().any(|flag| flag == "--structures" || flag == "--walls");
     let mut args = positional.into_iter();
     let output = PathBuf::from(args.next().unwrap_or_else(|| "world".to_string()));
     let mut config = WorldGenConfig::default();
@@ -69,19 +74,21 @@ fn main() -> std::io::Result<()> {
         buildings: Vec::new(),
     };
     let mut manifest = manifest;
+    let styles = building_styles(Path::new(CONTENT_FOLDER));
     manifest.walls = bake_walls(&world, &authoring);
-    let structures = Structures::of(&manifest.walls);
+    manifest.buildings = bake_buildings(&world, &authoring, &styles);
+    let structures = Structures::of(&manifest.walls, &manifest.buildings, &styles);
     std::fs::create_dir_all(output.join("chunks"))?;
 
-    // Only the chunks walls touch, if asked and the world there matches.
-    let only = only_walls.then(|| previous_walls(&output, &manifest)).flatten().map(|old| {
+    // Only the chunks walls and buildings touch, if asked and the world there matches.
+    let only = only_structures.then(|| previous_structures(&output, &manifest)).flatten().map(|(walls, buildings)| {
         let mut chunks = structures.chunks();
-        chunks.extend(Structures::of(&old).chunks());
+        chunks.extend(Structures::of(&walls, &buildings, &styles).chunks());
         chunks.sort_unstable_by_key(|pos| (pos.y, pos.x));
         chunks.dedup();
         chunks
     });
-    if only_walls && only.is_none() {
+    if only_structures && only.is_none() {
         println!("The world in {} doesn't match (or isn't there), so all of it is baked.", output.display());
     }
 
@@ -105,9 +112,10 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-/// The walls of the world already baked in `folder`, if it was baked the
-/// same way as `manifest` (so only chunks walls touch need baking again).
-fn previous_walls(folder: &Path, manifest: &WorldManifest) -> Option<Vec<BakedWall>> {
+/// The walls and buildings of the world already baked in `folder`, if it
+/// was baked the same way as `manifest` (so only the chunks they touch need
+/// baking again).
+fn previous_structures(folder: &Path, manifest: &WorldManifest) -> Option<(Vec<BakedWall>, Vec<BakedBuilding>)> {
     let text = std::fs::read_to_string(folder.join(MANIFEST_FILE)).ok()?;
     let old = WorldManifest::from_ron(&text).ok()?;
     let same = old.seed == manifest.seed
@@ -115,7 +123,38 @@ fn previous_walls(folder: &Path, manifest: &WorldManifest) -> Option<Vec<BakedWa
         && old.chunk_format == manifest.chunk_format
         && old.generator_version == manifest.generator_version
         && old.tree_species == manifest.tree_species;
-    same.then_some(old.walls)
+    same.then_some((old.walls, old.buildings))
+}
+
+/// The content's folder (for building styles).
+const CONTENT_FOLDER: &str = "content";
+/// Trees and rocks this near a building (beyond its walls) are cleared, in metres.
+const BUILDING_CLEARANCE: f32 = 2.0;
+
+/// The content's building styles (none if there are none).
+fn building_styles(content: &Path) -> Vec<BuildingStyle> {
+    let path = content.join(STYLES_FILE);
+    let Ok(text) = std::fs::read_to_string(&path) else { return Vec::new() };
+    parse_styles(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+}
+
+/// The authored buildings, baked (none if there's no buildings file). A
+/// building with problems is left out, and said so.
+fn bake_buildings(world: &WorldGenerator, folder: &Path, styles: &[BuildingStyle]) -> Vec<BakedBuilding> {
+    let path = folder.join(BUILDINGS_FILE);
+    let Ok(text) = std::fs::read_to_string(&path) else { return Vec::new() };
+    let plans = parse_buildings(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    let mut buildings = Vec::new();
+    for plan in &plans {
+        let problems = check_plan(plan, styles.iter().find(|style| style.id == plan.style));
+        if problems.is_empty() {
+            buildings.push(bake_building(plan, |x, y| world.ground_height(x, y)));
+        } else {
+            println!("Left out: {}", problems.join("; "));
+        }
+    }
+    println!("{} buildings baked from {}.", buildings.len(), path.display());
+    buildings
 }
 
 /// The authored world data's folder (unless another is given).
@@ -137,16 +176,18 @@ fn bake_walls(world: &WorldGenerator, folder: &Path) -> Vec<BakedWall> {
     walls
 }
 
-/// What the walls do to each chunk: the cells they block, and the cells
-/// they clear of trees and rocks.
+/// What walls and buildings do to each chunk: the cells they block, the
+/// cells they clear of trees and rocks, and (buildings) the ground they level.
 #[derive(Default)]
 struct Structures {
     blocked: HashMap<ChunkPos, Vec<u16>>,
     cleared: HashMap<ChunkPos, HashSet<u16>>,
+    /// The buildings levelling ground in each chunk.
+    levelled: HashMap<ChunkPos, Vec<BakedBuilding>>,
 }
 
 impl Structures {
-    fn of(walls: &[BakedWall]) -> Self {
+    fn of(walls: &[BakedWall], buildings: &[BakedBuilding], styles: &[BuildingStyle]) -> Self {
         let mut structures = Self::default();
         // A world cell as its chunk and its index in it.
         let place = |(x, y): (i32, i32)| {
@@ -154,14 +195,33 @@ impl Structures {
             let (local_x, local_y) = cell.local();
             (cell.chunk(), (local_y * CHUNK_SIZE as usize + local_x) as u16)
         };
+        let mut block = |cell| {
+            let (chunk, index) = place(cell);
+            structures.blocked.entry(chunk).or_default().push(index);
+        };
         for wall in walls {
-            for cell in wall_cells(wall) {
-                let (chunk, index) = place(cell);
-                structures.blocked.entry(chunk).or_default().push(index);
+            wall_cells(wall).into_iter().for_each(&mut block);
+        }
+        for building in buildings {
+            if let Some(style) = styles.iter().find(|style| style.id == building.plan.style) {
+                building_cells(building, style).into_iter().for_each(&mut block);
             }
-            for cell in cells_near(wall, wall.kind.half_width() + WALL_CLEARANCE) {
-                let (chunk, index) = place(cell);
-                structures.cleared.entry(chunk).or_default().insert(index);
+        }
+        let mut clear = |cell| {
+            let (chunk, index) = place(cell);
+            structures.cleared.entry(chunk).or_default().insert(index);
+        };
+        for wall in walls {
+            cells_near(wall, wall.kind.half_width() + WALL_CLEARANCE).into_iter().for_each(&mut clear);
+        }
+        for building in buildings {
+            building_clearing(building, BUILDING_CLEARANCE).into_iter().for_each(&mut clear);
+            let ((x0, y0), (x1, y1)) = cell_bounds(building, 0.0);
+            let (low, high) = (CellPos::new(x0, y0).chunk(), CellPos::new(x1 + 1, y1 + 1).chunk());
+            for y in low.y..=high.y {
+                for x in low.x..=high.x {
+                    structures.levelled.entry(ChunkPos::new(x, y)).or_default().push(building.clone());
+                }
             }
         }
         for cells in structures.blocked.values_mut() {
@@ -171,22 +231,43 @@ impl Structures {
         structures
     }
 
-    /// The chunks walls touch (block cells in, or clear props from).
+    /// The chunks walls and buildings touch.
     fn chunks(&self) -> Vec<ChunkPos> {
-        self.blocked.keys().chain(self.cleared.keys()).copied().collect()
+        self.blocked.keys().chain(self.cleared.keys()).chain(self.levelled.keys()).copied().collect()
     }
 
-    /// Puts the walls' effects into a freshly generated chunk.
+    /// Puts the walls' and buildings' effects into a freshly generated chunk.
     fn apply(&self, chunk: &mut Chunk) {
         if let Some(cells) = self.blocked.get(&chunk.pos) {
             chunk.structure_cells = cells.clone();
         }
+        let (origin_x, origin_y) = chunk.pos.origin_cell();
         if let Some(cleared) = self.cleared.get(&chunk.pos) {
-            let (origin_x, origin_y) = chunk.pos.origin_cell();
             chunk.props.retain(|prop| {
                 let (x, y) = ((prop.x - origin_x as f32) as usize, (prop.y - origin_y as f32) as usize);
                 !cleared.contains(&((y.min(CHUNK_SIZE as usize - 1) * CHUNK_SIZE as usize + x) as u16))
             });
+        }
+        // Level the ground under buildings (and blend it round them), and
+        // make it trodden earth right round them.
+        for building in self.levelled.get(&chunk.pos).into_iter().flatten() {
+            for y in 0..=CHUNK_SIZE as usize {
+                for x in 0..=CHUNK_SIZE as usize {
+                    let (wx, wy) = ((origin_x + x as i32) as f32, (origin_y + y as i32) as f32);
+                    let natural = chunk.corner_height(x, y);
+                    if let Some(height) = levelled(building, wx, wy, natural) {
+                        chunk.set_corner_height(x, y, height);
+                    }
+                }
+            }
+            for y in 0..CHUNK_SIZE as usize {
+                for x in 0..CHUNK_SIZE as usize {
+                    let (wx, wy) = ((origin_x + x as i32) as f32 + 0.5, (origin_y + y as i32) as f32 + 0.5);
+                    if levelled(building, wx, wy, building.floor + 1.0).is_some_and(|h| h < building.floor + 0.6) {
+                        chunk.cell_mut(x, y).ground = Ground::Path;
+                    }
+                }
+            }
         }
     }
 }
@@ -231,7 +312,7 @@ mod tests {
         let samples =
             (0..=36).map(|i| WallSample { x: 2.0 + i as f32 * 0.5, y: 10.5, ground: 0.0, open: false }).collect();
         let wall = BakedWall { id: "w".into(), kind: WallKind::DryStone, height: 1.3, seed: 0, samples };
-        let structures = Structures::of(&[wall]);
+        let structures = Structures::of(&[wall], &[], &[]);
         let boulder =
             |x: f32, y: f32| Prop { kind: PropKind::Boulder, x, y, ground_height: 0.0, scale: 1.0, rotation: 0.0 };
         let mut chunk = Chunk::new(ChunkPos::new(0, 0));

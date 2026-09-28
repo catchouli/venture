@@ -1,0 +1,45 @@
+// Buildings drawn by hand (see docs/plan-buildings.md), baked into the world
+// by `cargo run --release -p venture_worldgen --bin bake`. Outlines are the
+// outside of the walls (x, z in metres), every corner a right angle; doors
+// are on a wall (Outer(n): from corner n to the next) and a share along it.
+[
+    (
+        id: "oakwengate_cottage_nw",
+        style: "stone_cottage",
+        floors: 1,
+        seed: 11,
+        roof: Gable,
+        outline: [(2308.0, 2153.0), (2316.5, 2153.0), (2316.5, 2158.5), (2308.0, 2158.5)],
+        inner_walls: [((2312.5, 2153.0), (2312.5, 2158.5))],
+        doors: [(wall: Outer(2), along: 0.3), (wall: Inner(0), along: 0.5)],
+    ),
+    (
+        id: "oakwengate_cottage_ne",
+        style: "wooden_cottage",
+        floors: 1,
+        seed: 12,
+        roof: Gable,
+        outline: [(2341.0, 2154.0), (2348.5, 2154.0), (2348.5, 2159.5), (2341.0, 2159.5)],
+        doors: [(wall: Outer(2), along: 0.6)],
+    ),
+    (
+        id: "oakwengate_house_sw",
+        style: "stone_cottage",
+        floors: 1,
+        seed: 13,
+        roof: Gable,
+        outline: [(2309.0, 2177.0), (2319.0, 2177.0), (2319.0, 2182.0), (2314.0, 2182.0), (2314.0, 2188.0), (2309.0, 2188.0)],
+        inner_walls: [((2309.0, 2182.0), (2314.0, 2182.0))],
+        doors: [(wall: Outer(1), along: 0.5), (wall: Inner(0), along: 0.5)],
+    ),
+    (
+        id: "oakwengate_house_se",
+        style: "wooden_cottage",
+        floors: 2,
+        seed: 14,
+        roof: Hip,
+        chimney: Some(true),
+        outline: [(2345.0, 2176.0), (2351.5, 2176.0), (2351.5, 2182.5), (2345.0, 2182.5)],
+        doors: [(wall: Outer(3), along: 0.5)],
+    ),
+]

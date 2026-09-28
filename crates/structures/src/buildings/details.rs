@@ -5,7 +5,7 @@
 use glam::{Vec2, Vec3};
 
 use super::faces::{Hole, LINTEL, face, facing};
-use super::plan::{Opening, OpeningKind, wings};
+use super::plan::{Opening, OpeningKind, snap_inner, wings};
 use super::{Builder, Detail, Surface, WallConstruction, quad_facing};
 
 /// An inner wall: from one point to another (along its middle), in metres.
@@ -270,8 +270,8 @@ pub fn inner_walls(builder: &mut Builder, walls: &[InnerWall], doors: &[Vec<Open
     for (i, &(from, to)) in walls.iter().enumerate() {
         let frame = builder.footprint.frame;
         let (from, to) = (
-            snap_to_inside(builder, frame.local(Vec2::from(from))),
-            snap_to_inside(builder, frame.local(Vec2::from(to))),
+            snap_inner(&builder.footprint, builder.style, frame.local(Vec2::from(from))),
+            snap_inner(&builder.footprint, builder.style, frame.local(Vec2::from(to))),
         );
         let length = from.distance(to);
         if length < 0.3 {
@@ -322,27 +322,5 @@ pub fn inner_walls(builder: &mut Builder, walls: &[InnerWall], doors: &[Vec<Open
                 quad_facing(mesh, corners, [[0.0; 2]; 4], plaster, toward);
             }
         }
-    }
-}
-
-/// An inner wall's end near an outer wall, moved onto that wall's inside
-/// (and a little into it, so no gap shows).
-fn snap_to_inside(builder: &Builder, point: Vec2) -> Vec2 {
-    let inside = &builder.footprint.inside;
-    let reach = builder.style.wall_thickness + 0.6;
-    let mut best: Option<(f32, Vec2, Vec2)> = None;
-    for i in 0..inside.len() {
-        let (a, b) = (inside[i], inside[(i + 1) % inside.len()]);
-        let run = b - a;
-        let t = ((point - a).dot(run) / run.length_squared().max(1e-6)).clamp(0.0, 1.0);
-        let nearest = a + run * t;
-        let distance = nearest.distance(point);
-        if best.is_none_or(|(d, _, _)| distance < d) {
-            best = Some((distance, nearest, -run.normalize_or(Vec2::X).perp()));
-        }
-    }
-    match best {
-        Some((distance, nearest, outward)) if distance < reach => nearest + outward * 0.05,
-        _ => point,
     }
 }
