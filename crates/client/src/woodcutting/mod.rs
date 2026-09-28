@@ -8,8 +8,12 @@
 //! - Every swing of an axe nearby ([`ServerMessage::Chopped`]) swings the
 //!   chopper's arms, turned to face what they chop.
 //!
+//! - With an axe in hand, trees the player can fell glint ([`sparkles`]).
+//!
 //! Trees themselves (standing, felled, fallen and tipping over) are drawn by
 //! [`crate::world::trees`].
+
+pub mod sparkles;
 
 use bevy::prelude::*;
 use venture_content::WoodworkingPart;
@@ -41,12 +45,15 @@ pub struct WoodcuttingPlugin;
 
 impl Plugin for WoodcuttingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<ChopClicked>().init_resource::<PendingChop>().add_systems(
-            Update,
-            (chop_on_startup_if_requested, start_chopping, chop_once_there, swing_axes)
-                .chain()
-                .run_if(in_state(ClientState::Playing)),
-        );
+        app.add_plugins(sparkles::SparklesPlugin)
+            .add_message::<ChopClicked>()
+            .init_resource::<PendingChop>()
+            .add_systems(
+                Update,
+                (chop_on_startup_if_requested, start_chopping, chop_once_there, swing_axes)
+                    .chain()
+                    .run_if(in_state(ClientState::Playing)),
+            );
     }
 }
 

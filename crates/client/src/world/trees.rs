@@ -41,7 +41,7 @@ use venture_rpg::woodcutting::{FALLEN_LENGTHS, TreeSize, tree_level};
 use venture_trees::impostor::{Impostor, impostor};
 use venture_trees::photos::{LeafPhotos, Photos};
 use venture_trees::{Detail, MeshPart, TreeParams, TreeTextures, grow, textures};
-use venture_world::{CHUNK_SIZE, Chunk, Prop, PropKind};
+use venture_world::{BUSH_SCALE, CHUNK_SIZE, Chunk, Prop, PropKind};
 
 use crate::common::coords::to_bevy;
 use crate::common::mipmaps::{add_mipmaps, add_mipmaps_keeping_coverage};
@@ -180,6 +180,15 @@ struct GrownVariant {
 /// A standing tree (or bush) that can be selected and felled: its id.
 #[derive(Component)]
 pub struct StandingTree(pub TreeId);
+
+/// A standing tree's size: its trunk's radius at its foot, and its height, in metres.
+#[derive(Component)]
+pub struct TreeDimensions {
+    /// The trunk's radius at its foot.
+    pub trunk_radius: f32,
+    /// How tall it is.
+    pub height: f32,
+}
 
 /// What a planted tree looks like (for its stump, once felled).
 #[derive(Component)]
@@ -544,6 +553,7 @@ fn plant_chunk(
         // Trees (and bushes: small young trees) of species that can be felled can be selected.
         let facts = species_ids.get(usize::from(species)).and_then(|id| facts.get(id));
         if let Some((species_name, species_level)) = facts {
+            let height = template.height * prop.scale;
             // Small (young) trees are easier to fell (and give less).
             let size = TreeSize::of_variant(variant);
             let name = if size == TreeSize::Young { small_tree_name(species_name) } else { tree_name(species_name) };
@@ -551,13 +561,19 @@ fn plant_chunk(
             let id = TreeId { chunk_x: chunk.pos.x, chunk_y: chunk.pos.y, index: index as u16 };
             commands.entity(root).insert((
                 StandingTree(id),
+                TreeDimensions { trunk_radius: STUMP_RADII[usize::from(variant.min(2))] * prop.scale, height },
                 Targetable { id: EntityId::NONE, kind: TargetKind::Tree },
                 TargetLabel(name),
                 Level(level),
+                // Up the trunk (or, for a bush, its body: no higher than it is).
                 PickShape {
                     from: Vec3::ZERO,
-                    to: Vec3::Y * TRUNK_PICK_HEIGHT / prop.scale,
-                    radius: TRUNK_PICK_RADIUS,
+                    to: Vec3::Y * TRUNK_PICK_HEIGHT.min(height * 0.8) / prop.scale,
+                    radius: if prop.scale < BUSH_SCALE {
+                        (height * 0.3).max(TRUNK_PICK_RADIUS)
+                    } else {
+                        TRUNK_PICK_RADIUS
+                    },
                     within: PICK_TREES_WITHIN,
                 },
             ));

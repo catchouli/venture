@@ -120,7 +120,8 @@ src/
                      (rings on the water where a line lands, at nibbles and bites), others.rs
                      (other players' lines and floats)
   woodcutting/       felling trees and cutting them up: clicking a selected tree with an axe in
-                     hand runs there and asks to chop; everyone's swings (trees themselves,
+                     hand runs there and asks to chop; everyone's swings; glints on trees the
+                     player can fell (sparkles.rs) (trees themselves,
                      standing, felled, fallen and tipping over, are drawn by world/trees.rs)
   interaction/       the player acting on the world
     actions.rs         the things a player can do, however they ask (click, chat command, later keys)
