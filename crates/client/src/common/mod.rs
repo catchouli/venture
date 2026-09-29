@@ -5,3 +5,4 @@ pub mod mesh_data;
 pub mod mipmaps;
 pub mod palette;
 pub mod procedural_image;
+pub mod visibility;

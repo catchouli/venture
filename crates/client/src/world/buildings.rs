@@ -24,6 +24,7 @@ use venture_world::BakedBuilding;
 
 use crate::characters::player::LocalPlayer;
 use crate::common::coords::from_bevy;
+use crate::common::visibility::web_safe;
 use crate::content::ContentStore;
 use crate::world::source::WorldInfo;
 use crate::world::surfaces::{SurfaceTextures, textured};
@@ -185,10 +186,12 @@ fn finish_building(mut commands: Commands, mut buildings: ResMut<Buildings>, mut
             commands.entity(root).despawn();
         }
     }
-    let range = |from: f32, to: f32| VisibilityRange {
-        start_margin: from..if from > 0.0 { from + CROSSFADE } else { 0.0 },
-        end_margin: to..to + CROSSFADE,
-        use_aabb: false,
+    let range = |from: f32, to: f32| {
+        web_safe(VisibilityRange {
+            start_margin: from..if from > 0.0 { from + CROSSFADE } else { 0.0 },
+            end_margin: to..to + CROSSFADE,
+            use_aabb: false,
+        })
     };
     for (id, source, built) in built {
         let outline = source.0.plan.outline.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
