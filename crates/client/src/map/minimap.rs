@@ -1,10 +1,13 @@
 //! The minimap, in the top-right corner: a square view of the map around
-//! the player, who's always in the middle. The mouse wheel over it zooms,
-//! and the button in its bottom-right corner opens the full map.
+//! the player, who's always in the middle. Clicking it runs there (as far as a
+//! click on the world can), the mouse wheel over it zooms, and the button in
+//! its bottom-right corner opens the full map.
 
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
 
-use crate::map::view::{MapView, map_view};
+use crate::interaction::orders::Orders;
+use crate::map::view::{MapView, map_view, point_under_mouse};
 use crate::map::window::OpenMap;
 use crate::network::ClientState;
 use crate::ui::theme::{Piece, Themed};
@@ -23,13 +26,17 @@ pub struct MinimapPlugin;
 
 impl Plugin for MinimapPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_minimap).add_systems(Update, (show_while_playing, open_map));
+        app.add_systems(Startup, spawn_minimap).add_systems(Update, (show_while_playing, open_map, run_to_click));
     }
 }
 
 /// The minimap's frame.
 #[derive(Component)]
 struct Minimap;
+
+/// The map inside it.
+#[derive(Component)]
+struct MinimapView;
 
 /// The button that opens the full map.
 #[derive(Component)]
@@ -65,7 +72,7 @@ fn spawn_minimap(mut commands: Commands) {
             Visibility::Hidden,
         ))
         .with_children(|frame| {
-            frame.spawn(map_view(view, Node { width: px(SIZE), height: px(SIZE), ..default() }));
+            frame.spawn((MinimapView, map_view(view, Node { width: px(SIZE), height: px(SIZE), ..default() })));
             frame
                 .spawn((
                     MapButton,
@@ -101,5 +108,27 @@ fn show_while_playing(state: Res<State<ClientState>>, mut minimap: Single<&mut V
 fn open_map(buttons: Query<&Interaction, (With<MapButton>, Changed<Interaction>)>, mut open: ResMut<OpenMap>) {
     if buttons.iter().any(|interaction| *interaction == Interaction::Pressed) {
         open.0 = !open.0;
+    }
+}
+
+/// A click on the map runs there (unless it's on the map button).
+fn run_to_click(
+    mut commands: Commands,
+    mouse: Res<ButtonInput<MouseButton>>,
+    state: Res<State<ClientState>>,
+    views: Query<(&MapView, &ComputedNode, &RelativeCursorPosition), With<MinimapView>>,
+    buttons: Query<&Interaction, With<MapButton>>,
+    mut orders: Orders,
+) {
+    if !mouse.just_pressed(MouseButton::Left) || *state.get() != ClientState::Playing {
+        return;
+    }
+    if buttons.iter().any(|interaction| *interaction != Interaction::None) {
+        return;
+    }
+    for (view, node, relative) in &views {
+        if let Some(at) = point_under_mouse(view, node, relative) {
+            orders.move_to(&mut commands, (at.x, at.y));
+        }
     }
 }
