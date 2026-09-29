@@ -228,6 +228,7 @@ pub fn build_wall(wall: &BakedWall) -> Vec<Stretch> {
         WallKind::DryStone => dry_stone(&path, wall.height, &mut builder, &mut random),
         WallKind::Fence => fence(&path, wall.height, &mut builder, &mut random),
         WallKind::Hedge => hedge(&path, wall.height, &mut builder, &mut random),
+        WallKind::Curtain => curtain(&path, wall.height, &mut builder, &mut random),
     }
     builder
         .stretches
@@ -644,6 +645,40 @@ fn hedge(path: &Path, height: f32, builder: &mut Builder, random: &mut Random) {
     }
 }
 
+/// How far a curtain wall's faces are from its middle at the top, and at its foot.
+const CURTAIN_HALF: (f32, f32) = (1.0, 1.25);
+/// A curtain wall's merlons: how long, how tall and how thick, and how far apart they start.
+const CURTAIN_MERLON: (f32, f32, f32, f32) = (1.0, 0.9, 0.5, 1.8);
+
+/// A castle's curtain wall: a thick band of (textured) stone leaning in a
+/// little, with a walk along its top, and merlons along both its edges.
+fn curtain(path: &Path, height: f32, builder: &mut Builder, random: &mut Random) {
+    for core in [true, false] {
+        band(path, builder, |_| -FOOTING, |_| height, CURTAIN_HALF.0, CURTAIN_HALF.1, STONE, core);
+    }
+    for run in path.runs() {
+        let (length, spacing) = (run.end - run.start, CURTAIN_MERLON.3);
+        let count = (length / spacing).floor() as usize;
+        for k in 0..count {
+            let middle = run.start + (k as f32 + 0.5) * length / count as f32;
+            let (at, ground) = path.at(middle);
+            let along = path.along(middle);
+            let right = Vec2::new(along.y, -along.x);
+            for side in [-1.0f32, 1.0] {
+                let offset = right * side * (CURTAIN_HALF.0 - CURTAIN_MERLON.2 / 2.0);
+                let centre = lift(at + offset, ground + height + CURTAIN_MERLON.1 / 2.0);
+                let size = Vec3::new(CURTAIN_MERLON.2, CURTAIN_MERLON.1, CURTAIN_MERLON.0);
+                let lumps = std::array::from_fn(|_| random.signed() * 0.03);
+                let shade = random.range(0.85, 1.02);
+                let (stretch, local) = builder.place(middle, centre);
+                let colour = linear(STONE.map(|c| c * shade));
+                stretch.full.block(local, facing(along), size, lumps, [middle, 0.0], colour);
+                stretch.far.block(local, facing(along), size, lumps, [middle, 0.0], colour);
+            }
+        }
+    }
+}
+
 /// Adds a piece of a fence (the same close up and far away).
 fn wood(builder: &mut Builder, random: &mut Random, distance: f32, centre: Vec3, rotation: Quat, size: Vec3) {
     let lumps = std::array::from_fn(|_| random.signed() * 0.05);
@@ -822,5 +857,27 @@ mod tests {
                 tip.iter().map(|p| p.z).fold(f32::MIN, f32::max) - tip.iter().map(|p| p.z).fold(f32::MAX, f32::min);
             assert!(wide < 1e-3, "pinched shut at its tip ({wide} m wide)");
         }
+    }
+
+    #[test]
+    fn curtain_walls_are_tall_with_battlements_and_leave_gaps() {
+        let mut wall = straight(WallKind::Curtain, 16, Some(12..20));
+        wall.height = 6.0;
+        let built = build_wall(&wall);
+        let tops: Vec<f32> =
+            built.iter().flat_map(|stretch| stretch.full.positions.iter().map(|p| p[1] + stretch.origin[1])).collect();
+        let highest = tops.iter().copied().fold(f32::MIN, f32::max);
+        assert!(highest > 6.5 && highest < 8.5, "merlons stand above its walk ({highest})");
+        for stretch in &built {
+            let origin = Vec3::from(stretch.origin);
+            assert!(
+                !stretch.full.positions.iter().any(|p| {
+                    let x = p[0] + origin.x;
+                    x > 6.8 && x < 9.2
+                }),
+                "the gap stays open"
+            );
+        }
+        assert!(built.iter().all(|stretch| !stretch.far.is_empty()));
     }
 }

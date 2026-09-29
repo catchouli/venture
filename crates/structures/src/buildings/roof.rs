@@ -73,6 +73,10 @@ enum End {
 pub fn roofs(builder: &mut Builder, shape: RoofShape, chimney: bool) {
     let (low, high) = builder.style.roof.pitch;
     let pitch = builder.random.range(low, high.max(low)).to_radians();
+    if shape == RoofShape::Flat {
+        flat_roof(builder);
+        return;
+    }
     // Free-angled buildings: a hip roof by the straight skeleton if they're
     // convex, and otherwise flat behind a parapet.
     if !builder.footprint.square {
@@ -88,7 +92,7 @@ pub fn roofs(builder: &mut Builder, shape: RoofShape, chimney: bool) {
         let ends = [end(builder, wing, false), end(builder, wing, true)];
         match shape {
             RoofShape::Gable => gable_roof(builder, wing, ends, pitch),
-            RoofShape::Hip => hip_roof(builder, wing, ends, pitch),
+            RoofShape::Hip | RoofShape::Flat => hip_roof(builder, wing, ends, pitch),
         }
         if k == 0 && chimney {
             add_chimney(builder, wing, ends, pitch, shape);
@@ -430,7 +434,7 @@ fn add_chimney(builder: &mut Builder, wing: &Wing, ends: [End; 2], pitch: f32, s
             let k = choices[(builder.random.next_u64() % choices.len() as u64) as usize];
             if k == 1 { wing.s.1 - depth / 2.0 } else { wing.s.0 + depth / 2.0 }
         }
-        (RoofShape::Hip, _) => {
+        (RoofShape::Hip | RoofShape::Flat, _) => {
             let reach = (wing.s.1 - wing.s.0) / 2.0 - half;
             (wing.s.0 + wing.s.1) / 2.0 + builder.random.signed() * reach.max(0.0) * 0.6
         }
@@ -614,6 +618,36 @@ fn flat_roof(builder: &mut Builder) {
             );
             let coping = [frame.point(a, top), frame.point(b, top), frame.point(ib, top), frame.point(ia, top)];
             quad_facing(mesh, coping, [[0.0; 2]; 4], walls.map(|c| c * 1.05), Vec3::Y);
+        }
+        if builder.style.battlements {
+            battlements(builder, (a, b), ia, top);
+        }
+    }
+}
+
+/// A battlement's merlon: how wide, how tall above the parapet, and the gap (crenel) between.
+const MERLON: (f32, f32, f32) = (0.9, 0.75, 0.7);
+
+/// Merlons along a parapet's top, from `a` to `b` (its outside), as deep
+/// as the wall (to `inside`, the inside of its start).
+pub fn battlements(builder: &mut Builder, (a, b): (Vec2, Vec2), inside: Vec2, top: f32) {
+    let frame = builder.footprint.frame;
+    let length = a.distance(b);
+    let way = (b - a).normalize_or(Vec2::X);
+    let depth = (inside - a).dot(way.perp()).abs().max(0.3);
+    let walls = builder.colours.walls;
+    let count = ((length + MERLON.2) / (MERLON.0 + MERLON.2)).floor().max(1.0) as usize;
+    let spare = length - count as f32 * MERLON.0 - (count - 1) as f32 * MERLON.2;
+    for k in 0..count {
+        let middle = spare / 2.0 + k as f32 * (MERLON.0 + MERLON.2) + MERLON.0 / 2.0;
+        let centre = a + way * middle + way.perp() * (depth / 2.0);
+        let size = Vec3::new(depth, MERLON.1, MERLON.0);
+        let lumps = std::array::from_fn(|_| builder.random.signed() * 0.02);
+        let shade = builder.random.range(0.9, 1.05);
+        for detail in [Detail::Full, Detail::Far] {
+            let mesh = builder.mesh(Surface::Stone, detail, detail == Detail::Full);
+            let at = frame.point(centre, top + MERLON.1 / 2.0);
+            mesh.block(at, facing(frame.direction(way)), size, lumps, [middle, top], walls.map(|c| c * shade));
         }
     }
 }

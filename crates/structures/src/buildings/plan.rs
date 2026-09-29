@@ -123,6 +123,27 @@ pub fn signed_area(points: &[Vec2]) -> f32 {
     area / 2.0
 }
 
+/// A plan with its outline running anticlockwise (as the generator wants),
+/// its doors moved with their walls if it had to be turned round.
+pub fn anticlockwise(plan: &BuildingPlan) -> BuildingPlan {
+    let points: Vec<Vec2> = plan.outline.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
+    if points.len() < 3 || signed_area(&points) >= 0.0 {
+        return plan.clone();
+    }
+    let count = plan.outline.len();
+    let mut turned = plan.clone();
+    turned.outline.reverse();
+    // Wall i ran from corner i to i + 1; reversed, corner i is at count - 1 - i,
+    // so that wall now runs (backwards) from count - 2 - i.
+    for door in &mut turned.doors {
+        if let WallRef::Outer(wall) = &mut door.wall {
+            *wall = ((2 * count - 2 - *wall as usize) % count) as u32;
+            door.along = 1.0 - door.along;
+        }
+    }
+    turned
+}
+
 /// Whether a point is inside a polygon (even-odd).
 pub fn contains(polygon: &[Vec2], point: Vec2) -> bool {
     let mut inside = false;
@@ -497,6 +518,18 @@ mod tests {
     }
 
     const L: [(f32, f32); 6] = [(0.0, 0.0), (10.0, 0.0), (10.0, 4.0), (4.0, 4.0), (4.0, 9.0), (0.0, 9.0)];
+
+    #[test]
+    fn clockwise_plans_are_turned_round_with_their_doors() {
+        let mut clockwise = plan(&[(0.0, 0.0), (0.0, 5.0), (8.0, 5.0), (8.0, 0.0)]);
+        // A door 30% along the long wall from (0, 5) to (8, 5): at (2.4, 5).
+        clockwise.doors = vec![venture_world::DoorPlan { wall: WallRef::Outer(1), along: 0.3 }];
+        let turned = anticlockwise(&clockwise);
+        let WallRef::Outer(wall) = turned.doors[0].wall else { panic!() };
+        let (a, b) = (turned.outline[wall as usize], turned.outline[(wall as usize + 1) % 4]);
+        let at = Vec2::from(a).lerp(Vec2::from(b), turned.doors[0].along);
+        assert!(at.distance(Vec2::new(2.4, 5.0)) < 1e-4, "{at}");
+    }
 
     #[test]
     fn plans_are_checked() {

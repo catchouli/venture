@@ -15,17 +15,20 @@ pub enum RoofShape {
     Gable,
     /// Sloping on every side (the ends too).
     Hip,
+    /// Flat, behind a parapet (battlemented, if its style says).
+    Flat,
 }
 
 impl RoofShape {
     /// Every shape, in the order they're offered.
-    pub const ALL: [RoofShape; 2] = [RoofShape::Gable, RoofShape::Hip];
+    pub const ALL: [RoofShape; 3] = [RoofShape::Gable, RoofShape::Hip, RoofShape::Flat];
 
     /// Its name, for people.
     pub fn name(self) -> &'static str {
         match self {
             RoofShape::Gable => "Gable",
             RoofShape::Hip => "Hip",
+            RoofShape::Flat => "Flat",
         }
     }
 }

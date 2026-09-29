@@ -110,7 +110,7 @@ pub fn cell_bounds(building: &BakedBuilding, reach: f32) -> ((i32, i32), (i32, i
 /// except its doorways. Inside is open.
 pub fn building_cells(building: &BakedBuilding, style: &BuildingStyle) -> Vec<(i32, i32)> {
     let style = &style.scaled();
-    let plan = &building.plan;
+    let plan = &super::plan::anticlockwise(&building.plan);
     let Some(footprint) = Footprint::of(plan, style.wall_thickness) else { return Vec::new() };
     let frame = footprint.frame;
     // Every wall, along its middle, with its half-thickness and its doorways (along it).

@@ -40,6 +40,9 @@ pub struct BuildingStyle {
     /// Its chimney.
     #[serde(default)]
     pub chimney: ChimneyStyle,
+    /// Whether its flat roofs' parapets are battlemented (crenellated).
+    #[serde(default)]
+    pub battlements: bool,
     /// Its colours (sRGB, multiplying the textures): each is a range the seed picks from.
     #[serde(default)]
     pub colours: StyleColours,
@@ -111,11 +114,14 @@ pub struct WindowStyle {
     pub chance: f32,
     /// Whether they have shutters.
     pub shutters: bool,
+    /// Whether they have glass in a wooden frame with bars (or are just
+    /// openings, dark inside: arrow slits).
+    pub glazed: bool,
 }
 
 impl Default for WindowStyle {
     fn default() -> Self {
-        Self { size: (0.85, 1.05), sill: 1.0, gap: 1.5, corner: 0.9, chance: 0.8, shutters: false }
+        Self { size: (0.85, 1.05), sill: 1.0, gap: 1.5, corner: 0.9, chance: 0.8, shutters: false, glazed: true }
     }
 }
 
