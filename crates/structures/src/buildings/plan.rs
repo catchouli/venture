@@ -8,9 +8,11 @@ use venture_world::{BuildingPlan, WallRef};
 use super::style::BuildingStyle;
 use crate::random::Random;
 
-/// Corners must be right angles to within this (the cosine of the angle's
-/// difference from one).
+/// Corners are right angles if they're within this (the cosine of the
+/// angle's difference from one).
 const SQUARE: f32 = 0.05;
+/// The sharpest a corner can be (its inside angle), in radians.
+const SHARPEST: f32 = 0.6;
 /// The shortest an outer wall can be, in metres.
 pub const SHORTEST_WALL: f32 = 1.5;
 /// The widest a building can be, in metres.
@@ -19,7 +21,8 @@ pub const WIDEST: f32 = 40.0;
 pub const MOST_FLOORS: u32 = 4;
 
 /// A building's own frame: its first corner, and the directions along its
-/// first wall (x) and across it (y, into the building for an anticlockwise outline).
+/// first wall (x) and across it (y, into the building for an anticlockwise
+/// outline). A square building's every wall lies along one of its axes.
 #[derive(Clone, Copy, Debug)]
 pub struct Frame {
     /// Where its origin is, in the world (metres).
@@ -63,6 +66,9 @@ pub struct Footprint {
     pub outline: Vec<Vec2>,
     /// The inside of its outer walls, corner for corner.
     pub inside: Vec<Vec2>,
+    /// Whether every corner is a right angle (so its roof can be gables
+    /// and hips over rectangular wings).
+    pub square: bool,
 }
 
 impl Footprint {
@@ -80,8 +86,9 @@ impl Footprint {
         let x = (points[1] - points[0]).normalize_or(Vec2::X);
         let frame = Frame { origin: points[0], x, y: x.perp() };
         let mut outline: Vec<Vec2> = points.iter().map(|&point| frame.local(point)).collect();
-        // Square it up: each edge along whichever axis it's nearer.
-        for i in 0..outline.len() {
+        let square = is_square(&points);
+        // Square it up (if it's meant to be): each edge along whichever axis it's nearer.
+        for i in 0..if square { outline.len() } else { 0 } {
             let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
             let along_x = (b - a).x.abs() >= (b - a).y.abs();
             let next = (i + 1) % outline.len();
@@ -92,7 +99,7 @@ impl Footprint {
             }
         }
         let inside = inset(&outline, thickness);
-        Some(Self { frame, outline, inside })
+        Some(Self { frame, outline, inside, square })
     }
 
     /// Its outer wall `i`: from corner `i` to the next.
@@ -131,8 +138,9 @@ pub fn contains(polygon: &[Vec2], point: Vec2) -> bool {
     inside
 }
 
-/// An anticlockwise polygon with square corners, moved in by `by` (each
-/// corner along both its edges' inward normals).
+/// An anticlockwise polygon moved in by `by` (every edge moved in by it,
+/// each corner mitred to where its edges meet; very sharp corners are kept
+/// from reaching too far).
 pub fn inset(outline: &[Vec2], by: f32) -> Vec<Vec2> {
     let count = outline.len();
     (0..count)
@@ -140,9 +148,56 @@ pub fn inset(outline: &[Vec2], by: f32) -> Vec<Vec2> {
             let before = outline[(i + count - 1) % count];
             let (here, after) = (outline[i], outline[(i + 1) % count]);
             let inward = |a: Vec2, b: Vec2| (b - a).normalize_or(Vec2::X).perp();
-            here + (inward(before, here) + inward(here, after)) * by
+            let (a, b) = (inward(before, here), inward(here, after));
+            here + (a + b) / (1.0 + a.dot(b)).max(0.25) * by
         })
         .collect()
+}
+
+/// Whether every corner of a polygon is (near enough) a right angle.
+pub fn is_square(points: &[Vec2]) -> bool {
+    let count = points.len();
+    count >= 4
+        && count.is_multiple_of(2)
+        && (0..count).all(|i| {
+            let (a, b, c) = (points[i], points[(i + 1) % count], points[(i + 2) % count]);
+            (b - a).normalize_or(Vec2::X).dot((c - b).normalize_or(Vec2::X)).abs() <= SQUARE
+        })
+}
+
+/// Splits a simple polygon (anticlockwise) into triangles, by clipping
+/// off its ears, as corner indices.
+pub fn triangulate(polygon: &[Vec2]) -> Vec<[usize; 3]> {
+    let mut left: Vec<usize> = (0..polygon.len()).collect();
+    let mut triangles = Vec::new();
+    let mut guard = 0;
+    while left.len() > 3 && guard < 10_000 {
+        guard += 1;
+        let n = left.len();
+        let ear = (0..n).find(|&k| {
+            let (a, b, c) = (polygon[left[(k + n - 1) % n]], polygon[left[k]], polygon[left[(k + 1) % n]]);
+            if (b - a).perp_dot(c - b) <= 1e-6 {
+                return false;
+            }
+            // No other corner inside it.
+            left.iter().all(|&other| {
+                let p = polygon[other];
+                if p == a || p == b || p == c {
+                    return true;
+                }
+                let inside =
+                    (b - a).perp_dot(p - a) > 0.0 && (c - b).perp_dot(p - b) > 0.0 && (a - c).perp_dot(p - c) > 0.0;
+                !inside
+            })
+        });
+        let k = ear.unwrap_or(0);
+        triangles.push([left[(k + n - 1) % n], left[k], left[(k + 1) % n]]);
+        left.remove(k);
+    }
+    if left.len() == 3 {
+        triangles.push([left[0], left[1], left[2]]);
+    }
+    triangles
 }
 
 /// An inner wall's end (in the frame) near an outer wall, moved onto that
@@ -176,8 +231,8 @@ pub fn check_plan(plan: &BuildingPlan, style: Option<&BuildingStyle>) -> Vec<Str
     };
     let style = &style;
     let points: Vec<Vec2> = plan.outline.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
-    if points.len() < 4 || points.len() % 2 == 1 {
-        problems.push(format!("{name} needs at least four corners, and an even number (they're all right angles)"));
+    if points.len() < 3 {
+        problems.push(format!("{name} needs at least three corners"));
         return problems;
     }
     let count = points.len();
@@ -186,9 +241,10 @@ pub fn check_plan(plan: &BuildingPlan, style: Option<&BuildingStyle>) -> Vec<Str
         if a.distance(b) < SHORTEST_WALL {
             problems.push(format!("{name}: its wall {} is shorter than {SHORTEST_WALL} m", i + 1));
         }
+        // (A corner's inside angle can't be sharper than this, or its walls would crowd each other.)
         let turn = (b - a).normalize_or(Vec2::X).dot((c - b).normalize_or(Vec2::X));
-        if turn.abs() > SQUARE {
-            problems.push(format!("{name}: its corner {} isn't a right angle", (i + 1) % count + 1));
+        if turn < -SHARPEST.cos() {
+            problems.push(format!("{name}: its corner {} is too sharp", (i + 1) % count + 1));
         }
     }
     for i in 0..count {
@@ -446,7 +502,9 @@ mod tests {
     fn plans_are_checked() {
         assert!(check_plan(&plan(&L), Some(&style())).is_empty(), "{:?}", check_plan(&plan(&L), Some(&style())));
         let skew = plan(&[(0.0, 0.0), (8.0, 0.0), (9.0, 5.0), (0.0, 5.0)]);
-        assert!(!check_plan(&skew, Some(&style())).is_empty(), "a corner that isn't square");
+        assert!(check_plan(&skew, Some(&style())).is_empty(), "free angles are fine");
+        let sharp = plan(&[(0.0, 0.0), (10.0, 0.0), (0.0, 1.5)]);
+        assert!(!check_plan(&sharp, Some(&style())).is_empty(), "a corner too sharp");
         assert!(!check_plan(&plan(&L), None).is_empty(), "no style");
     }
 
@@ -468,6 +526,24 @@ mod tests {
         let inside = signed_area(&footprint.inside);
         // (60 m², less about half a metre round its 38 m outline.)
         assert!(inside < 45.0 && inside > 38.0, "{inside}");
+    }
+
+    #[test]
+    fn polygons_are_triangulated_and_inset_at_any_angle() {
+        let shape = [(0.0, 0.0), (8.0, 0.0), (10.0, 5.0), (5.0, 3.0), (1.0, 6.0)].map(|(x, y)| Vec2::new(x, y));
+        let triangles = triangulate(&shape);
+        assert_eq!(triangles.len(), 3);
+        let area: f32 =
+            triangles.iter().map(|&[a, b, c]| (shape[b] - shape[a]).perp_dot(shape[c] - shape[a]) / 2.0).sum();
+        assert!((area - signed_area(&shape)).abs() < 1e-3, "{area}");
+        // Each inset edge is 0.5 m in from its own.
+        let inside = inset(&shape, 0.5);
+        for i in 0..shape.len() {
+            let (a, b) = (shape[i], shape[(i + 1) % shape.len()]);
+            let (c, d) = (inside[i], inside[(i + 1) % shape.len()]);
+            let normal = (b - a).normalize().perp();
+            assert!(((c - a).dot(normal) - 0.5).abs() < 1e-3 && ((d - a).dot(normal) - 0.5).abs() < 1e-3);
+        }
     }
 
     #[test]

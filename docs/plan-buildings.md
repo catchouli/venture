@@ -264,4 +264,9 @@ As for walls:
   stone guardhouse at the north gate for Aldren, a cottage for Old Tomas, a
   two-storey wooden bakery for Elsie, and two more houses; each NPC stands
   at their door. (The roof also hides while the camera is inside a building.)
+- [x] Free-angled outlines (with *Free angles* ticked in the editor): walls,
+  openings and floors at any angle (mitred insides, ear-clipped floors;
+  quoins only at right-angled corners); convex outlines get hip roofs by
+  their straight skeleton (`skeleton.rs`), others a flat roof behind a
+  parapet. Oakwengate has an octagonal dovecote and a skewed woodshed.
 - [ ] 7. Later

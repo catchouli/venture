@@ -14,6 +14,7 @@ use venture_world::RoofShape;
 
 use super::faces::{facing, free_between};
 use super::plan::{Rect, wings};
+use super::skeleton::{Node, skeleton};
 use super::{Builder, Detail, Surface, WallConstruction, quad_facing};
 
 /// How thick a ridge's roll of thatch is (its radius), and a hip's, in metres.
@@ -72,6 +73,14 @@ enum End {
 pub fn roofs(builder: &mut Builder, shape: RoofShape, chimney: bool) {
     let (low, high) = builder.style.roof.pitch;
     let pitch = builder.random.range(low, high.max(low)).to_radians();
+    // Free-angled buildings: a hip roof by the straight skeleton if they're
+    // convex, and otherwise flat behind a parapet.
+    if !builder.footprint.square {
+        if !skeleton_roof(builder, pitch, chimney) {
+            flat_roof(builder);
+        }
+        return;
+    }
     let mut wings: Vec<Wing> = wings(&builder.footprint.outline).into_iter().map(Wing::of).collect();
     // The biggest first (it gets the chimney).
     wings.sort_by(|a, b| b.rect.area().total_cmp(&a.rect.area()));
@@ -471,5 +480,140 @@ fn add_chimney(builder: &mut Builder, wing: &Wing, ends: [End; 2], pitch: f32, s
             [0.01, 0.01, 0.01, 1.0],
             Vec3::Y,
         );
+    }
+}
+
+/// A hip roof over any convex outline, by its straight skeleton (see
+/// [`skeleton`]): a plane of thatch over each edge's face, rolls along
+/// the hips and ridges, and the chimney (if wanted) through its top.
+/// Returns false (building nothing) if the outline isn't convex.
+fn skeleton_roof(builder: &mut Builder, pitch: f32, chimney: bool) -> bool {
+    let slope = Slope::new(builder, pitch);
+    let eaves = builder.style.roof.eaves;
+    // The eaves' outline: the walls' outline moved out by the overhang.
+    let outline = super::plan::inset(&builder.footprint.outline, -eaves);
+    let Some(skeleton) = skeleton(&outline) else { return false };
+    let frame = builder.footprint.frame;
+    let height = |node: &Node| slope.height(node.time - eaves);
+    let lift = slope.lift();
+    let count = outline.len();
+    for (edge, face) in skeleton.faces.iter().enumerate() {
+        let corners: Vec<Vec3> =
+            face.iter().map(|&i| frame.point(skeleton.nodes[i].at, height(&skeleton.nodes[i]))).collect();
+        if corners.len() < 3 {
+            continue;
+        }
+        // Only its own edge (the eaves) is open; the rest it shares.
+        let open: Vec<bool> = (0..corners.len()).map(|i| i == 0).collect();
+        let way = (outline[(edge + 1) % count] - outline[edge]).normalize_or(Vec2::X);
+        let downhill = frame.direction(-way.perp());
+        thatch(builder, &slope, &corners, &open, downhill);
+    }
+    // Rolls along every skeleton arc (each face's inner edges, once each).
+    let mut arcs: Vec<(usize, usize)> = Vec::new();
+    for face in &skeleton.faces {
+        for i in 1..face.len() {
+            let (a, b) = (face[i], face[(i + 1) % face.len()]);
+            let key = (a.min(b), a.max(b));
+            if !(a < count && b < count) && !arcs.contains(&key) {
+                arcs.push(key);
+            }
+        }
+    }
+    for (a, b) in arcs {
+        let (na, nb) = (skeleton.nodes[a], skeleton.nodes[b]);
+        let (pa, pb) = (frame.point(na.at, height(&na) + lift), frame.point(nb.at, height(&nb) + lift));
+        let radius = if (na.time - nb.time).abs() < 1e-3 { RIDGE_ROLL } else { HIP_ROLL };
+        roll(builder, pa, pb, radius);
+    }
+    if chimney {
+        let top = skeleton
+            .nodes
+            .iter()
+            .copied()
+            .fold(skeleton.nodes[0], |best, node| if node.time > best.time { node } else { best });
+        let (width, depth) = builder.style.chimney.size;
+        let bottom = slope.eaves - 0.4;
+        let peak = height(&top) + lift + builder.style.chimney.above_ridge;
+        let stone = builder.colours.walls.map(|c| c * 0.95);
+        let along = frame.direction(Vec2::X);
+        let at = |y: f32| frame.point(top.at, y);
+        for detail in [Detail::Full, Detail::Far] {
+            let mesh = builder.mesh(Surface::Stone, detail, detail == Detail::Full);
+            mesh.block(
+                at((bottom + peak) / 2.0),
+                facing(along),
+                Vec3::new(width, peak - bottom, depth),
+                [0.0; 8],
+                [0.0, 0.0],
+                stone,
+            );
+            mesh.block(
+                at(peak + 0.06),
+                facing(along),
+                Vec3::new(width + 0.12, 0.12, depth + 0.12),
+                [0.0; 8],
+                [0.5, 0.5],
+                stone,
+            );
+        }
+    }
+    true
+}
+
+/// How tall a flat roof's parapet is, in metres.
+const PARAPET: f32 = 1.0;
+
+/// A flat roof (stone slabs) behind a parapet: for free-angled buildings a
+/// hip roof can't be made over.
+fn flat_roof(builder: &mut Builder) {
+    let eaves = builder.eaves();
+    let frame = builder.footprint.frame;
+    let outline = builder.footprint.outline.clone();
+    let inside = builder.footprint.inside.clone();
+    let walls = builder.colours.walls;
+    // The slab, level with the wall tops, and its underside (a ceiling).
+    for triangle in super::plan::triangulate(&inside) {
+        let [a, b, c] = triangle.map(|i| frame.point(inside[i], eaves));
+        let uvs = triangle.map(|i| [inside[i].x, inside[i].y]);
+        for detail in [Detail::Full, Detail::Far] {
+            let mesh = builder.mesh(Surface::Stone, detail, detail == Detail::Full);
+            quad_facing(mesh, [a, b, c, c], [uvs[0], uvs[1], uvs[2], uvs[2]], walls.map(|c| c * 0.7), Vec3::Y);
+        }
+        let under = [a, b, c].map(|p| p - Vec3::Y * 0.25);
+        let plaster = builder.colours.plaster;
+        quad_facing(
+            builder.mesh(Surface::Plaster, Detail::Full, true),
+            [under[0], under[1], under[2], under[2]],
+            [[0.0; 2]; 4],
+            plaster,
+            -Vec3::Y,
+        );
+    }
+    // The parapet: the walls carried on up, and a coping along its top.
+    let count = outline.len();
+    let top = eaves + PARAPET;
+    for i in 0..count {
+        let (a, b) = (outline[i], outline[(i + 1) % count]);
+        let (ia, ib) = (inside[i], inside[(i + 1) % count]);
+        let way = (b - a).normalize_or(Vec2::X);
+        let out = frame.direction(-way.perp());
+        let along = frame.direction(way);
+        let length = a.distance(b);
+        for detail in [Detail::Full, Detail::Far] {
+            let upper = detail == Detail::Full;
+            let mesh = builder.mesh(Surface::Stone, detail, upper);
+            super::faces::face(mesh, frame.point(a, 0.0), along, out, (length, eaves, top), &[], 0.0, walls);
+            let inner = [frame.point(ia, eaves), frame.point(ib, eaves), frame.point(ib, top), frame.point(ia, top)];
+            quad_facing(
+                mesh,
+                inner,
+                [[0.0, 0.0], [length, 0.0], [length, 1.0], [0.0, 1.0]],
+                walls.map(|c| c * 0.85),
+                -out,
+            );
+            let coping = [frame.point(a, top), frame.point(b, top), frame.point(ib, top), frame.point(ia, top)];
+            quad_facing(mesh, coping, [[0.0; 2]; 4], walls.map(|c| c * 1.05), Vec3::Y);
+        }
     }
 }

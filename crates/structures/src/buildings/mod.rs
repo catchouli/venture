@@ -25,6 +25,7 @@ pub mod details;
 pub mod faces;
 pub mod plan;
 pub mod roof;
+pub mod skeleton;
 pub mod style;
 
 use std::collections::BTreeMap;
@@ -350,6 +351,33 @@ pub(crate) mod tests {
         for (a, b) in once.parts.iter().zip(&again.parts) {
             assert_eq!(a.mesh, b.mesh);
         }
+    }
+
+    #[test]
+    fn free_angled_buildings_build() {
+        let style = &styles()[0];
+        let with = |outline: Vec<(f32, f32)>| {
+            let mut building = cottage("stone", RoofShape::Gable, 1);
+            building.plan.outline = outline;
+            building.plan.inner_walls.clear();
+            building.plan.doors.truncate(1);
+            build_building(&building, style).expect("it builds")
+        };
+        let thatched = |built: &BuildingMeshes| built.parts.iter().any(|part| part.surface == Surface::Thatch);
+        // A skewed quadrilateral, and an octagon (a tower): hipped by their skeletons.
+        let skewed = with(vec![(0.0, 0.0), (9.0, 0.0), (11.0, 6.0), (1.0, 5.0)]);
+        assert!(thatched(&skewed));
+        let octagon: Vec<(f32, f32)> = (0..8)
+            .map(|i| {
+                let angle = i as f32 / 8.0 * std::f32::consts::TAU;
+                (angle.cos() * 4.0, angle.sin() * 4.0)
+            })
+            .collect();
+        assert!(thatched(&with(octagon)));
+        // A dented shape: flat, behind a parapet.
+        let dented = with(vec![(0.0, 0.0), (10.0, 0.0), (10.0, 8.0), (5.0, 4.0), (0.0, 8.0)]);
+        assert!(!thatched(&dented));
+        assert!(dented.triangles(Detail::Full) > 500);
     }
 
     #[test]

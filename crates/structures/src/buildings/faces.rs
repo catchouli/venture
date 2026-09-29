@@ -120,19 +120,24 @@ pub fn outer_walls(builder: &mut Builder, openings: &[Vec<Opening>]) {
         let outward = -way.perp();
         let (along, out) = (builder.direction(way), builder.direction(outward));
         let start = builder.point(a, 0.0);
-        let convex = |corner: usize| {
+        // A corner's turn: how sharply the outline turns there (positive
+        // turning in: a convex corner). Quoins only go on convex right angles.
+        let turn = |corner: usize| {
             let before = builder.footprint.outline[(corner + count - 1) % count];
             let (here, after) =
                 (builder.footprint.outline[corner % count], builder.footprint.outline[(corner + 1) % count]);
-            (here - before).perp_dot(after - here) > 0.0
+            let (d0, d1) = ((here - before).normalize_or(Vec2::X), (after - here).normalize_or(Vec2::X));
+            d0.perp_dot(d1).atan2(d0.dot(d1))
         };
+        let convex = |corner: usize| (turn(corner) - std::f32::consts::FRAC_PI_2).abs() < 0.05;
         let (convex_start, convex_end) = (convex(i), convex(i + 1));
         let holes: Vec<Hole> = openings[i].iter().map(|o| (o.from, o.to, o.bottom, o.top)).collect();
 
         // The plinth, standing a little proud, from the footing up.
         let plinth_top = if construction == WallConstruction::Timber { TIMBER_PLINTH } else { 0.08 };
         let proud = 0.05;
-        let (s0, s1) = (if convex_start { -proud } else { proud }, if convex_end { proud } else { -proud });
+        // (Reaching round the corner to meet the next wall's plinth, at whatever angle.)
+        let (s0, s1) = (-proud * (turn(i) / 2.0).tan(), proud * (turn(i + 1) / 2.0).tan());
         for detail in [Detail::Full, Detail::Far] {
             let mesh = builder.mesh(Surface::Stone, detail, false);
             let from = start + out * proud + along * s0;
