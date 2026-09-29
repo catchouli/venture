@@ -13,10 +13,14 @@ drawn in the editor: see [editor.md](editor.md)) is:
 - **a path:** the points its deck's middle passes through, end to end
   (a centripetal Catmull–Rom curve through them, as walls are);
 - **a kind:**
-  - **Stone:** a dry-stone deck on an arch, with low walls either side;
+  - **Stone:** an arch of dry stone: its sides laid in courses of stones
+    following the deck, a ring of stones round the arch, flagstones on the
+    deck, and a dry-stone wall either side (built by the walls' own
+    generator, so they match the world's walls);
   - **Rope:** wooden planks on ropes between wooden posts, with rope
     handrails and ropes down to the deck's edges;
-- **a width**, in metres (3.5 usually for stone, 1.8 for rope);
+- **a width**, in metres (4.5 usually for stone, less its two 0.8 m walls;
+  1.8 for rope);
 - **a curve:** how far its middle rises above the straight line between
   its ends (an arch), or hangs below it (a rope bridge's sag), in metres;
 - **a seed**, for its variation (the planks' unevenness).
@@ -36,7 +40,14 @@ navigation mesh tiles).
 
 **Bridges over rivers.** The bake also places bridges over rivers
 (`venture_worldgen::bridges`), because without them rivers can take a long
-way round:
+way round.
+
+**Road bridges** come first. Wherever a road runs into a river, a wide
+stone bridge (the road's width and 3 m more) carries it straight over,
+along the road, reaching 5 m onto each bank. These are kept even near walls,
+because walls leave gaps for roads.
+
+**Then the rest**, away from road bridges (250 m or more):
 - **Spacing:** about one in every 400 m square a river runs through, at its
   narrowest crossing there.
 - **Position:** square across the river, reaching 4 m onto each bank, with

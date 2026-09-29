@@ -8,12 +8,13 @@
 //! its solid shapes' (`venture_collision` makes colliders of them), so what
 //! is seen is what is walked on.
 
-use glam::{Vec2, Vec3};
-use venture_world::{BakedBridge, BridgeKind, BridgePlan};
+use glam::{Mat3, Quat, Vec2, Vec3};
+use venture_world::{BakedBridge, BakedWall, BridgeKind, BridgePlan, WallKind, WallSample};
 
 use crate::mesh::{MeshPart, linear};
 use crate::path::sample_path;
 use crate::random::Random;
+use crate::walls::build_wall;
 
 /// The authored bridges file, in the authoring folder.
 pub const BRIDGES_FILE: &str = "bridges.ron";
@@ -24,9 +25,14 @@ const END_LIFT: f32 = 0.1;
 
 /// A stone bridge's deck: how thick, in metres.
 const STONE_DECK: f32 = 0.5;
-/// A stone bridge's walls: how high above the deck, and how thick, in metres.
-const PARAPET_HEIGHT: f32 = 0.9;
-const PARAPET_THICKNESS: f32 = 0.35;
+/// A stone bridge's walls (dry-stone walls: see `walls`): how high above
+/// the deck, and how thick, in metres.
+const PARAPET_HEIGHT: f32 = 1.0;
+const PARAPET_THICKNESS: f32 = 0.8;
+/// A stone bridge's sides are laid in courses this high, in metres.
+const COURSE: f32 = 0.3;
+/// How far the stones stand out of a stone bridge's core, in metres.
+const PROUD: f32 = 0.04;
 /// How far below the deck's top the arch's crown is, in metres.
 const ARCH_CROWN: f32 = 1.0;
 /// How far into the ground a stone bridge's ends go, in metres.
@@ -73,6 +79,10 @@ pub struct Piece {
     pub walkable: bool,
     /// Whether it's only for show (ropes): not solid.
     pub decoration: bool,
+    /// Whether it's drawn as it is (a stone bridge's walls are drawn as
+    /// dry-stone walls instead, and a rope bridge's deck and sides as its
+    /// planks and ropes).
+    pub drawn: bool,
 }
 
 /// A bridge's meshes, by what they're made of (`[x, height, y]`, Y up).
@@ -191,33 +201,169 @@ fn band(
     [start[0], start[1], start[2], start[3], end[0], end[1], end[2], end[3]]
 }
 
+/// A stone bridge's profile at each sample: its deck's top, and its arch's underside.
+fn stone_profile(bridge: &BakedBridge, frames: &[(Vec3, Vec3, f32)]) -> Vec<(f32, f32)> {
+    let t = fractions(bridge);
+    let (first, last) = (frames[0].2, frames[frames.len() - 1].2);
+    (0..frames.len())
+        .map(|i| {
+            let top = frames[i].0.y;
+            // The arch: its underside rises from the ground at the ends to just
+            // under the deck in the middle (a semi-ellipse, near enough).
+            let low = first + (last - first) * t[i] - FOOTING;
+            let rise = (std::f32::consts::PI * t[i]).sin().max(0.0).sqrt();
+            let crown = top - ARCH_CROWN;
+            (top, (low + (crown - low) * rise).min(top - STONE_DECK))
+        })
+        .collect()
+}
+
 fn stone_pieces(bridge: &BakedBridge) -> Vec<Piece> {
     let frames = frames(bridge);
-    let t = fractions(bridge);
+    let profile = stone_profile(bridge, &frames);
     let half = bridge.plan.width / 2.0;
-    let (first, last) = (frames[0].2, frames[frames.len() - 1].2);
-    let deck_top = |i: usize| frames[i].0.y;
-    // The arch: its underside rises from the ground at the ends to just
-    // under the deck in the middle (a semi-ellipse, near enough).
-    let low = |i: usize| first + (last - first) * t[i] - FOOTING;
-    let underside = |i: usize| {
-        let rise = (std::f32::consts::PI * t[i]).sin().max(0.0).sqrt();
-        let crown = deck_top(i) - ARCH_CROWN;
-        (low(i) + (crown - low(i)) * rise).min(deck_top(i) - STONE_DECK)
-    };
+    let deck_top = |i: usize| profile[i].0;
+    let underside = |i: usize| profile[i].1;
     let mut pieces = Vec::new();
     for i in 0..frames.len() - 1 {
         let stretch = (i, i + 1);
-        let stone = |corners, walkable| Piece { corners, surface: BridgeSurface::Stone, walkable, decoration: false };
-        pieces.push(stone(band(&frames, stretch, (-half, half), |i| deck_top(i) - STONE_DECK, deck_top), true));
-        pieces.push(stone(band(&frames, stretch, (-half, half), underside, |i| deck_top(i) - STONE_DECK), false));
+        let stone = |corners, walkable, drawn| Piece {
+            corners,
+            surface: BridgeSurface::Stone,
+            walkable,
+            decoration: false,
+            drawn,
+        };
+        pieces.push(stone(band(&frames, stretch, (-half, half), |i| deck_top(i) - STONE_DECK, deck_top), true, true));
+        pieces.push(stone(band(&frames, stretch, (-half, half), underside, |i| deck_top(i) - STONE_DECK), false, true));
         for side in [-1.0, 1.0] {
             let wall = (side * (half - PARAPET_THICKNESS), side * half);
             let wall = if side < 0.0 { (wall.1, wall.0) } else { wall };
-            pieces.push(stone(band(&frames, stretch, wall, deck_top, |i| deck_top(i) + PARAPET_HEIGHT), false));
+            pieces.push(stone(band(&frames, stretch, wall, deck_top, |i| deck_top(i) + PARAPET_HEIGHT), false, false));
         }
     }
     pieces
+}
+
+/// Where a stone bridge is at `distance` along it: its deck's middle (at
+/// the deck's top), the way across (level), the way along (up its slope),
+/// and its deck's top and arch's underside there.
+fn stone_at(frames: &[(Vec3, Vec3, f32)], profile: &[(f32, f32)], distance: f32) -> (Vec3, Vec3, Vec3, f32, f32) {
+    let last = frames.len() - 1;
+    let position = (distance / BRIDGE_SAMPLE_SPACING).clamp(0.0, last as f32 - 1e-3);
+    let (i, f) = (position.floor() as usize, position.fract());
+    let j = (i + 1).min(last);
+    let middle = frames[i].0.lerp(frames[j].0, f);
+    let across = frames[i].1.lerp(frames[j].1, f).normalize_or(Vec3::X);
+    let along = (frames[j].0 - frames[i].0).normalize_or(Vec3::new(-across.z, 0.0, across.x));
+    let top = profile[i].0 + (profile[j].0 - profile[i].0) * f;
+    let under = profile[i].1 + (profile[j].1 - profile[i].1) * f;
+    (middle, across, along, top, under)
+}
+
+/// A stone's turn: its x across the bridge, its z along `along`.
+fn stone_turn(across: Vec3, along: Vec3) -> Quat {
+    let along = along.normalize_or(Vec3::Z);
+    let across = (across - along * across.dot(along)).normalize_or(Vec3::X);
+    Quat::from_mat3(&Mat3::from_cols(across, along.cross(across), along))
+}
+
+/// A stone bridge's stones: its sides laid in courses, a ring of stones
+/// round its arch, and flagstones on its deck (its walls are dry-stone
+/// walls: see [`build_bridge`]).
+fn stone_dressing(bridge: &BakedBridge, part: &mut MeshPart) {
+    let frames = frames(bridge);
+    let profile = stone_profile(bridge, &frames);
+    let half = bridge.plan.width / 2.0;
+    let length = (frames.len() - 1) as f32 * BRIDGE_SAMPLE_SPACING;
+    let mut random = Random::new(bridge.plan.seed ^ 0x0570_14e5);
+    let deepest = profile.iter().map(|(top, under)| top - under).fold(0.0, f32::max);
+    let tint = |random: &mut Random| {
+        let shade = random.range(0.8, 1.05);
+        linear([0.92 * shade, 0.9 * shade, 0.86 * shade])
+    };
+    let lumps = |random: &mut Random| std::array::from_fn(|_| random.range(-0.08, 0.08));
+    // The sides, in courses down from the deck (above the arch).
+    for side in [-1.0_f32, 1.0] {
+        for row in 0..(deepest / COURSE).ceil() as usize {
+            let mut along = -random.range(0.0, 0.4);
+            while along < length {
+                let stone = random.range(0.35, 0.75);
+                let at = (along + stone / 2.0).clamp(0.0, length);
+                along += stone;
+                let (middle, across, way, top, under) = stone_at(&frames, &profile, at);
+                let high = top - row as f32 * COURSE;
+                if high - COURSE < under + 0.05 {
+                    continue;
+                }
+                let face = middle + across * side * (half - 0.15 + PROUD);
+                let centre = Vec3::new(face.x, high - COURSE / 2.0, face.z);
+                let size = Vec3::new(0.3, COURSE * 0.92, stone * 0.94);
+                let uv = [random.range(0.0, 4.0), random.range(0.0, 4.0)];
+                part.block(centre, stone_turn(across, way), size, lumps(&mut random), uv, tint(&mut random));
+            }
+        }
+        // The arch's ring, along its underside (where it's clear of the ground).
+        let mut along = 0.0;
+        while along < length {
+            let (middle, across, _, top, under) = stone_at(&frames, &profile, along);
+            let (_, _, _, _, next) = stone_at(&frames, &profile, along + 0.1);
+            let (_, _, _, _, before) = stone_at(&frames, &profile, (along - 0.1).max(0.0));
+            let way = Vec3::new(-across.z, 0.0, across.x);
+            let tangent = (way * 0.2 + Vec3::Y * (next - before)).normalize_or(way);
+            let outward = stone_turn(across, tangent) * Vec3::Y;
+            if under < top - STONE_DECK - 0.05 {
+                let face = middle + across * side * (half - 0.2 + PROUD);
+                let centre = Vec3::new(face.x, under, face.z) + outward * 0.22;
+                let size = Vec3::new(0.4, 0.46, 0.3);
+                let uv = [random.range(0.0, 4.0), random.range(0.0, 4.0)];
+                part.block(centre, stone_turn(across, tangent), size, lumps(&mut random), uv, tint(&mut random));
+            }
+            along += 0.32;
+        }
+    }
+    // Flagstones on the deck, between its walls.
+    let inside = half - PARAPET_THICKNESS;
+    let mut along = 0.0;
+    while along < length {
+        let stone = random.range(0.45, 0.7);
+        let (middle, across, way, top, _) = stone_at(&frames, &profile, along + stone / 2.0);
+        let mut offset = -inside;
+        while offset < inside {
+            let width = random.range(0.4, 0.8).min(inside - offset);
+            let flat = middle + across * (offset + width / 2.0);
+            let centre = Vec3::new(flat.x, top - 0.03 + random.range(0.0, 0.015), flat.z);
+            let size = Vec3::new(width * 0.95, 0.1, stone * 0.95);
+            let uv = [random.range(0.0, 4.0), random.range(0.0, 4.0)];
+            let flat_lumps = std::array::from_fn(|_| random.range(-0.02, 0.02));
+            part.block(centre, stone_turn(across, way), size, flat_lumps, uv, tint(&mut random));
+            offset += width;
+        }
+        along += stone;
+    }
+}
+
+/// A stone bridge's walls, as dry-stone walls along its deck's edges.
+fn stone_walls(bridge: &BakedBridge) -> Vec<BakedWall> {
+    let frames = frames(bridge);
+    let half = bridge.plan.width / 2.0;
+    [-1.0_f32, 1.0]
+        .iter()
+        .enumerate()
+        .map(|(n, &side)| BakedWall {
+            id: format!("{}_wall_{n}", bridge.plan.id),
+            kind: WallKind::DryStone,
+            height: PARAPET_HEIGHT,
+            seed: bridge.plan.seed.wrapping_add(n as u64 + 1),
+            samples: frames
+                .iter()
+                .map(|&(middle, across, _)| {
+                    let at = middle + across * side * (half - PARAPET_THICKNESS / 2.0);
+                    WallSample { x: at.x, y: at.z, ground: middle.y, open: false }
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 fn rope_pieces(bridge: &BakedBridge) -> Vec<Piece> {
@@ -226,7 +372,14 @@ fn rope_pieces(bridge: &BakedBridge) -> Vec<Piece> {
     let deck_top = |i: usize| frames[i].0.y;
     let mut random = Random::new(bridge.plan.seed);
     let mut pieces = Vec::new();
-    let piece = |corners, surface, walkable, decoration| Piece { corners, surface, walkable, decoration };
+    // (What's solid, a rope bridge's deck and sides, isn't drawn: its planks, ropes and posts are.)
+    let piece = |corners, surface, walkable, decoration| Piece {
+        corners,
+        surface,
+        walkable,
+        decoration,
+        drawn: decoration || surface == BridgeSurface::Wood && !walkable,
+    };
     for i in 0..frames.len() - 1 {
         let stretch = (i, i + 1);
         // The deck (solid and walked on; drawn as the planks, below).
@@ -327,6 +480,7 @@ fn upright(
         surface,
         walkable: false,
         decoration,
+        drawn: true,
     }
 }
 
@@ -343,10 +497,7 @@ fn colour(surface: BridgeSurface) -> [f32; 4] {
 pub fn build_bridge(bridge: &BakedBridge) -> BridgeMeshes {
     let mut parts: Vec<(BridgeSurface, MeshPart)> = Vec::new();
     for piece in bridge_pieces(bridge) {
-        // (A rope bridge's deck and netting are solid, but what's seen is its
-        // planks, ropes and posts.)
-        let hidden = piece.walkable || (piece.surface == BridgeSurface::Rope && !piece.decoration);
-        if bridge.plan.kind == BridgeKind::Rope && hidden {
+        if !piece.drawn {
             continue;
         }
         let part = match parts.iter_mut().find(|(surface, _)| *surface == piece.surface) {
@@ -358,7 +509,35 @@ pub fn build_bridge(bridge: &BakedBridge) -> BridgeMeshes {
         };
         skewed_box(part, &piece.corners, colour(piece.surface));
     }
+    if bridge.plan.kind == BridgeKind::Stone && bridge.deck.len() >= 2 {
+        let mut stones = MeshPart::default();
+        stone_dressing(bridge, &mut stones);
+        for wall in stone_walls(bridge) {
+            for stretch in build_wall(&wall) {
+                let origin = Vec3::from(stretch.origin);
+                let mut full = stretch.full;
+                for position in &mut full.positions {
+                    *position = (Vec3::from(*position) + origin).to_array();
+                }
+                append(&mut stones, &full);
+            }
+        }
+        match parts.iter_mut().find(|(surface, _)| *surface == BridgeSurface::Stone) {
+            Some((_, part)) => append(part, &stones),
+            None => parts.push((BridgeSurface::Stone, stones)),
+        }
+    }
     BridgeMeshes { parts }
+}
+
+/// Adds one mesh's triangles to another's.
+fn append(to: &mut MeshPart, from: &MeshPart) {
+    let first = to.positions.len() as u32;
+    to.positions.extend_from_slice(&from.positions);
+    to.normals.extend_from_slice(&from.normals);
+    to.uvs.extend_from_slice(&from.uvs);
+    to.colours.extend_from_slice(&from.colours);
+    to.indices.extend(from.indices.iter().map(|i| i + first));
 }
 
 /// Adds a skewed box's six faces, facing out, textured a unit a metre.
