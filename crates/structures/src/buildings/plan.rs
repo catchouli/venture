@@ -77,7 +77,7 @@ impl Footprint {
     /// `None` if it has fewer than four corners.
     pub fn of(plan: &BuildingPlan, thickness: f32) -> Option<Self> {
         let mut points: Vec<Vec2> = plan.outline.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
-        if points.len() < 4 {
+        if points.len() < 3 {
             return None;
         }
         if signed_area(&points) < 0.0 {

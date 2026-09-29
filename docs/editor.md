@@ -49,17 +49,20 @@ as for `--local`.
     them itself, against the same world generator), with gaps where roads
     cross.
   - **Buildings** (`world_authoring/buildings.ron`, baked into the world;
-    see [plan-buildings.md](plan-buildings.md)) are listed too. **Add**
+    see [plan-buildings.md](plan-buildings.md)) are listed too. **Building**
+    in the Add row at the top puts an 8 × 5.5 m one where the camera is
+    looking. **Add**
     (with the style beside it) draws a new one: click its corners on the
     ground, each squared up to the last wall, and click the first again
     (or press Enter) to close it; its last corner is found for you. Click
-    a building to choose it: drag the handle in its middle to move it, and
-    on the right are its style, **Edit plan**, **New seed**, turning (15°
+    a building to choose it: drag the handle in its middle to move it (or
+    set its **Position**), and on the right are its style, **Edit plan**, **New seed**, turning (15°
     either way, or 90°), **Delete building**, and its fields (floors,
     roof, chimney, and the rest).
   - **Edit plan** hides the building and looks straight down on it. Its
     tools: **Corners** (drag one: the walls either side follow, so every
-    corner stays square), **Inner walls** (click where one starts, then
+    corner stays square; drag the middle to move it all; with fewer than
+    three corners, click to add one), **Inner walls** (click where one starts, then
     where it ends), **Doors** (click a wall, outer or inner) and
     **Choose** (click a door or inner wall; Delete removes it). **Done**
     (or Escape) leaves it, and the building is made again.

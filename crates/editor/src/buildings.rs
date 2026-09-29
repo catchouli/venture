@@ -309,6 +309,9 @@ pub fn nearest_wall(plan: &BuildingPlan, point: Vec2, reach: f32) -> Option<(Wal
 /// runs along whichever of its walls' directions is nearer).
 pub fn square_inner_wall(plan: &BuildingPlan, from: Vec2, to: Vec2) -> (Vec2, Vec2) {
     let points: Vec<Vec2> = plan.outline.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
+    if points.len() < 2 {
+        return (from, to);
+    }
     let x = (points[1] - points[0]).normalize_or(Vec2::X);
     let y = x.perp();
     let run = to - from;
@@ -343,6 +346,20 @@ fn add_building(document: &mut Document, style: &str, outline: &[Vec2], now: f64
     plans.files_mut().first_mut()?.entries.push(plan);
     document.changed(collection, 0, now);
     Some(id)
+}
+
+/// Adds a new building (8 by 5.5 metres, facing the camera's way along x)
+/// with its middle at `at`, in `style` (or the first style). Returns its id.
+pub fn add_building_at(document: &mut Document, style: &str, at: Vec2, now: f64) -> Option<String> {
+    let style = if style.is_empty() {
+        styles(document).first().map(|style| style.id.clone()).unwrap_or_default()
+    } else {
+        style.to_string()
+    };
+    let (half_x, half_y) = (4.0, 2.75);
+    let corners = [(-half_x, -half_y), (half_x, -half_y), (half_x, half_y), (-half_x, half_y)]
+        .map(|(x, y)| Vec2::new(snap(at.x + x), snap(at.y + y)));
+    add_building(document, &style, &corners, now)
 }
 
 /// Bakes the document's buildings (with a handle being dragged where it is
@@ -383,8 +400,13 @@ fn show_buildings(
 fn chosen_plan(document: &Document, tool: &BuildingTool) -> Option<BuildingPlan> {
     let id = tool.chosen.as_ref()?;
     let mut plan = building_plans(document).into_iter().find(|plan| &plan.id == id)?;
-    if let (Some((Some(index), _)), Some(to)) = (tool.pressed, tool.dragged_to) {
-        plan.outline = move_corner(&plan.outline, index, to);
+    match (tool.pressed, tool.dragged_to) {
+        (Some((Some(index), _)), Some(to)) => plan.outline = move_corner(&plan.outline, index, to),
+        (Some((None, _)), Some(to)) => {
+            let by = to - middle(&plan);
+            shift(&mut plan, by);
+        }
+        _ => {}
     }
     Some(plan)
 }
@@ -446,6 +468,15 @@ fn building_clicks(
                 buttons.clear_just_pressed(MouseButton::Left);
                 if let Some(index) = corner {
                     tool.pressed = Some((Some(index), cursor));
+                } else if plan.outline.len() >= 3 && near(middle(&plan)) {
+                    // Its middle: the whole building moves.
+                    tool.pressed = Some((None, cursor));
+                } else if plan.outline.len() < 3
+                    && let Some(at) = ground(ray)
+                {
+                    // Too few corners to be a building (they were deleted): add one where clicked.
+                    let id = plan.id.clone();
+                    change_building(&mut document, &id, now, |plan| plan.outline.push((snap(at.x), snap(at.y))));
                 }
             }
             Some(PlanTool::InnerWalls) => {
@@ -699,10 +730,11 @@ fn draw_building_guides(
     let mut line: Vec<Vec3> = outline.iter().map(|&p| at(p, 0.1)).collect();
     line.extend(line.first().copied());
     gizmos.linestrip(line, Color::WHITE);
-    let Some(editing) = tool.editing else {
+    // The handle in its middle (drag it to move the whole building).
+    if outline.len() >= 3 {
         gizmos.sphere(Isometry3d::from_translation(at(middle(&plan), 0.3)), 0.45, gold);
-        return;
-    };
+    }
+    let Some(editing) = tool.editing else { return };
     // The plan: corners, inner walls and doors.
     let chosen = |piece: PlanPiece| tool.piece == Some(piece);
     if editing == PlanTool::Corners {
@@ -718,6 +750,9 @@ fn draw_building_guides(
         gizmos.sphere(Isometry3d::from_translation(at(start, 0.2)), 0.25, Color::srgb(0.6, 0.8, 1.0));
     }
     for (i, door) in plan.doors.iter().enumerate() {
+        if outline.len() < 2 {
+            break;
+        }
         let (a, b) = match door.wall {
             WallRef::Outer(n) => {
                 let n = n as usize % outline.len().max(1);
@@ -862,6 +897,18 @@ pub fn building_buttons(
                     tool.choose(None);
                 }
             });
+            // Its position (its middle): changing it moves the whole building.
+            let centre = middle(&plan);
+            let (mut x, mut z) = (centre.x, centre.y);
+            ui.horizontal(|ui| {
+                ui.label("Position");
+                let moved_x = ui.add(egui::DragValue::new(&mut x).speed(0.1).prefix("x ").max_decimals(2)).changed();
+                let moved_z = ui.add(egui::DragValue::new(&mut z).speed(0.1).prefix("z ").max_decimals(2)).changed();
+                if (moved_x || moved_z) && plan.outline.len() >= 3 {
+                    let by = Vec2::new(x, z) - centre;
+                    change_building(document, &id, now, |plan| shift(plan, by));
+                }
+            });
             ui.weak("Drag the handle in its middle to move it.");
         }
         Some(mut editing) => {
@@ -880,7 +927,9 @@ pub fn building_buttons(
                 tool.wall_start = None;
             }
             ui.weak(match editing {
-                PlanTool::Corners => "Drag a corner: the walls either side follow, square.",
+                PlanTool::Corners => {
+                    "Drag a corner (the walls either side follow, if it's square), or the middle to move it all."
+                }
                 PlanTool::InnerWalls => "Click where an inner wall starts, then where it ends.",
                 PlanTool::Doors => "Click a wall (outer or inner) to put a door in it.",
                 PlanTool::Choose => "Click a door or an inner wall, then press Delete to remove it.",
@@ -943,5 +992,24 @@ mod tests {
         assert!((middle(&plan) - Vec2::new(14.0, 2.0)).length() < 0.02, "it turns about its middle");
         let (from, to) = square_inner_wall(&plan, Vec2::new(14.0, 2.0), Vec2::new(14.3, 5.0));
         assert!((to - from).x.abs() < 1e-3 || (to - from).y.abs() < 1e-3, "square to the building");
+    }
+
+    #[test]
+    fn buildings_are_added_where_the_camera_looks() {
+        use crate::document::copy_folder;
+        let folder = std::env::temp_dir().join(format!("venture-buildings-add-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        copy_folder(&root.join("content"), &folder.join("content")).unwrap();
+        copy_folder(&root.join("world_authoring"), &folder.join("world_authoring")).unwrap();
+        let mut document =
+            Document::load_with_authoring(&folder.join("content"), Some(&folder.join("world_authoring"))).unwrap();
+        let id = add_building_at(&mut document, "", Vec2::new(100.0, 200.0), 0.0).unwrap();
+        let plan = building_plans(&document).into_iter().find(|plan| plan.id == id).unwrap();
+        assert!((middle(&plan) - Vec2::new(100.0, 200.0)).length() < 0.05);
+        let styles = styles(&document);
+        let style = styles.iter().find(|style| style.id == plan.style);
+        assert!(venture_structures::buildings::check_plan(&plan, style).is_empty());
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

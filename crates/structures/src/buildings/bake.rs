@@ -44,6 +44,12 @@ pub fn check_buildings(plans: &[BuildingPlan], styles: &[BuildingStyle]) -> Vec<
 /// and the lowest the ground goes under it is kept (for its footing).
 pub fn bake_building(plan: &BuildingPlan, ground: impl Fn(f32, f32) -> f32) -> BakedBuilding {
     let points: Vec<Vec2> = plan.outline.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
+    // (A plan still being drawn, or with its corners deleted, sits on the ground where it is.)
+    if points.len() < 3 {
+        let at = points.first().copied().unwrap_or(Vec2::ZERO);
+        let floor = ground(at.x, at.y);
+        return BakedBuilding { plan: plan.clone(), floor, lowest: floor };
+    }
     let (low, high) = points.iter().fold((points[0], points[0]), |(low, high), &p| (low.min(p), high.max(p)));
     let mut heights = Vec::new();
     let mut y = low.y;
@@ -100,6 +106,10 @@ pub fn levelled(building: &BakedBuilding, x: f32, y: f32, natural: f32) -> Optio
 /// to, inclusive.
 pub fn cell_bounds(building: &BakedBuilding, reach: f32) -> ((i32, i32), (i32, i32)) {
     let points = outline(building);
+    if points.is_empty() {
+        // (Nothing: an empty range.)
+        return ((0, 0), (-1, -1));
+    }
     let (low, high) = points.iter().fold((points[0], points[0]), |(low, high), &p| (low.min(p), high.max(p)));
     let pad = reach.max(LEVEL_EDGE + LEVEL_BLEND) + 1.0;
     let (low, high) = (low - pad, high + pad);
@@ -185,6 +195,21 @@ mod tests {
         assert_eq!(levelled(&baked, 30.0, 2.0, 3.0), None);
         let between = levelled(&baked, 9.0 + LEVEL_EDGE + LEVEL_BLEND / 2.0, 2.0, 5.0).unwrap();
         assert!(between > baked.floor && between < 5.0);
+    }
+
+    #[test]
+    fn plans_with_too_few_corners_bake_to_nothing_without_trouble() {
+        let styles = styles();
+        for corners in 0..3 {
+            let mut plan = cottage("stone", RoofShape::Gable, 1).plan;
+            plan.outline.truncate(corners);
+            let baked = bake_building(&plan, |_, _| 5.0);
+            assert_eq!(baked.floor, 5.0);
+            assert!(building_cells(&baked, &styles[0]).is_empty());
+            assert!(corners > 0 || building_clearing(&baked, 2.0).is_empty());
+            let _ = levelled(&baked, 0.0, 0.0, 1.0);
+            assert!(crate::buildings::build_building(&baked, &styles[0]).is_none());
+        }
     }
 
     #[test]

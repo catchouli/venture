@@ -14,7 +14,7 @@ use venture_content::ContentError;
 use crate::Project;
 use venture_client::common::coords::{from_bevy, to_bevy};
 
-use crate::buildings::{BuildingTool, building_buttons, buildings_list};
+use crate::buildings::{BuildingTool, add_building_at, building_buttons, buildings_list};
 use crate::camera::EditorCamera;
 use crate::document::Document;
 use crate::fields::{Choices, Fields, referred_as, rename_everywhere, users};
@@ -590,6 +590,9 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                             action = Some(WorldAction::Add(kind));
                         }
                     }
+                    if ui.button("Building").on_hover_text("Where the camera is looking (or draw one: see Buildings)").clicked() {
+                        action = Some(WorldAction::AddBuilding);
+                    }
                 });
                 if let Some(place) = &chosen_place {
                     ui.horizontal_wrapped(|ui| {
@@ -770,6 +773,7 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
 /// Something done from the World tab's buttons.
 enum WorldAction {
     Add(PlaceKind),
+    AddBuilding,
     Copy(Place),
     Delete(Place),
     PlayHere,
@@ -820,6 +824,16 @@ fn world_action(world: &mut World, shell: &mut Shell, document: &mut Document, a
         WorldAction::Delete(place) => {
             delete_place(document, &place, now);
             None
+        }
+        WorldAction::AddBuilding => {
+            let mut tool = world.resource_mut::<BuildingTool>();
+            let style = tool.new_style.clone();
+            let id = add_building_at(document, &style, Vec2::new(focus.0, focus.1), now);
+            tool.choose(id);
+            world.resource_mut::<WallTool>().choose(None);
+            world.resource_mut::<Selection>().0 = None;
+            shell.check_due = Some(now + CHECK_DELAY);
+            return;
         }
         WorldAction::Bake => {
             let project = world.resource::<Project>().clone();
