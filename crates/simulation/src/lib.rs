@@ -14,5 +14,8 @@ mod rules;
 pub use following::{FOLLOW_DISTANCE, Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, TALK_RANGE};
 
 pub use day::{DayCycle, SkyPosition};
-pub use movement::{Body, Movement, RUN_SPEED, TICK_RATE, clamp_move_goal, plan_route, steering_direction, step};
+pub use movement::{
+    BadMove, Body, MoveBudget, Movement, RUN_SPEED, TICK_RATE, check_move, clamp_move_goal, plan_route,
+    steering_direction, step,
+};
 pub use rules::{MovementRules, Rules};

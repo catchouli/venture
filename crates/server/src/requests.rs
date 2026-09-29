@@ -145,6 +145,14 @@ pub enum PlayerAction {
     Steer(Point),
     /// Stop moving (and following).
     Stop,
+    /// The client says the character has moved here (`[x, y, height]`, all
+    /// finite), from this placement. Checked by `gameplay`.
+    Moved {
+        /// Where to.
+        to: [f32; 3],
+        /// The placement it's from.
+        placement: u32,
+    },
     /// Follow this entity (if it's a player).
     Follow(EntityId),
     /// Talk to this entity (if it's an NPC), walking over first if needed.
@@ -555,6 +563,12 @@ fn judge_player_message(
             None => PlayerAction::Stop,
         },
         ClientMessage::Stop => PlayerAction::Stop,
+        ClientMessage::Moved { x, y, height, placement } => {
+            if !height.is_finite() || !world.contains((x, y)) {
+                return Verdict::Strike;
+            }
+            PlayerAction::Moved { to: [x, y, height], placement }
+        }
         ClientMessage::Follow { target } => PlayerAction::Follow(target),
         ClientMessage::Interact { target } => PlayerAction::Interact(target),
         ClientMessage::Attack { target } => PlayerAction::Attack(target),

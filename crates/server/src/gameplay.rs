@@ -5,19 +5,25 @@
 use bevy::prelude::*;
 use venture_protocol::{EntityId, EntityState, ServerMessage};
 use venture_simulation::{
-    Body, Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, Movement, RUN_SPEED, clamp_move_goal, plan_route, step,
+    Body, Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, MoveBudget, Movement, RUN_SPEED, check_move,
+    clamp_move_goal, plan_route, step,
 };
 
 use crate::abilities::PendingAbility;
 use crate::collision::Solid;
 use crate::combat::{Attacking, Health, Resting};
-use crate::entities::{DisplayName, Feet, Following, Mover, NetworkId, PendingInteraction, Player, Position, RunSpeed};
+use crate::entities::{
+    ClientMoves, DisplayName, Feet, Following, Mover, NetworkId, PendingInteraction, Player, Position, RunSpeed,
+};
 use crate::link::Link;
 use crate::monsters::{Dead, Monster};
 use crate::npcs::{Npc, NpcInteraction};
 use crate::requests::{PlayerAction, PlayerRequest};
 use crate::world::ServerWorld;
 use crate::{GameRules, ServerSystems};
+
+/// A player whose client hasn't reported a move for this long (seconds) has stopped.
+const STOPPED_AFTER: f32 = 0.3;
 
 /// The highest and lowest anything in the world is, in metres (for finding the ground under a point).
 const HIGHEST: f32 = 2000.0;
@@ -33,7 +39,17 @@ impl Plugin for GameplayPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Tick>().add_systems(
             FixedUpdate,
-            (act_on_requests, sit_down, update_followers, update_attackers, update_casters, simulate, send_snapshot)
+            (
+                act_on_requests,
+                accept_moves,
+                sit_down,
+                update_followers,
+                update_attackers,
+                update_casters,
+                simulate,
+                place_players,
+                send_snapshot,
+            )
                 .chain()
                 .in_set(ServerSystems::Gameplay),
         );
@@ -86,6 +102,8 @@ fn act_on_requests(
                 stop_following();
                 mover.0 = Movement::Idle;
             }
+            // (See `accept_moves`.)
+            PlayerAction::Moved { .. } => {}
             PlayerAction::Follow(target_id) => {
                 // An unknown id is someone who has just left: nothing to say.
                 let Some((target, _, &Position(target_position), name)) = find(*target_id) else { continue };
@@ -286,14 +304,101 @@ fn update_casters(
     }
 }
 
-/// Moves everything for one tick, through the solid world. Anything found
-/// somewhere it didn't move to (just arrived, or moved by `/town`) is stood
-/// on the ground there first.
+/// Players' clients move their own characters (predicting with the same
+/// rules, so it's instant and never rolls back), and say where they've got
+/// to. Each move is checked ([`check_move`]: no faster than they run, not
+/// into or through anything solid, no higher than a jump); one that isn't
+/// allowed puts the character back where it was (a new placement), and
+/// moves from before a placement are ignored.
+fn accept_moves(
+    time: Res<Time>,
+    solid: Res<Solid>,
+    rules: Res<GameRules>,
+    mut requests: MessageReader<PlayerRequest>,
+    mut players: Query<(&mut Position, &mut Feet, &mut ClientMoves, Option<&Health>), With<Player>>,
+) {
+    let settings = rules.0.movement.character();
+    for request in requests.read() {
+        let PlayerAction::Moved { to, placement } = request.action else { continue };
+        let Ok((mut position, mut feet, mut moves, health)) = players.get_mut(request.player) else { continue };
+        if placement != moves.placement || health.is_some_and(|health| health.current() == 0) {
+            debug!("A move from placement {placement} was ignored (the character's is {}).", moves.placement);
+            continue;
+        }
+        let from = [position.0.0, position.0.1, feet.body.height];
+        match check_move(&solid.0, from, to, &mut moves.budget, &rules.0.movement) {
+            Ok(()) => {
+                position.0 = (to[0], to[1]);
+                feet.body.height = to[2];
+                feet.body.grounded = solid.0.stands_on_ground((to[0], to[1], to[2]), &settings);
+                if feet.body.grounded {
+                    // (Landed: a jump the server allowed is over.)
+                    feet.body.rising = 0.0;
+                }
+                feet.at = Some(position.0);
+                moves.last_moved = time.elapsed_secs();
+                trace!("A move to {to:?} was allowed.");
+            }
+            Err(problem) => {
+                debug!("A move from {from:?} to {to:?} wasn't allowed: {problem:?}.");
+                // (Placed again where it was: see `place_players`.)
+                feet.at = None;
+                moves.put_back = true;
+            }
+        }
+    }
+}
+
+/// Tells players' clients where the server has put their characters: when
+/// they arrive, are moved by the server (`/town`, a teleport, respawning), or
+/// made a move that wasn't allowed. Those are found somewhere they didn't
+/// move to, and are stood on the ground there first. Players who've
+/// stopped reporting moves have stopped moving.
+fn place_players(
+    time: Res<Time>,
+    solid: Res<Solid>,
+    mut link: ResMut<Link>,
+    mut players: Query<(&Player, &Position, &mut Feet, &mut ClientMoves, &mut Mover, Option<&RunSpeed>)>,
+) {
+    let (dt, now) = (time.delta_secs(), time.elapsed_secs());
+    for (player, position, mut feet, mut moves, mut mover, speed) in &mut players {
+        moves.budget.fill(speed.map_or(RUN_SPEED, |speed| speed.0), dt);
+        // (A new order counts as moving, until the moves stop coming.)
+        if mover.is_changed() {
+            moves.last_moved = now;
+        }
+        if mover.0.is_moving() && now - moves.last_moved > STOPPED_AFTER {
+            mover.0 = Movement::Idle;
+        }
+        if feet.at == Some(position.0) {
+            continue;
+        }
+        // (Put back after a move that wasn't allowed, it keeps its height; anywhere else, on the ground.)
+        let height = if moves.put_back {
+            Some(feet.body.height)
+        } else {
+            solid.0.surface_below(position.0, HIGHEST, HIGHEST - LOWEST)
+        };
+        let Some(height) = height else { continue };
+        moves.put_back = false;
+        feet.body = Body::standing(height);
+        feet.at = Some(position.0);
+        moves.placement += 1;
+        moves.budget = MoveBudget::default();
+        mover.0 = Movement::Idle;
+        let (x, y) = position.0;
+        link.send(player.connection, &ServerMessage::Placed { x, y, height, placement: moves.placement });
+    }
+}
+
+/// Moves everything but players for one tick, through the solid world.
+/// Anything found somewhere it didn't move to (just arrived, or moved by a
+/// script) is stood on the ground there first.
 fn simulate(
     time: Res<Time>,
     solid: Res<Solid>,
     rules: Res<GameRules>,
-    mut movers: Query<(&mut Position, &mut Mover, &mut Feet, Option<&RunSpeed>)>,
+    mut movers: Query<(&mut Position, &mut Mover, &mut Feet, Option<&RunSpeed>), Without<Player>>,
 ) {
     let dt = time.delta_secs();
     for (mut position, mut mover, mut feet, speed) in &mut movers {

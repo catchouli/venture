@@ -61,60 +61,91 @@ venture_client       the Bevy client
 them to predict, the server runs them to decide. Having one copy of the
 code means prediction and authority agree.
 
-## Movement: predicted on the client, checked by the server
+## Movement: moved by the client, checked by the server
 
 Movement must feel instant, so waiting for the server before moving isn't
-acceptable, even on a LAN. The standard answer is **client-side prediction
-with server authority**, and it avoids trusting the client:
+acceptable, even on a LAN. The first design was **client-side prediction
+with server authority**: the client sent only *intents* ("run to (x, y)",
+"steer this way"), both sides ran the same movement code, and the client
+snapped back to the server's position when they differed by a few metres.
 
-1. The player clicks (or holds WASD). The client **starts moving at once**,
-   using the shared movement code, and sends the *intent* to the server:
-   "path to (x, y)" or "steering in direction d at tick t".
-2. The server runs the **same** movement code on the same terrain and
-   obstacle data, from where *it* thinks the player is. It never accepts
-   positions from the client, only intents, so speed hacks and
-   teleporting are impossible by design.
-3. The server sends the authoritative position back regularly. Normally it
-   matches the prediction and nothing visible happens. If it differs (packet
-   loss, or a cheat attempt), the client smoothly corrects towards the
-   server's position, snapping only if the error is large.
-4. **Other** players and monsters aren't predicted. They're shown slightly
+That worked on open ground. But with precise collision (see
+[plan-collision.md](plan-collision.md)), the two drifted apart where it
+matters most: sliding round a building's corner, or jumping at a hedge.
+- **Step size:** the client stepped at its frame rate and the server at 20
+  ticks a second, and Rapier's sliding depends on the step.
+- **Timing:** orders reached the server a tick or more late, so a jump or a
+  turn happened a little further along. One side slid past a corner the
+  other caught on.
+
+The result was frequent snapping back.
+
+So, like most MMOs (World of Warcraft, for one), **the client moves the
+player's own character, and the server checks every move**:
+
+1. The player clicks, holds WASD or presses Space. The client **moves at
+   once** with the shared movement code (`venture_simulation::step`),
+   through its own copy of the world's solid shapes. It sends the order to
+   the server too (`MoveTo`, `Steer`, `Jump` and so on), which acts on it
+   (stopping a fight, starting a conversation, telling others about a jump).
+2. About twenty times a second while it moves, the client says where the
+   character has got to (`Moved { x, y, height, placement }`).
+3. The server checks each move (`check_move`, in `gameplay::accept_moves`):
+   - **no faster than they run:** a budget that fills at their running
+     speed, with a little slack for messages bunched by the network, and at
+     most a second saved up;
+   - **not through or into anything solid:** a capsule swept from the last
+     accepted position (with Rapier's character controller) must get within
+     35 cm of the reported one, which must itself be clear (and not in deep
+     water or lava);
+   - **no higher off the ground than a jump.**
+4. A move that isn't allowed (a cheat, or a real glitch) puts the character
+   back where it was. The server says where, as a new **placement**
+   (`Placed { x, y, height, placement }`). It does the same whenever it
+   moves the character itself: arriving, `/town`, a teleport, respawning.
+   Moves from before the latest placement are ignored, so a teleport is
+   never undone by reports still on their way.
+5. **Other** players and monsters aren't predicted. They're shown slightly
    in the past, interpolating between the last two server updates, which
    looks smooth.
 
-**As implemented:** the client and server share the movement code
-(`venture_simulation::step`) and the world's solid shapes (`venture_collision`,
-see [plan-collision.md](plan-collision.md)). Each character is a capsule
-(0.3 m round, 1.8 m tall) moved by Rapier's kinematic character controller: it
-slides along walls, steps up ledges up to `step_height`, climbs slopes up to
-`max_climb_degrees` and slides down steeper ones, and falls under `gravity`
-when there's nothing under it (all in `server.ron`'s `movement`, sent to
-clients in `Rules`). Deep water and lava are cells no one may enter. The
-server loads the solid shapes of the chunks round every character that moves
-(`collision.rs`, the only code that changes them), with the walls, buildings
-and felled trees; the client keeps its own in step with the chunks it has
-loaded. Snapshots carry each entity's height as well as where it is, so
-others are seen jumping and falling. Routes (clicks, following, NPCs and
-monsters) are found on the navigation mesh (`venture_navigation::NavWorld`):
-the server has the whole world's, the client the loaded chunks'. They go
-straight across open ground, round walls and through doorways, down banks
-too steep to climb (one-way drops), and as near as they can to anywhere
-fenced in. A character held up on a route for a second gives up on it. When
-the prediction and the
-server's position differ by more than a few metres while moving (more, running
-faster than usual), the client snaps to the server. Once both have stopped, it glides the last few
-centimetres. On a LAN this is invisible. For play over the internet,
-the standard next step is numbering each command, so the client can replay its
-unacknowledged inputs on top of each server update.
+The server still decides everything that matters. Players can't go faster,
+through walls or higher than the rules allow, and everything else about
+position (reach, range, talking distance) is judged from the positions it
+has accepted. NPCs and monsters are moved by the server alone, as before.
 
-So the answer to "client or server?" is both: the client *predicts* for
-smoothness, and the server *simulates* for correctness. Because the server
-simulates rather than checking reported positions, there's no separate
-"is this too fast?" check to get right. Things like
-`max_speed × elapsed time` are still asserted as a safety net.
+**The details.** Characters are capsules, 0.3 m round and 1.8 m tall, moved by
+Rapier's kinematic character controller (`venture_collision`). The
+controller:
+- slides along walls;
+- steps up ledges up to `step_height`;
+- climbs slopes up to `max_climb_degrees`, and slides down steeper ones;
+- falls under `gravity` when there's nothing underneath.
 
-Click-to-move suits this approach particularly well, because one small
-message ("go to x, y") describes a whole run.
+These settings are in `server.ron`'s `movement`, sent to clients in `Rules`.
+Deep water and lava are cells no one may enter.
+
+The server loads the solid shapes of the chunks round every character that
+moves, with the walls, buildings and felled trees. `collision.rs` is the only
+code that changes them. The client keeps its own copy in step with the
+chunks it has loaded. Snapshots carry each entity's height as well as where
+it is, so others are seen jumping and falling.
+
+Routes (clicks, following, NPCs and monsters) are found on the navigation
+mesh (`venture_navigation::NavWorld`). The server has the whole world's; the
+client has the loaded chunks'. Routes:
+- go straight across open ground;
+- go round walls and through doorways;
+- go down banks too steep to climb (one-way drops);
+- go as near as they can to anywhere fenced in.
+
+A character held up on a route for a second gives up on it.
+
+So the answer to "client or server?" is both. The client moves its own
+character, so movement is smooth and never rolls back. The server checks
+each move against the same rules and the same world, so it stays in charge.
+The checks are simple, because the client runs the very same movement code:
+an honest client's moves always pass them.
 
 ## The world is baked ahead of time
 

@@ -10,12 +10,14 @@ use venture_protocol::{
     AdminCommand, BodyType, ClientMessage, EntityId, EntityKind, EquipSlot, Features, FishingCommand, FishingState,
     HotbarAction, HotbarEntry, PROTOCOL_VERSION, ServerMessage, TeleportTo, TreeId, WoodcuttingCommand,
 };
+use venture_server::GameRules;
+use venture_server::collision::Solid;
 use venture_server::content::LoadedContent;
-use venture_server::entities::NetworkId;
+use venture_server::entities::{ClientMoves, Feet, Mover, NetworkId, Player, Position, RunSpeed};
 use venture_server::npcs::Npc;
 use venture_server::woodcutting::WoodcuttingRules;
 use venture_server::{ConnectionId, ContentSetup, GameServer, Link, LinkEvent, LinkSender, ProfileStore, ServerWorld};
-use venture_simulation::{FOLLOW_DISTANCE, RUN_SPEED, Rules, TICK_RATE};
+use venture_simulation::{Body, FOLLOW_DISTANCE, RUN_SPEED, Rules, TICK_RATE, step};
 use venture_world::{
     CHUNK_FORMAT_VERSION, CHUNK_SIZE, Chunk, ChunkPos, Fluid, FluidBody, FluidKind, Prop, PropKind, WorldManifest,
 };
@@ -125,6 +127,8 @@ struct TestServer {
     profile_folder: std::path::PathBuf,
     /// Whether to delete the profile folder when the server is dropped.
     delete_profiles: bool,
+    /// Each player character's body, as its "client" moves it (see [`TestServer::pilot`]).
+    bodies: std::collections::HashMap<Entity, (u32, Body)>,
 }
 
 impl TestServer {
@@ -193,13 +197,52 @@ impl TestServer {
             everyone_is_admin: false,
         }
         .install(&mut app);
-        Self { app, link: link_sender, profile_folder, delete_profiles: true }
+        Self { app, link: link_sender, profile_folder, delete_profiles: true, bodies: Default::default() }
     }
 
     /// Runs the server for a number of ticks.
     fn run(&mut self, ticks: usize) {
         for _ in 0..ticks {
+            self.pilot();
             self.app.update();
+        }
+    }
+
+    /// Does what each player's client does: moves their character as the
+    /// server has been told to (a route, steering, following, jumping), with
+    /// the shared movement rules, and reports where it got to (`Moved`).
+    fn pilot(&mut self) {
+        let bodies = &mut self.bodies;
+        let moves = self.app.world_mut().resource_scope(|world, solid: Mut<Solid>| {
+            let rules = world.resource::<GameRules>().0.movement;
+            let mut players =
+                world.query::<(Entity, &Player, &Position, &Feet, &mut Mover, &ClientMoves, Option<&RunSpeed>)>();
+            let mut moves = Vec::new();
+            for (entity, player, position, feet, mut mover, client, speed) in players.iter_mut(world) {
+                if feet.at != Some(position.0) {
+                    continue;
+                }
+                let (placement, body) =
+                    bodies.entry(entity).or_insert((client.placement, Body::standing(feet.body.height)));
+                if *placement != client.placement {
+                    (*placement, *body) = (client.placement, Body::standing(feet.body.height));
+                }
+                // (The server's own record of a jump it's just allowed.)
+                if feet.body.rising > 0.0 && body.grounded {
+                    body.jump(&rules);
+                }
+                if !mover.0.is_moving() && body.grounded {
+                    continue;
+                }
+                let speed = speed.map_or(RUN_SPEED, |speed| speed.0);
+                let (x, y) = step(position.0, body, &mut mover.0, speed, 1.0 / TICK_RATE, &solid.0, &rules);
+                let placement = client.placement;
+                moves.push((player.connection, ClientMessage::Moved { x, y, height: body.height, placement }));
+            }
+            moves
+        });
+        for (connection, message) in moves {
+            self.link.report(LinkEvent::Received { id: connection, bytes: message.encode() });
         }
     }
 
@@ -379,6 +422,51 @@ fn players_move_no_faster_than_running_speed() {
     server.run(20);
     let (x2, _) = client.latest_position(me).unwrap();
     assert!(x2 - x <= RUN_SPEED * 1.01, "moved {} in a second", x2 - x);
+}
+
+/// The latest placement the server sent, if any: where, and which.
+fn latest_placement(messages: &[ServerMessage]) -> Option<((f32, f32, f32), u32)> {
+    messages.iter().rev().find_map(|m| match *m {
+        ServerMessage::Placed { x, y, height, placement } => Some(((x, y, height), placement)),
+        _ => None,
+    })
+}
+
+#[test]
+fn moves_that_arent_allowed_are_put_back_and_old_ones_ignored() {
+    let mut server = TestServer::new("cheating");
+    let (client, me) = server.join(TOKEN_A, "Cheat");
+    server.run(20);
+    client.receive();
+    let ((x, y, height), placement) = {
+        let world = server.app.world_mut();
+        let mut players = world.query::<(&Position, &Feet, &ClientMoves)>();
+        let (position, feet, moves) = players.single(world).expect("one player");
+        ((position.0.0, position.0.1, feet.body.height), moves.placement)
+    };
+    assert!(placement > 0, "placed on arriving");
+
+    // Teleporting 40 m in a tick: put back where it was, as a new placement.
+    client.send(&ClientMessage::Moved { x: x + 40.0, y, height, placement });
+    server.run(2);
+    let messages = client.receive();
+    let (back, again) = latest_placement(&messages).expect("put back");
+    assert_eq!((back.0, back.1, again), (x, y, placement + 1));
+    assert_eq!(client.latest_position(me), None, "(already read)");
+
+    // A move from the old placement is ignored; one from the new is fine.
+    client.send(&ClientMessage::Moved { x: x + 0.2, y, height, placement });
+    server.run(2);
+    assert!(latest_placement(&client.receive()).is_none(), "ignored, not put back again");
+    client.send(&ClientMessage::Moved { x: x + 0.2, y, height, placement: again });
+    server.run(2);
+    let (moved_x, _) = client.latest_position(me).unwrap();
+    assert!((moved_x - (x + 0.2)).abs() < 1e-3, "{moved_x}");
+
+    // Flying up out of reach: put back.
+    client.send(&ClientMessage::Moved { x: x + 0.2, y, height: height + 10.0, placement: again });
+    server.run(2);
+    assert_eq!(latest_placement(&client.receive()).map(|(_, p)| p), Some(again + 1));
 }
 
 #[test]

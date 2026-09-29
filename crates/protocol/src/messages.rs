@@ -196,6 +196,22 @@ pub enum ClientMessage {
     },
     /// Stop moving (and stop following anyone).
     Stop,
+    /// Where the player's character has got to. The client moves its own
+    /// character (as it's told to: [`Self::MoveTo`], [`Self::Steer`], following
+    /// and so on) and says where it is about twenty times a second while it
+    /// moves. The server checks each move (speed, walls, height) and puts the
+    /// character back ([`ServerMessage::Placed`]) if it isn't allowed.
+    Moved {
+        /// Where, in metres.
+        x: f32,
+        /// Where, in metres.
+        y: f32,
+        /// The height of its feet, in metres.
+        height: f32,
+        /// The placement it's from (the last [`ServerMessage::Placed`]'s):
+        /// moves from before the server last placed the character are ignored.
+        placement: u32,
+    },
     /// Follow another player, staying close behind them.
     Follow {
         /// Who to follow.
@@ -213,7 +229,8 @@ pub enum ClientMessage {
     },
     /// Go back to the starting town's square.
     ReturnToTown,
-    /// Jump (for show: it doesn't change where the character can go).
+    /// Jump (the client jumps its character at once; the server tells
+    /// everyone nearby).
     Jump,
     /// Pick one of the options in the open conversation ([`ServerMessage::Dialogue`]).
     ChooseDialogueOption {
@@ -629,6 +646,19 @@ pub enum ServerMessage {
         mana: u32,
         /// Most mana.
         max_mana: u32,
+    },
+    /// The server has put the player's character here (joining, a
+    /// teleport, respawning, or a move it didn't allow): the client moves it
+    /// there, and says where it goes from there with this placement.
+    Placed {
+        /// Where, in metres.
+        x: f32,
+        /// Where, in metres.
+        y: f32,
+        /// The height of its feet, in metres.
+        height: f32,
+        /// Which placement this is (counting up).
+        placement: u32,
     },
     /// Someone nearby jumped (sent to everyone nearby but them).
     Jumped {
