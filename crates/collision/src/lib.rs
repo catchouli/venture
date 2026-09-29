@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use rapier3d::control::{CharacterAutostep, CharacterLength, KinematicCharacterController};
 use rapier3d::parry::partitioning::Bvh;
-use rapier3d::parry::query::DefaultQueryDispatcher;
+use rapier3d::parry::query::{DefaultQueryDispatcher, ShapeCastOptions};
 use rapier3d::parry::shape::Capsule;
 use rapier3d::pipeline::{QueryFilter, QueryPipeline};
 use rapier3d::prelude::{Collider, ColliderHandle, ColliderSet, IslandManager, Ray, RigidBodySet, SoftBodySet};
@@ -30,6 +30,10 @@ pub use shapes::to_rapier;
 pub const CHARACTER_RADIUS: f32 = 0.3;
 /// A character's capsule: its height (feet to crown), in metres.
 pub const CHARACTER_HEIGHT: f32 = 1.8;
+/// The deepest water a character can wade through, in metres.
+pub const MAX_WADING_DEPTH: f32 = 0.6;
+/// How far under a character's feet counts as standing on the ground, in metres.
+const GROUND_REACH: f32 = 0.1;
 
 /// How a character moves through the world (see [`Collision::move_character`]).
 #[derive(Clone, Debug, PartialEq)]
@@ -42,19 +46,11 @@ pub struct CharacterSettings {
     pub step_height: f32,
     /// How far down a character running downhill keeps to the ground, in metres.
     pub snap_to_ground: f32,
-    /// The deepest water a character can wade through, in metres.
-    pub max_wading_depth: f32,
 }
 
 impl Default for CharacterSettings {
     fn default() -> Self {
-        Self {
-            max_climb_degrees: 50.0,
-            min_slide_degrees: 50.0,
-            step_height: 0.4,
-            snap_to_ground: 0.5,
-            max_wading_depth: 0.6,
-        }
+        Self { max_climb_degrees: 50.0, min_slide_degrees: 50.0, step_height: 0.4, snap_to_ground: 0.5 }
     }
 }
 
@@ -90,18 +86,17 @@ pub struct Collision {
     bvh: Bvh,
     chunks: HashMap<ChunkPos, LoadedChunk>,
     structures: Vec<ColliderHandle>,
-    settings: CharacterSettings,
 }
 
 impl Default for Collision {
     fn default() -> Self {
-        Self::new(CharacterSettings::default())
+        Self::new()
     }
 }
 
 impl Collision {
-    /// An empty world (nothing loaded), for characters that move by `settings`.
-    pub fn new(settings: CharacterSettings) -> Self {
+    /// An empty world (nothing loaded).
+    pub fn new() -> Self {
         Self {
             colliders: ColliderSet::new(),
             bodies: RigidBodySet::new(),
@@ -110,18 +105,7 @@ impl Collision {
             bvh: Bvh::new(),
             chunks: HashMap::new(),
             structures: Vec::new(),
-            settings,
         }
-    }
-
-    /// How characters move.
-    pub fn settings(&self) -> &CharacterSettings {
-        &self.settings
-    }
-
-    /// Changes how characters move.
-    pub fn set_settings(&mut self, settings: CharacterSettings) {
-        self.settings = settings;
     }
 
     fn insert(&mut self, collider: Collider) -> ColliderHandle {
@@ -147,7 +131,7 @@ impl Collision {
                 props.insert(index as u16, (Some(handle), collider));
             }
         }
-        let no_entry = no_entry(chunk, self.settings.max_wading_depth);
+        let no_entry = no_entry(chunk, MAX_WADING_DEPTH);
         self.chunks.insert(chunk.pos, LoadedChunk { ground: Some(ground), props, no_entry });
     }
 
@@ -158,6 +142,11 @@ impl Collision {
         for handle in handles.collect::<Vec<_>>() {
             self.remove(handle);
         }
+    }
+
+    /// Whether the chunk under a point (world `(x, y)`) is loaded.
+    pub fn is_loaded_at(&self, (x, y): (f32, f32)) -> bool {
+        self.has_chunk(CellPos::new(x.floor() as i32, y.floor() as i32).chunk())
     }
 
     /// Whether a chunk is loaded.
@@ -251,12 +240,18 @@ impl Collision {
     /// Moves a character standing at `feet` by `desired` (world `x`, `y`, and
     /// up) over `dt` seconds, as far as it can: sliding along what it meets,
     /// stepping up low ledges, climbing only slopes it can, and keeping to the
-    /// ground as it runs downhill. It never enters cells no one may enter.
-    pub fn move_character(&self, feet: (f32, f32, f32), desired: (f32, f32, f32), dt: f32) -> Moved {
-        let settings = &self.settings;
+    /// ground as it runs downhill (all as `settings` say). It never enters
+    /// cells no one may enter.
+    pub fn move_character(
+        &self,
+        feet: (f32, f32, f32),
+        desired: (f32, f32, f32),
+        dt: f32,
+        settings: &CharacterSettings,
+    ) -> Moved {
         let controller = KinematicCharacterController {
             offset: CharacterLength::Absolute(0.02),
-            autostep: Some(CharacterAutostep {
+            autostep: (settings.step_height > 0.0).then_some(CharacterAutostep {
                 max_height: CharacterLength::Absolute(settings.step_height),
                 min_width: CharacterLength::Absolute(0.3),
                 include_dynamic_bodies: false,
@@ -277,15 +272,36 @@ impl Collision {
         );
         let moved = movement.translation;
         let mut end = (feet.0 + moved.x, feet.1 + moved.z, feet.2 + moved.y);
-        // Deep water and lava turn characters away, sliding along their edges.
-        if self.no_entry(end.0.floor() as i32, end.1.floor() as i32) {
+        // Deep water and lava turn characters away, sliding along their edges
+        // (unless they're somehow in them already, when they may leave).
+        let entering = |(x, y): (f32, f32)| self.no_entry(x.floor() as i32, y.floor() as i32);
+        if entering((end.0, end.1)) && !entering((feet.0, feet.1)) {
             let across = (feet.0 + moved.x, feet.1);
             let along = (feet.0, feet.1 + moved.z);
             let open = |(x, y): (f32, f32)| !self.no_entry(x.floor() as i32, y.floor() as i32);
             let (x, y) = [across, along].into_iter().find(|&at| open(at)).unwrap_or((feet.0, feet.1));
             end = (x, y, end.2);
         }
-        Moved { feet: end, grounded: movement.grounded, sliding: movement.is_sliding_down_slope }
+        let grounded = self.stands_on_ground(end, settings);
+        Moved { feet: end, grounded, sliding: movement.is_sliding_down_slope }
+    }
+
+    /// Whether a character with its feet at `feet` stands on ground it could
+    /// climb: something right under it, no steeper than `settings` allow.
+    /// (Rapier's own test counts touching almost anything below the
+    /// capsule's middle, such as a wall's top edge beside a character
+    /// jumping at it.)
+    pub fn stands_on_ground(&self, feet: (f32, f32, f32), settings: &CharacterSettings) -> bool {
+        let (shape, pose) = capsule_at(feet);
+        let options = ShapeCastOptions {
+            max_time_of_impact: GROUND_REACH,
+            target_distance: 0.0,
+            stop_at_penetration: false,
+            compute_impact_geometry_on_penetration: true,
+        };
+        self.queries()
+            .cast_shape(&pose, Vector::NEG_Y, &shape, options)
+            .is_some_and(|(_, hit)| hit.normal1.y >= settings.max_climb_degrees.to_radians().cos() - 1e-3)
     }
 }
 

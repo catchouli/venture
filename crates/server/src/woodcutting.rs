@@ -76,6 +76,13 @@ pub struct WoodcuttingRules(pub WoodcuttingConfig);
 #[derive(Resource, Default)]
 pub struct FelledTrees(HashMap<TreeId, Felled>);
 
+impl FelledTrees {
+    /// The trees felled (and not grown back yet).
+    pub fn trees(&self) -> impl Iterator<Item = TreeId> + '_ {
+        self.0.keys().copied()
+    }
+}
+
 struct Felled {
     fallen: Option<Entity>,
     fallen_until: f32,

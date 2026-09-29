@@ -50,6 +50,7 @@ pub mod abilities;
 pub mod admin;
 pub mod character;
 pub mod clock;
+pub mod collision;
 pub mod combat;
 pub mod config;
 pub mod consumables;
@@ -225,7 +226,7 @@ impl GameServer {
                     fishing::FishingPlugin,
                     woodcutting::WoodcuttingPlugin,
                 ),
-                (content::ContentPlugin, world::WorldReloadPlugin),
+                (content::ContentPlugin, world::WorldReloadPlugin, collision::CollisionPlugin),
             ));
     }
 }

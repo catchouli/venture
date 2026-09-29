@@ -8,7 +8,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use venture_simulation::{DayCycle, Rules};
+use venture_simulation::{DayCycle, MovementRules, Rules};
 
 /// All the server's settings.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -29,6 +29,9 @@ pub struct ServerConfig {
     /// How the days go: the length of a day, sunrise and sunset, and how
     /// high the sun gets (see `venture_simulation::DayCycle`).
     pub day: DayCycle,
+    /// How characters move: gravity, jumps and slopes (see
+    /// `venture_simulation::MovementRules`).
+    pub movement: MovementRules,
     /// The names of characters with admin powers (ignoring case). Names are
     /// unique, and each belongs to one login token.
     pub admins: Vec<String>,
@@ -194,7 +197,7 @@ impl ServerConfig {
 
     /// The game rules these settings describe, as shared with clients.
     pub fn rules(&self) -> Rules {
-        Rules { max_move_distance: self.player.max_move_distance, day: self.day }
+        Rules { max_move_distance: self.player.max_move_distance, day: self.day, movement: self.movement }
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -205,6 +208,14 @@ impl ServerConfig {
         let cooldown = self.player.item_cooldown;
         if !cooldown.is_finite() || cooldown < 0.0 {
             return Err(format!("player.item_cooldown must be a number of seconds, not {cooldown}"));
+        }
+        let movement = self.movement;
+        let lengths = [movement.gravity, movement.jump_height, movement.step_height];
+        if lengths.iter().any(|length| !length.is_finite() || *length < 0.0) {
+            return Err("movement.gravity, jump_height and step_height must be numbers, at least 0".to_string());
+        }
+        if !(0.0..90.0).contains(&movement.max_climb_degrees) {
+            return Err(format!("movement.max_climb_degrees must be 0 to 90, not {}", movement.max_climb_degrees));
         }
         let day = self.day;
         if !day.day_minutes.is_finite() || day.day_minutes < 1.0 {

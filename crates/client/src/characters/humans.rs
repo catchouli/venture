@@ -885,20 +885,12 @@ fn animate_humans(
     models: Res<HumanModels>,
     mut people: Query<(&Gait, &mut HumanRig)>,
     mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
-    mut transforms: Query<&mut Transform>,
 ) {
     let Some(animations) = &models.animations else { return };
     let clips = &animations.clips;
     let now = time.elapsed_secs();
     for (gait, mut rig) in &mut people {
         let Ok((mut player, mut transitions)) = players.get_mut(rig.armature) else { continue };
-        // Jumps lift the whole body.
-        if let Ok(mut transform) = transforms.get_mut(rig.body_root) {
-            let lift = gait.jump_amount().0;
-            if transform.translation.y != lift {
-                transform.translation.y = lift;
-            }
-        }
         let swinging = gait.swing_progress().is_some();
         let waving = gait.is_waving();
         // One-off animations start once, and play to the end.
@@ -961,7 +953,7 @@ fn animate_humans(
                 rig.upper = Some((upper, since, length));
             }
         }
-        let (name, rate) = if gait.jump_amount().0 > 0.0 {
+        let (name, rate) = if gait.airborne {
             ("jump", 1.0)
         } else if gait.resting {
             ("sitting", 1.0)

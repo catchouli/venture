@@ -823,7 +823,9 @@ pub struct EntityState {
     pub x: f32,
     /// Position in metres.
     pub y: f32,
-    /// Whether it is moving.
+    /// How high its feet are, in metres (on the ground, or in the air when jumping or falling).
+    pub height: f32,
+    /// Whether it is moving (or in the air).
     pub moving: bool,
     /// How healthy it is, from 0 to 1 (monsters only; players' health is private).
     pub health: Option<f32>,

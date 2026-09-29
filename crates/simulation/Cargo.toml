@@ -8,7 +8,11 @@ rust-version.workspace = true
 
 [dependencies]
 venture_navigation.workspace = true
+venture_collision.workspace = true
 serde.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+venture_world.workspace = true
