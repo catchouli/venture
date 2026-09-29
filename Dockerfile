@@ -20,6 +20,10 @@ FROM --platform=$BUILDPLATFORM rust:1.98-trixie AS build
 
 ARG TARGETARCH
 ARG TRUNK_VERSION=0.21.14
+# How the web client is optimised as it's linked: "fat" (the smallest
+# download, about 10 MB compressed, but it needs about 13 GB of memory:
+# give Docker at least 14) or "thin" (about a quarter bigger, in about 5 GB).
+ARG CLIENT_LTO=fat
 
 # The Rust target for the image's platform, and a linker for it (the
 # server is pure Rust, so a linker is all it needs from C).
@@ -59,7 +63,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked -p venture_worldgen --bin bake; \
     mkdir -p /out/server_data/profiles; \
     cp "target/$triple/release/venture_server" /out/; \
-    (cd crates/client && trunk build --release --cargo-profile wasm-release --dist /out/client); \
+    if [ "$CLIENT_LTO" = thin ]; then export CARGO_PROFILE_WASM_RELEASE_CODEGEN_UNITS=16; fi; \
+    (cd crates/client && CARGO_PROFILE_WASM_RELEASE_LTO="$CLIENT_LTO" \
+        trunk build --release --cargo-profile wasm-release --dist /out/client); \
     target/release/bake /out/world
 
 # ---- Running ----

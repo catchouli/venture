@@ -163,6 +163,11 @@ on the Mac.
   That takes a while.
 - Cargo's caches are kept between builds, so after a `git pull`, a rebuild
   takes a few minutes.
+- **Memory:** the web client's final link, with full link-time optimisation
+  (the smallest download, about 10 MB compressed), needs about 13 GB of
+  memory. In Docker Desktop, give Docker at least 14 GB (Settings →
+  Resources). With less, build with `--build-arg CLIENT_LTO=thin`: that needs
+  about 5 GB, and the download is about a quarter bigger.
 
 **Settings and data:**
 - **Settings:** the image uses the repository's `server.ron`. To change settings
