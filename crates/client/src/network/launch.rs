@@ -1,7 +1,10 @@
 //! How the client was started: which server to play on.
 //!
 //! - **Web:** the server that served the page.
-//! - **Desktop:** `--connect http://host:port` (default `http://127.0.0.1:8080`),
+//! - **Desktop:** `--connect http://host:port`, or else the server the client
+//!   was built for (`VENTURE_SERVER` when it was compiled, such as
+//!   `VENTURE_SERVER=https://play.example.com cargo build --release -p venture_client`),
+//!   or else `http://127.0.0.1:8080`;
 //!   or `--local` to run a server inside the client for development (see
 //!   `crate::network::local_server`), optionally with `--world <folder>`,
 //!   `--new-character` (delete your local character first, to make a new
@@ -10,9 +13,13 @@
 
 use bevy::prelude::*;
 
-/// The server address desktop clients use unless told otherwise.
+/// The server address desktop clients use unless told otherwise (`--connect`):
+/// `VENTURE_SERVER` when the client was compiled, if it was set, or this computer.
 #[cfg(not(target_arch = "wasm32"))]
-const DEFAULT_SERVER: &str = "http://127.0.0.1:8080";
+const DEFAULT_SERVER: &str = match option_env!("VENTURE_SERVER") {
+    Some(server) => server,
+    None => "http://127.0.0.1:8080",
+};
 
 /// Which server to play on.
 #[derive(Resource, Clone, Debug)]
