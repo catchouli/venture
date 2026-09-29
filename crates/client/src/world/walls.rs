@@ -34,8 +34,12 @@ use crate::world::trees::TreeTemplates;
 
 /// Each kind's texture (a folder in the content's `textures/`), and how
 /// many metres it covers before it repeats.
-const TEXTURES: [(WallKind, &str, f32); 3] =
-    [(WallKind::DryStone, "drystone", 1.6), (WallKind::Fence, "fence_wood", 1.2), (WallKind::Hedge, "hedge", 2.0)];
+const TEXTURES: [(WallKind, &str, f32); 4] = [
+    (WallKind::DryStone, "drystone", 1.6),
+    (WallKind::Fence, "fence_wood", 1.2),
+    (WallKind::Hedge, "hedge", 2.0),
+    (WallKind::Curtain, "drystone", 2.2),
+];
 /// The tree species whose leaves hedges wear.
 pub const HEDGE_SPECIES: &str = "hawthorn";
 /// Hedges' leaves are drawn up to this far from the camera, in metres.

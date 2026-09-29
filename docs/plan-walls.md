@@ -163,4 +163,7 @@ In the World tab:
   along its shoulders and top to soften its outline. 1.7 m tall by default,
   1.2 m wide. A test hedgerow runs south of the village, open where the road
   crosses. On the map, dark green.
+- [x] Castle walls (`kind: Curtain`): a thick band of stone (the Rock051
+  texture, not stone by stone: a castle's walls are long), battered a
+  little, 6 m tall by default, with a walk along the top between merlons.
 - [ ] 7. Later: gates, stiles, walls meeting buildings.

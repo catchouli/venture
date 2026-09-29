@@ -269,4 +269,14 @@ As for walls:
   quoins only at right-angled corners); convex outlines get hip roofs by
   their straight skeleton (`skeleton.rs`), others a flat roof behind a
   parapet. Oakwengate has an octagonal dovecote and a skewed woodshed.
+- [x] A castle south of Oakwengate, where the road runs through it: four
+  round towers (12-sided free-angled outlines) and a keep, all in a new
+  `castle` style (1.2 m walls, 4 m storeys, arrow slits, a gate-sized door,
+  flat roofs with battlements), a great hall in the stone hall style, and
+  curtain walls between the towers (`kind: Curtain` in the walls file: 6 m
+  tall, 2 m thick, merlons on both sides; the road makes their gateways).
+  New for it: roofs can be `Flat` on any building (behind a parapet,
+  battlemented if the style's `battlements` is set), windows can be
+  unglazed (`glazed: false`: arrow slits), and outlines drawn clockwise
+  keep their doors on the right walls.
 - [ ] 7. Later

@@ -142,12 +142,16 @@ pub fn openings(builder: &mut Builder, openings: &[Vec<Opening>]) {
 fn window(builder: &mut Builder, (start, along, out): (Vec3, Vec3, Vec3), opening: &Opening, upper: bool) {
     let thickness = builder.style.wall_thickness;
     let (from, to, bottom, top) = (opening.from, opening.to, opening.bottom, opening.top);
-    let depth = -thickness * 0.4;
+    let depth = if builder.style.window.glazed { -thickness * 0.4 } else { -thickness };
     let at = |x: f32, y: f32, d: f32| start + along * x + Vec3::Y * y + out * d;
     let glass = builder.mesh(Surface::Dark, Detail::Full, upper);
     let pane = [at(from, bottom, depth), at(to, bottom, depth), at(to, top, depth), at(from, top, depth)];
     quad_facing(glass, pane, [[0.0; 2]; 4], GLASS, out);
     quad_facing(glass, pane, [[0.0; 2]; 4], GLASS, -out);
+    if !builder.style.window.glazed {
+        // (An arrow slit: just an opening, dark within.)
+        return;
+    }
     // The frame round the glass, and a cross of bars.
     let trim = builder.colours.trim;
     let (width, height) = (to - from, top - bottom);

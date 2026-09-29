@@ -340,6 +340,7 @@ fn add_wall(document: &mut Document, kind: WallKind, first: (f32, f32), now: f64
         WallKind::DryStone => "wall",
         WallKind::Fence => "fence",
         WallKind::Hedge => "hedge",
+        WallKind::Curtain => "castle_wall",
     };
     let id = (1..).map(|n| format!("{prefix}_{n}")).find(|id| !taken.contains(id))?;
     let height = kind.usual_height();

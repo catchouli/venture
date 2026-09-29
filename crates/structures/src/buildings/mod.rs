@@ -174,6 +174,7 @@ pub fn quad_facing(mesh: &mut MeshPart, corners: [Vec3; 4], uvs: [[f32; 2]; 4], 
 /// (see [`check_plan`]).
 pub fn build_building(building: &BakedBuilding, style: &BuildingStyle) -> Option<BuildingMeshes> {
     let style = &style.scaled();
+    let building = &BakedBuilding { plan: plan::anticlockwise(&building.plan), ..building.clone() };
     let plan = &building.plan;
     if !check_plan(plan, Some(style)).is_empty() {
         return None;
@@ -329,7 +330,8 @@ pub(crate) mod tests {
                     let far = built.triangles(Detail::Far);
                     assert!(full > 500 && full < 120_000, "{} {roof:?} {floors}: {full} triangles", style.id);
                     assert!(far > 0 && far * 5 < full, "far away it's lighter ({far} of {full})");
-                    assert!(built.parts.iter().any(|part| part.surface == Surface::Thatch && part.upper));
+                    let roofed = if roof == RoofShape::Flat { Surface::Stone } else { Surface::Thatch };
+                    assert!(built.parts.iter().any(|part| part.surface == roofed && part.upper));
                     assert!(built.parts.iter().any(|part| part.surface == Surface::Floor && !part.upper));
                     for part in &built.parts {
                         let vertices = part.mesh.positions.len();

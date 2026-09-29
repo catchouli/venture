@@ -122,6 +122,7 @@ fn draw_walls(picture: &mut RgbImage, walls: &[BakedWall]) {
             WallKind::DryStone => (Rgb([84, 80, 74]), 0.7),
             WallKind::Fence => (Rgb([96, 70, 44]), 0.45),
             WallKind::Hedge => (Rgb([40, 66, 28]), 0.9),
+            WallKind::Curtain => (Rgb([70, 68, 64]), 1.4),
         };
         for pair in wall.samples.windows(2) {
             let (a, b) = (pair[0], pair[1]);
