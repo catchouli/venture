@@ -83,7 +83,20 @@ with server authority**, and it avoids trusting the client:
    looks smooth.
 
 **As implemented:** the client and server share the movement code
-(`venture_simulation`) and the baked obstacle data. When the prediction and the
+(`venture_simulation::step`) and the world's solid shapes (`venture_collision`,
+see [plan-collision.md](plan-collision.md)). Each character is a capsule
+(0.3 m round, 1.8 m tall) moved by Rapier's kinematic character controller: it
+slides along walls, steps up ledges up to `step_height`, climbs slopes up to
+`max_climb_degrees` and slides down steeper ones, and falls under `gravity`
+when there's nothing under it (all in `server.ron`'s `movement`, sent to
+clients in `Rules`). Deep water and lava are cells no one may enter. The
+server loads the solid shapes of the chunks round every character that moves
+(`collision.rs`, the only code that changes them), with the walls, buildings
+and felled trees; the client keeps its own in step with the chunks it has
+loaded. Snapshots carry each entity's height as well as where it is, so
+others are seen jumping and falling. Routes are still planned on the 1 m
+grid for now; a character held up on one for a second gives up on it. When
+the prediction and the
 server's position differ by more than a few metres while moving (more, running
 faster than usual), the client snaps to the server. Once both have stopped, it glides the last few
 centimetres. On a LAN this is invisible. For play over the internet,
@@ -483,11 +496,14 @@ anything). New abilities go in the first empty slot, and forgotten ones come off
 
 ## Jumping
 
-For now jumping is for show: movement stays on the ground, so it doesn't
-change where a character can go. Later it will be possible to jump onto
-things, but the game won't require it. The client jumps at once and sends `Jump`; the server
-allows one jump at a time (`JUMP_SECONDS`, in `venture_simulation`), stands a
-resting player up, and tells everyone else within 40 m (`Jumped { id }`).
+A jump is real movement: it sends the character up at the speed that lifts its
+feet `jump_height` metres (1.4 by default: over fences and dry-stone walls,
+not hedges), and gravity brings it down. Only a character standing on the
+ground can jump (so one at a time), and it doesn't step up onto things while
+in the air. The client jumps at once (predicting it) and sends `Jump`; the
+server jumps the character too, stands a resting player up, and tells everyone
+else within 40 m (`Jumped { id }`; they see the jump in the heights in
+snapshots, and the jump animation plays while a character is in the air).
 
 ## Actions and chat commands
 

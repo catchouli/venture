@@ -2,6 +2,7 @@
 //! the camera and turned into terrain, water, lava, props and walls, under the sky and sun.
 
 pub mod buildings;
+pub mod collision;
 pub mod daylight;
 pub mod lighting;
 pub mod props;
@@ -36,6 +37,7 @@ impl Plugin for WorldPlugin {
             walls::WallsPlugin,
             buildings::BuildingsPlugin,
             surfaces::SurfacesPlugin,
+            collision::CollisionPlugin,
         ));
     }
 }

@@ -1181,7 +1181,9 @@ fn jumps_are_seen_nearby_one_at_a_time() {
     assert_eq!(jumps(jumper.receive()), 0, "the jumper's own client already showed it");
 
     // Once it has landed, they can jump again.
-    server.run((venture_simulation::JUMP_SECONDS * TICK_RATE) as usize + 1);
+    let rules = venture_simulation::MovementRules::default();
+    let in_the_air = 2.0 * rules.jump_speed() / rules.gravity;
+    server.run((in_the_air * TICK_RATE) as usize + 2);
     jumper.send(&ClientMessage::Jump);
     server.run(2);
     assert_eq!(jumps(friend.receive()), 1);

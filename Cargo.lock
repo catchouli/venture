@@ -7176,6 +7176,7 @@ dependencies = [
  "ehttp",
  "ewebsock",
  "image",
+ "venture_collision",
  "venture_content",
  "venture_navigation",
  "venture_protocol",
@@ -7276,6 +7277,7 @@ dependencies = [
  "sha2",
  "tokio",
  "tower-http",
+ "venture_collision",
  "venture_content",
  "venture_navigation",
  "venture_protocol",
@@ -7290,7 +7292,9 @@ name = "venture_simulation"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "venture_collision",
  "venture_navigation",
+ "venture_world",
 ]
 
 [[package]]

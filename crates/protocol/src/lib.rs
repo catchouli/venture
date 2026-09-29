@@ -27,7 +27,7 @@ pub use rules::{
 
 /// The protocol version. Increase it whenever messages change; the server
 /// turns away clients speaking a different version.
-pub const PROTOCOL_VERSION: u32 = 31;
+pub const PROTOCOL_VERSION: u32 = 32;
 
 /// A short fingerprint of a file's bytes (64-bit FNV-1a, in hex), for
 /// telling versions of it apart in web addresses (so browsers can keep a
@@ -105,6 +105,7 @@ mod tests {
                 id: EntityId(7),
                 x: 1.0,
                 y: 2.0,
+                height: 3.5,
                 moving: true,
                 health: Some(0.5),
                 resting: false,

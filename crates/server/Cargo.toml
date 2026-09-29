@@ -16,6 +16,7 @@ http = ["dep:tokio", "dep:axum", "dep:tower-http", "dep:clap", "dep:brotli"]
 venture_world.workspace = true
 venture_navigation.workspace = true
 venture_simulation.workspace = true
+venture_collision.workspace = true
 venture_protocol.workspace = true
 venture_content = { workspace = true, features = ["scripts"] }
 venture_rpg.workspace = true

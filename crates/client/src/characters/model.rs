@@ -11,7 +11,6 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use bevy::prelude::*;
 use venture_content::{AppearanceDef, Colour, OutfitStyle};
 use venture_protocol::{BodyType, ItemLook, LookStyle, PlayerLook};
-use venture_simulation::JUMP_SECONDS;
 
 /// Distance covered by one full running cycle (two steps), in metres.
 const STRIDE_LENGTH: f32 = 2.6;
@@ -23,8 +22,8 @@ const BLEND_RATE: f32 = 8.0;
 const SWING_SECONDS: f32 = 0.45;
 /// How long a wave lasts, in seconds.
 const WAVE_SECONDS: f32 = 1.8;
-/// How high a jump goes, in metres.
-const JUMP_HEIGHT: f32 = 0.45;
+/// How quickly legs tuck up in the air and come down again (higher is quicker).
+const TUCK_RATE: f32 = 10.0;
 /// How quickly characters sit down and stand up (higher is quicker).
 const SIT_RATE: f32 = 6.0;
 /// How far the hips drop when sitting, in metres.
@@ -58,8 +57,11 @@ pub struct Gait {
     swinging: Option<f32>,
     /// Whether the character is sitting down to rest. Set from snapshots.
     pub resting: bool,
-    /// Seconds into a jump, if the character is in the air.
-    jumping: Option<f32>,
+    /// Whether the character is in the air (jumping or falling). Set by
+    /// whatever moves the character.
+    pub airborne: bool,
+    /// How far the legs are tucked up (in the air), from `0.0` to `1.0`.
+    tucked: f32,
     /// Whether the swing going on is casting a spell (rather than a blow).
     casting: bool,
     /// How far down they are, from `0.0` (standing) to `1.0` (sitting).
@@ -70,28 +72,6 @@ impl Gait {
     /// Starts a friendly wave of the right hand (or starts it over).
     pub fn wave(&mut self) {
         self.waving = Some(0.0);
-    }
-
-    /// Jumps, unless already in the air. Returns whether it did.
-    pub fn jump(&mut self) -> bool {
-        let ready = self.jumping.is_none();
-        if ready {
-            self.jumping = Some(0.0);
-        }
-        ready
-    }
-
-    /// How high the jump has lifted the character (metres), and how far
-    /// through it they are (0 to 1), while in the air.
-    pub fn jump_amount(&self) -> (f32, f32) {
-        match self.jumping {
-            Some(time) => {
-                let progress = (time / JUMP_SECONDS).clamp(0.0, 1.0);
-                // A parabola: up quickly, a moment at the top, and down.
-                (JUMP_HEIGHT * 4.0 * progress * (1.0 - progress), progress)
-            }
-            None => (0.0, 0.0),
-        }
     }
 
     /// Starts a swing of the weapon (or fist), as in an attack.
@@ -796,11 +776,10 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
         if let Some(time) = gait.swinging {
             gait.swinging = Some(time + dt).filter(|&time| time < SWING_SECONDS);
         }
-        if let Some(time) = gait.jumping {
-            gait.jumping = Some(time + dt).filter(|&time| time < JUMP_SECONDS);
-        }
         let target = if gait.resting { 1.0 } else { 0.0 };
         gait.sitting += (target - gait.sitting) * (SIT_RATE * dt).min(1.0);
+        let target = if gait.airborne { 1.0 } else { 0.0 };
+        gait.tucked += (target - gait.tucked) * (TUCK_RATE * dt).min(1.0);
     }
 
     let breathing = (time.elapsed_secs() * 2.0).sin();
@@ -810,10 +789,9 @@ fn animate_joints(time: Res<Time>, mut gaits: Query<&mut Gait>, mut joints: Quer
         let (wave, wave_time) = gait.wave_amount();
         // Sitting lowers the body to the ground and lays the legs out in front.
         let sit = gait.sitting;
-        // Jumping lifts the whole body, tucking the legs up in the middle of it.
-        let (lift, jump) = gait.jump_amount();
-        let tuck = if jump > 0.0 { (jump * PI).sin() } else { 0.0 };
-        let drop = SIT_DROP * sit - lift;
+        // In the air, the legs tuck up.
+        let tuck = gait.tucked;
+        let drop = SIT_DROP * sit;
         transform.rotation = match joint.kind {
             JointKind::Body => {
                 // Bob up at each footfall, lean into the run and twist with the stride.

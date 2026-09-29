@@ -75,6 +75,18 @@ fn raycast(ray: Ray3d, height: impl Fn(f32, f32) -> Option<f32>) -> Option<Vec3>
     None
 }
 
+/// How high to show a character whose feet are at `feet` (metres) at `(x,
+/// y)`: on the ground as it's drawn when they're about on it (the solid
+/// ground's triangles and the drawn ground differ by a few centimetres), and
+/// at their feet otherwise (jumping, falling, or on a wall).
+pub fn shown_height(store: &ChunkStore, x: f32, y: f32, feet: f32) -> f32 {
+    const ON_THE_GROUND: f32 = 0.15;
+    match ground_height(store, x, y) {
+        Some(ground) if (feet - ground).abs() < ON_THE_GROUND => ground,
+        _ => feet,
+    }
+}
+
 /// Whether terrain cell `(x, y)` is blocked. Unloaded cells count as blocked,
 /// so paths stay on loaded ground.
 pub fn is_blocked(obstacles: &ObstacleStore, x: i32, y: i32) -> bool {

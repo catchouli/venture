@@ -77,7 +77,8 @@ fn running_into_a_fence_stops_at_its_face_and_slides_along_it() {
     let mut feet = (17.0, 20.0, 0.0);
     // Running diagonally into it, at 5 m/s for 2 s.
     for _ in 0..40 {
-        feet = collision.move_character(feet, (0.25 * 0.7, 0.25 * 0.7, -0.05), 0.05).feet;
+        feet =
+            collision.move_character(feet, (0.25 * 0.7, 0.25 * 0.7, -0.05), 0.05, &CharacterSettings::default()).feet;
     }
     assert!(feet.0 < 20.0 - 0.15 - CHARACTER_RADIUS + 0.05, "never through it: {feet:?}");
     assert!(feet.0 > 19.4, "right up against it: {feet:?}");
@@ -98,7 +99,7 @@ fn doorways_are_open_and_walls_are_not() {
     let walk = |from: (f32, f32, f32)| {
         let mut feet = from;
         for _ in 0..60 {
-            feet = collision.move_character(feet, (0.0, 0.25, -0.05), 0.05).feet;
+            feet = collision.move_character(feet, (0.0, 0.25, -0.05), 0.05, &CharacterSettings::default()).feet;
         }
         feet
     };
@@ -146,7 +147,7 @@ fn deep_water_is_no_entry_but_shallows_are_waded() {
     assert!(!collision.fits((36.5, 10.0, 0.0)), "deep");
     let mut feet = (30.0, 10.0, 0.0);
     for _ in 0..40 {
-        feet = collision.move_character(feet, (0.25, 0.1, -0.05), 0.05).feet;
+        feet = collision.move_character(feet, (0.25, 0.1, -0.05), 0.05, &CharacterSettings::default()).feet;
     }
     assert!(feet.0 < 35.0 && feet.1 > 12.0, "stopped at the deep water's edge, sliding along it: {feet:?}");
 }
@@ -165,7 +166,8 @@ fn slopes_too_steep_can_be_come_down_but_not_gone_up() {
     let gravity = |from: (f32, f32, f32), way: f32| {
         let (mut feet, mut falling) = (from, 0.0_f32);
         for _ in 0..60 {
-            let moved = collision.move_character(feet, (0.25 * way, 0.0, falling * 0.05), 0.05);
+            let moved =
+                collision.move_character(feet, (0.25 * way, 0.0, falling * 0.05), 0.05, &CharacterSettings::default());
             feet = moved.feet;
             falling = if moved.grounded { 0.0 } else { falling - 20.0 * 0.05 };
         }
@@ -191,7 +193,7 @@ fn low_ledges_are_stepped_up() {
     let collision = world_of(&chunk);
     let mut feet = (18.0, 30.0, 0.0);
     for _ in 0..40 {
-        feet = collision.move_character(feet, (0.25, 0.0, -0.05), 0.05).feet;
+        feet = collision.move_character(feet, (0.25, 0.0, -0.05), 0.05, &CharacterSettings::default()).feet;
     }
     assert!(feet.0 > 25.0 && (feet.2 - 0.3).abs() < 0.05, "{feet:?}");
 }

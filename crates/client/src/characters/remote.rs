@@ -13,7 +13,6 @@
 use std::collections::{HashMap, VecDeque};
 
 use bevy::prelude::*;
-use venture_navigation::Point;
 use venture_protocol::{EntityId, EntityKind, PlayerLook, ServerMessage};
 
 use crate::characters::humans::HumanLook;
@@ -27,7 +26,7 @@ use crate::content::ContentStore;
 use crate::fishing::traps::{TrapAssets, TrapOwner, spawn_trap};
 use crate::interaction::targeting::{Health, Level, TargetKind, TargetLabel, Targetable};
 use crate::network::{ClientState, FromServer};
-use crate::world::query::ground_height;
+use crate::world::query::{ground_height, shown_height};
 use crate::world::streaming::ChunkStore;
 use crate::world::trees::Fallen;
 
@@ -63,11 +62,18 @@ struct NpcLooks(HashMap<String, Look>);
 #[derive(Component, PartialEq)]
 struct PlayerAppearance(PlayerLook);
 
+/// Where someone is: `x`, `y`, and the height of their feet (metres).
+type Place = [f32; 3];
+
+/// Feet this far above the ground are in the air (jumping or falling), in metres.
+const IN_THE_AIR: f32 = 0.2;
+
 /// Someone else's character.
 #[derive(Component)]
 struct RemoteEntity {
-    /// Positions from recent snapshots, with the (client) time each arrived, oldest first.
-    samples: VecDeque<(f32, Point)>,
+    /// Positions from recent snapshots (`x`, `y` and the height of its feet),
+    /// with the (client) time each arrived, oldest first.
+    samples: VecDeque<(f32, Place)>,
     /// The NPC's appearance id, if it's an NPC.
     appearance: Option<String>,
 }
@@ -141,7 +147,7 @@ fn follow_server_events(
                 };
                 commands.entity(entity).insert((
                     Name::new(name.clone()),
-                    RemoteEntity { samples: VecDeque::from([(now, (*x, *y))]), appearance },
+                    RemoteEntity { samples: VecDeque::from([(now, [*x, *y, translation.y])]), appearance },
                     Targetable { id: *id, kind: target_kind },
                 ));
                 // Characters' names float over them; a fallen tree's only shows in the target frame.
@@ -182,7 +188,7 @@ fn follow_server_events(
                         gait.resting = state.resting;
                     }
                     let Ok(mut other) = others.get_mut(entity) else { continue };
-                    other.samples.push_back((now, (state.x, state.y)));
+                    other.samples.push_back((now, [state.x, state.y, state.height]));
                     if other.samples.len() > MAX_SAMPLES {
                         other.samples.pop_front();
                     }
@@ -241,13 +247,14 @@ fn interpolate(time: Res<Time>, store: Res<ChunkStore>, mut others: Query<(&Remo
     let dt = time.delta_secs();
     let shown_time = time.elapsed_secs() - INTERPOLATION_DELAY;
     for (other, mut transform, mut gait) in &mut others {
-        let (x, y) = position_at(&other.samples, shown_time);
+        let [x, y, feet] = position_at(&other.samples, shown_time);
         let previous = from_bevy(transform.translation);
         let (moved_x, moved_y) = (x - previous.0, y - previous.1);
         let moved = moved_x.hypot(moved_y);
 
-        let height = ground_height(&store, x, y).unwrap_or(transform.translation.y);
-        transform.translation = to_bevy(x, y, height);
+        let ground = ground_height(&store, x, y);
+        transform.translation = to_bevy(x, y, shown_height(&store, x, y, feet));
+        gait.airborne = ground.is_some_and(|ground| feet - ground > IN_THE_AIR);
         if moved > 1e-4 {
             let facing = Quat::from_rotation_y(moved_x.atan2(moved_y));
             transform.rotation = transform.rotation.slerp(facing, (TURN_RATE * dt).min(1.0));
@@ -258,13 +265,13 @@ fn interpolate(time: Res<Time>, store: Res<ChunkStore>, mut others: Query<(&Remo
 
 /// The position at `time`, interpolated between the samples around it (or
 /// the nearest end if `time` is outside them).
-fn position_at(samples: &VecDeque<(f32, Point)>, time: f32) -> Point {
-    let Some(&(_, last)) = samples.back() else { return (0.0, 0.0) };
+fn position_at(samples: &VecDeque<(f32, Place)>, time: f32) -> Place {
+    let Some(&(_, last)) = samples.back() else { return [0.0; 3] };
     for pair in samples.iter().collect::<Vec<_>>().windows(2) {
         let (&(t0, p0), &(t1, p1)) = (pair[0], pair[1]);
         if time >= t0 && time <= t1 {
             let f = if t1 > t0 { (time - t0) / (t1 - t0) } else { 1.0 };
-            return (p0.0 + (p1.0 - p0.0) * f, p0.1 + (p1.1 - p0.1) * f);
+            return [0, 1, 2].map(|i| p0[i] + (p1[i] - p0[i]) * f);
         }
     }
     if samples.front().is_some_and(|&(t0, _)| time < t0) { samples[0].1 } else { last }
@@ -282,9 +289,9 @@ mod tests {
 
     #[test]
     fn positions_are_interpolated_between_samples() {
-        let samples = VecDeque::from([(0.0, (0.0, 0.0)), (1.0, (10.0, 0.0))]);
-        assert_eq!(position_at(&samples, 0.5), (5.0, 0.0));
-        assert_eq!(position_at(&samples, -1.0), (0.0, 0.0));
-        assert_eq!(position_at(&samples, 2.0), (10.0, 0.0));
+        let samples = VecDeque::from([(0.0, [0.0, 0.0, 0.0]), (1.0, [10.0, 0.0, 2.0])]);
+        assert_eq!(position_at(&samples, 0.5), [5.0, 0.0, 1.0]);
+        assert_eq!(position_at(&samples, -1.0), [0.0, 0.0, 0.0]);
+        assert_eq!(position_at(&samples, 2.0), [10.0, 0.0, 2.0]);
     }
 }

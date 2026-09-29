@@ -37,6 +37,9 @@ pub struct ServerWorld {
     /// The folder it was loaded from, and when its manifest was last
     /// changed then (none for a world made in memory, which isn't watched).
     source: Option<(PathBuf, Option<SystemTime>)>,
+    /// Every chunk, for a world made in memory (one loaded from a folder
+    /// reads its chunks from there as they're needed).
+    in_memory: Vec<Chunk>,
 }
 
 /// A hash of a chunk file's bytes.
@@ -160,7 +163,7 @@ impl ServerWorld {
             hashes.push(hash);
         }
         let source = Some((folder.to_path_buf(), changed_at));
-        Ok(Self { manifest, obstacles, waters, trees, hashes, source })
+        Ok(Self { manifest, obstacles, waters, trees, hashes, source, in_memory: Vec::new() })
     }
 
     /// A world made from chunks already in memory (for tests and tools).
@@ -172,7 +175,29 @@ impl ServerWorld {
         let waters = chunks.iter().map(Waters::from_chunk).collect();
         let trees = chunks.iter().map(trees_in).collect();
         let hashes = chunks.iter().map(|chunk| hash_of(&venture_world::encode_chunk(chunk))).collect();
-        Self { manifest, obstacles, waters, trees, hashes, source: None }
+        Self { manifest, obstacles, waters, trees, hashes, source: None, in_memory: chunks.to_vec() }
+    }
+
+    /// A chunk of the world, in full (read from the world's folder, for a
+    /// world loaded from one), or `None` if it isn't in the world or can't be read.
+    pub fn chunk(&self, pos: ChunkPos) -> Option<Chunk> {
+        if !self.manifest.contains_chunk(pos) {
+            return None;
+        }
+        let Some((folder, _)) = &self.source else {
+            return self.in_memory.get((pos.y * self.manifest.chunks_per_side() + pos.x) as usize).cloned();
+        };
+        let path = folder.join(chunk_file_path(pos));
+        match std::fs::read(&path)
+            .map_err(|error| error.to_string())
+            .and_then(|bytes| decode_chunk(&bytes).map_err(|error| error.to_string()))
+        {
+            Ok(chunk) => Some(chunk),
+            Err(error) => {
+                warn!("Couldn't read {}: {error}", path.display());
+                None
+            }
+        }
     }
 
     /// The chunks that differ between this world and `newer` (all of them,

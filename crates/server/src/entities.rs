@@ -9,7 +9,7 @@
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{EntityId, EntityKind, ServerMessage};
-use venture_simulation::{Follow, Movement};
+use venture_simulation::{Body, Follow, Movement};
 
 use crate::link::ConnectionId;
 use crate::profiles::ProfileKey;
@@ -40,7 +40,20 @@ pub struct Position(pub Point);
 
 /// How an entity is moving.
 #[derive(Component, Default)]
+#[require(Feet)]
 pub struct Mover(pub Movement);
+
+/// How high an entity's feet are, and how it's rising or falling (see
+/// [`Body`]), and where it was when it last moved: an entity found somewhere
+/// else (just arrived, or moved by `/town` or an admin) is stood on the
+/// ground there first.
+#[derive(Component, Default, Clone, Copy)]
+pub struct Feet {
+    /// Its body.
+    pub body: Body,
+    /// Where it was when it last moved (`None`: it hasn't yet).
+    pub at: Option<Point>,
+}
 
 /// How fast an entity runs, in metres per second, if not the usual
 /// [`venture_simulation::RUN_SPEED`] (set by admins with `/setspeed`; not saved).

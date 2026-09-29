@@ -5,19 +5,23 @@
 use bevy::prelude::*;
 use venture_protocol::{EntityId, EntityState, ServerMessage};
 use venture_simulation::{
-    Follow, FollowOutcome, INTERACT_DISTANCE, JUMP_SECONDS, MELEE_RANGE, Movement, RUN_SPEED, clamp_move_goal,
-    plan_route, step,
+    Body, Follow, FollowOutcome, INTERACT_DISTANCE, MELEE_RANGE, Movement, RUN_SPEED, clamp_move_goal, plan_route, step,
 };
 
 use crate::abilities::PendingAbility;
+use crate::collision::Solid;
 use crate::combat::{Attacking, Health, Resting};
-use crate::entities::{DisplayName, Following, Mover, NetworkId, PendingInteraction, Player, Position, RunSpeed};
+use crate::entities::{DisplayName, Feet, Following, Mover, NetworkId, PendingInteraction, Player, Position, RunSpeed};
 use crate::link::Link;
 use crate::monsters::{Dead, Monster};
 use crate::npcs::{Npc, NpcInteraction};
 use crate::requests::{PlayerAction, PlayerRequest};
 use crate::world::ServerWorld;
 use crate::{GameRules, ServerSystems};
+
+/// The highest and lowest anything in the world is, in metres (for finding the ground under a point).
+const HIGHEST: f32 = 2000.0;
+const LOWEST: f32 = -500.0;
 
 /// Players within this distance (in metres) see an emote.
 const EMOTE_RANGE: f32 = 40.0;
@@ -36,11 +40,6 @@ impl Plugin for GameplayPlugin {
     }
 }
 
-/// When a player last jumped (seconds of game time), so they can't jump
-/// again until they've landed.
-#[derive(Component)]
-struct LastJump(f32);
-
 /// How many ticks the server has run.
 #[derive(Resource, Default)]
 struct Tick(u64);
@@ -52,21 +51,17 @@ fn act_on_requests(
     world: Res<ServerWorld>,
     rules: Res<GameRules>,
     mut interactions: MessageWriter<NpcInteraction>,
-    mut movers: Query<(&Position, &mut Mover)>,
+    mut movers: Query<(&Position, &mut Mover, &mut Feet)>,
     entities: Query<(Entity, &NetworkId, &Position, &DisplayName)>,
     npcs: Query<(), With<Npc>>,
     monsters: Query<(), With<Monster>>,
     dead: Query<(), With<Dead>>,
     players: Query<(&Player, &NetworkId, &DisplayName)>,
-    time: Res<Time>,
-    jumps: Query<&LastJump>,
 ) {
     let find = |id: EntityId| entities.iter().find(|(_, network_id, ..)| network_id.0 == id);
-    // (Jumps this tick aren't in `jumps` yet.)
-    let mut jumped_now = Vec::new();
     for request in requests.read() {
         let player = request.player;
-        let Ok((&Position(position), mut mover)) = movers.get_mut(player) else { continue };
+        let Ok((&Position(position), mut mover, mut feet)) = movers.get_mut(player) else { continue };
         // Tells the player something (such as why what they asked for didn't happen).
         let mut tell = |text: String| {
             if let Ok((me, ..)) = players.get(player) {
@@ -162,15 +157,13 @@ fn act_on_requests(
                 link.broadcast(nearby, &ServerMessage::Emoted { id, emote: *emote });
             }
             PlayerAction::Jump => {
-                // One at a time: only once the last has landed.
-                let now = time.elapsed_secs();
-                if jumped_now.contains(&player) || jumps.get(player).is_ok_and(|last| now - last.0 < JUMP_SECONDS) {
+                // Only from the ground (so one at a time).
+                if !feet.body.jump(&rules.0.movement) {
                     continue;
                 }
-                jumped_now.push(player);
                 let Ok((_, &NetworkId(id), _)) = players.get(player) else { continue };
                 // Jumping stands a resting player up, but doesn't stop them moving.
-                commands.entity(player).insert(LastJump(now)).remove::<Resting>();
+                commands.entity(player).remove::<Resting>();
                 let nearby: Vec<_> = players
                     .iter()
                     .filter(|(_, other, _)| {
@@ -293,16 +286,25 @@ fn update_casters(
     }
 }
 
-/// Moves everything for one tick.
+/// Moves everything for one tick, through the solid world. Anything found
+/// somewhere it didn't move to (just arrived, or moved by `/town`) is stood
+/// on the ground there first.
 fn simulate(
     time: Res<Time>,
-    world: Res<ServerWorld>,
-    mut movers: Query<(&mut Position, &mut Mover, Option<&RunSpeed>)>,
+    solid: Res<Solid>,
+    rules: Res<GameRules>,
+    mut movers: Query<(&mut Position, &mut Mover, &mut Feet, Option<&RunSpeed>)>,
 ) {
     let dt = time.delta_secs();
-    for (mut position, mut mover, speed) in &mut movers {
+    for (mut position, mut mover, mut feet, speed) in &mut movers {
+        if feet.at != Some(position.0) {
+            let Some(ground) = solid.0.surface_below(position.0, HIGHEST, HIGHEST - LOWEST) else { continue };
+            feet.body = Body::standing(ground);
+        }
         let speed = speed.map_or(RUN_SPEED, |speed| speed.0);
-        position.0 = step(position.0, &mut mover.0, speed, dt, |x, y| world.is_blocked(x, y));
+        let moved = step(position.0, &mut feet.body, &mut mover.0, speed, dt, &solid.0, &rules.0.movement);
+        position.0 = moved;
+        feet.at = Some(moved);
     }
 }
 
@@ -311,7 +313,7 @@ fn send_snapshot(
     mut tick: ResMut<Tick>,
     mut link: ResMut<Link>,
     players: Query<&Player>,
-    entities: Query<(&NetworkId, &Position, &Mover, Option<&Health>, Has<Monster>, Has<Resting>)>,
+    entities: Query<(&NetworkId, &Position, &Mover, &Feet, Option<&Health>, Has<Monster>, Has<Resting>)>,
 ) {
     tick.0 += 1;
     if players.is_empty() {
@@ -319,10 +321,11 @@ fn send_snapshot(
     }
     let states: Vec<EntityState> = entities
         .iter()
-        .map(|(&NetworkId(id), &Position((x, y)), mover, health, monster, resting)| {
+        .map(|(&NetworkId(id), &Position((x, y)), mover, feet, health, monster, resting)| {
             // Only monsters' health is shown to everyone; players' is private.
             let health = health.filter(|_| monster).map(Health::fraction);
-            EntityState { id, x, y, moving: mover.0.is_moving(), health, resting }
+            let moving = mover.0.is_moving() || !feet.body.grounded;
+            EntityState { id, x, y, height: feet.body.height, moving, health, resting }
         })
         .collect();
     let everyone: Vec<_> = players.iter().map(|player| player.connection).collect();

@@ -14,6 +14,7 @@
   checks the player is an admin every time. Monsters are only created, moved and removed in `monsters.rs`;
   health only changes through `Health`'s methods, and hits, deaths and experience only happen in `combat.rs`; abilities are only used in `abilities.rs`. A player's fishing (casts, bites, fights with fish, catches) only changes in `fishing.rs`, and
   woodcutting (felling trees, cutting them up, trees falling and growing back) only in `woodcutting.rs`.
+  What's solid (the collision shapes characters move through) only changes in `collision.rs`.
   Keep it that way.
 - Content scripts never change the game directly: they queue `ScriptCommand`s (`scripting.rs`), which
   `npcs.rs` validates and applies. New script abilities go through that same path.

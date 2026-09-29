@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{ClientMessage, EntityId, PlayerLook, ServerMessage};
-use venture_simulation::{Follow, FollowOutcome, Movement, RUN_SPEED, Rules, step};
+use venture_simulation::{Body, Follow, FollowOutcome, Movement, RUN_SPEED, Rules, step};
 
 use crate::camera::{CameraHeading, CameraMode, wasd_direction};
 use crate::characters::humans::HumanLook;
@@ -18,9 +18,13 @@ use crate::common::coords::{from_bevy, to_bevy};
 use crate::interaction::targeting::Target;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::KeyboardFocus;
-use crate::world::query::{ground_height, is_blocked};
+use crate::world::collision::{Solid, SolidSystems};
+use crate::world::query::{ground_height, is_blocked, shown_height};
 use crate::world::streaming::{ChunkStore, ObstacleStore};
 
+/// The highest and lowest anything in the world is, in metres (for finding the ground under a point).
+const HIGHEST: f32 = 2000.0;
+const LOWEST: f32 = -500.0;
 /// How quickly the character turns to face where it's going (per second).
 const TURN_RATE: f32 = 12.0;
 /// While moving, the prediction may run this far ahead of the server (in
@@ -54,7 +58,8 @@ impl Plugin for PlayerPlugin {
                 correct_towards_server,
             )
                 .chain()
-                .in_set(PlayerSystems),
+                .in_set(PlayerSystems)
+                .after(SolidSystems),
         );
     }
 }
@@ -79,6 +84,12 @@ pub struct LocalPlayer {
     /// How fast the character runs, in metres per second (usually
     /// [`RUN_SPEED`]; admins can change it).
     pub speed: f32,
+    /// How high its feet are, and how it's rising or falling, as predicted.
+    pub body: Body,
+    /// Where it was when it was last moved by the prediction (`None`: not
+    /// yet). Found anywhere else (placed by the server), it's stood on the
+    /// ground there first.
+    pub moved_to: Option<Point>,
 }
 
 /// Following another character.
@@ -135,6 +146,7 @@ fn place_on_welcome(
             player.admin = *admin;
             player.look = server_look.clone();
             player.speed = RUN_SPEED;
+            player.moved_to = None;
             transform.translation = translation;
             nameplate.0.clone_from(name);
             continue;
@@ -150,6 +162,8 @@ fn place_on_welcome(
                 admin: *admin,
                 look: server_look.clone(),
                 speed: RUN_SPEED,
+                body: Body::default(),
+                moved_to: None,
             },
             Nameplate(name.clone()),
         ));
@@ -195,15 +209,20 @@ fn jump_with_space(
     keys: Res<ButtonInput<KeyCode>>,
     mode: Res<CameraMode>,
     focus: Res<KeyboardFocus>,
+    rules: Res<GameRules>,
     mut to_server: MessageWriter<ToServer>,
-    mut gait: Single<&mut Gait, With<LocalPlayer>>,
+    mut player: Single<&mut LocalPlayer>,
     angling: Res<crate::fishing::Angling>,
 ) {
     // (While a fish bites or is hooked, Space strikes and reels instead.)
     if angling.busy() {
         return;
     }
-    if keys.just_pressed(KeyCode::Space) && *mode == CameraMode::Follow && !focus.is_typing() && gait.jump() {
+    if keys.just_pressed(KeyCode::Space)
+        && *mode == CameraMode::Follow
+        && !focus.is_typing()
+        && player.body.jump(&rules.0.movement)
+    {
         to_server.write(ToServer(ClientMessage::Jump));
     }
 }
@@ -298,25 +317,33 @@ fn predict_following(
     }
 }
 
-/// Moves the character locally with the shared movement rules, following
-/// the ground and turning to face the way it's going.
+/// Moves the character locally with the shared movement rules, through the
+/// solid world, turning to face the way it's going.
 fn predict_movement(
     time: Res<Time>,
     store: Res<ChunkStore>,
-    obstacles: Res<ObstacleStore>,
+    solid: Res<Solid>,
+    rules: Res<GameRules>,
     player: Option<Single<(&mut Transform, &mut LocalPlayer, &mut Gait)>>,
 ) {
     let Some(player) = player else { return };
     let (mut transform, mut player, mut gait) = player.into_inner();
     let dt = time.delta_secs();
     let start = from_bevy(transform.translation);
+    // Placed somewhere by the server (or not moved yet): stand on the ground there.
+    if player.moved_to != Some(start) {
+        let Some(ground) = solid.0.surface_below(start, HIGHEST, HIGHEST - LOWEST) else { return };
+        player.body = Body::standing(ground);
+    }
     let speed = player.speed;
-    let (x, y) = step(start, &mut player.movement, speed, dt, |x, y| is_blocked(&obstacles, x, y));
+    let LocalPlayer { body, movement, .. } = &mut *player;
+    let (x, y) = step(start, body, movement, speed, dt, &solid.0, &rules.0.movement);
+    player.moved_to = Some((x, y));
+    gait.airborne = !player.body.grounded;
 
     let (moved_x, moved_y) = (x - start.0, y - start.1);
     let moved = moved_x.hypot(moved_y);
-    let height = ground_height(&store, x, y).unwrap_or(transform.translation.y);
-    transform.translation = to_bevy(x, y, height);
+    transform.translation = to_bevy(x, y, shown_height(&store, x, y, player.body.height));
     if moved > 0.0 {
         // The character faces +Z in its own space, which is world +y.
         let facing = Quat::from_rotation_y(moved_x.atan2(moved_y));
@@ -324,6 +351,10 @@ fn predict_movement(
     }
     gait.speed = if dt > 0.0 { moved / dt } else { 0.0 };
 }
+
+/// The server's height for the player's feet, in its last snapshot.
+#[derive(Default)]
+struct ServerHeight(f32);
 
 /// Compares the prediction with the server's position in each snapshot. A
 /// large difference (such as the server moving the character with `/town`)
@@ -333,6 +364,7 @@ fn correct_towards_server(
     time: Res<Time>,
     mut events: MessageReader<FromServer>,
     mut server_position: Local<Option<(Point, bool)>>,
+    mut server_height: Local<ServerHeight>,
     player: Option<Single<(&mut Transform, &mut LocalPlayer, &mut Gait)>>,
 ) {
     let Some(player) = player else { return };
@@ -342,6 +374,7 @@ fn correct_towards_server(
             && let Some(me) = entities.iter().find(|state| state.id == player.id)
         {
             *server_position = Some(((me.x, me.y), me.moving));
+            server_height.0 = me.height;
             gait.resting = me.resting;
         }
     }
@@ -352,6 +385,8 @@ fn correct_towards_server(
     if error > MAX_PREDICTION_ERROR * (player.speed / RUN_SPEED).max(1.0) {
         transform.translation.x = server_x;
         transform.translation.z = server_y;
+        // (Found somewhere it didn't move to, it'll be stood on the ground there; in the air, it falls from here.)
+        transform.translation.y = server_height.0;
         // The prediction was wrong, so its route is too; the server will say where we're going.
         if !server_moving {
             player.movement = Movement::Idle;
