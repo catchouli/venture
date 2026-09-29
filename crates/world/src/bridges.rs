@@ -32,7 +32,7 @@ impl BridgeKind {
     /// How wide one usually is, in metres.
     pub fn usual_width(self) -> f32 {
         match self {
-            BridgeKind::Stone => 3.5,
+            BridgeKind::Stone => 4.5,
             BridgeKind::Rope => 1.8,
         }
     }

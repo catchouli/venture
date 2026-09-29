@@ -215,9 +215,13 @@ fn bake_bridges(
         .filter(|plan| {
             let (x, y) = middle(plan);
             let far = |(ox, oy): (f32, f32), room: f32| (x - ox).hypot(y - oy) > room;
+            // (Road bridges carry roads, which walls leave gaps for: they're
+            // kept, but others are left out near buildings and walls.)
+            let road = plan.id.starts_with("road_bridge_");
             authored.iter().all(|other| far(middle(other), AUTHORED_BRIDGE_ROOM))
-                && buildings.iter().flat_map(|b| &b.plan.outline).all(|&corner| far(corner, STRUCTURE_ROOM))
-                && walls.iter().flat_map(|w| &w.samples).all(|s| far((s.x, s.y), STRUCTURE_ROOM))
+                && (road
+                    || buildings.iter().flat_map(|b| &b.plan.outline).all(|&corner| far(corner, STRUCTURE_ROOM))
+                        && walls.iter().flat_map(|w| &w.samples).all(|s| far((s.x, s.y), STRUCTURE_ROOM)))
         })
         .collect();
     println!("{} bridges baked from {}, and {} placed over rivers.", authored.len(), path.display(), placed.len());
