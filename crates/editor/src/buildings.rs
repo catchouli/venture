@@ -8,8 +8,9 @@
 //! uses, and hands them to the game's own drawing ([`ShownBuildings`]).
 //!
 //! - **Add:** click its corners on the ground; each is squared up to the
-//!   last wall (so every corner is a right angle). Click the first corner
-//!   again (or press Enter) to close it: the last corner is found for you.
+//!   last wall (so every corner is a right angle), unless *Free angles* is
+//!   ticked. Click the first corner again (or press Enter) to close it: a
+//!   square building's last corner is found for you.
 //! - **Choose:** click a building. Drag the handle in its middle to move
 //!   it; the buttons on the right turn it.
 //! - **Edit plan:** its meshes hide and the view looks down on it:
@@ -97,6 +98,8 @@ pub struct BuildingTool {
     pub drawing: Option<Vec<Vec2>>,
     /// What style the next building drawn is.
     pub new_style: String,
+    /// Whether the next building's corners are drawn freely (not squared up).
+    pub free: bool,
     /// Whether the chosen building's plan is being edited, and with what.
     pub editing: Option<PlanTool>,
     /// What's chosen in the plan.
@@ -217,8 +220,14 @@ pub fn close(corners: &[Vec2]) -> Option<Vec<Vec2>> {
 pub fn move_corner(outline: &[(f32, f32)], index: usize, to: Vec2) -> Vec<(f32, f32)> {
     let points: Vec<Vec2> = outline.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
     let count = points.len();
-    if count < 4 || index >= count {
+    if index >= count {
         return outline.to_vec();
+    }
+    // A free-angled building's corner just moves.
+    if !venture_structures::buildings::plan::is_square(&points) {
+        let mut moved = outline.to_vec();
+        moved[index] = ((to.x * 100.0).round() / 100.0, (to.y * 100.0).round() / 100.0);
+        return moved;
     }
     let x = (points[1] - points[0]).normalize_or(Vec2::X);
     let y = x.perp();
@@ -409,7 +418,7 @@ fn building_clicks(
             if closing {
                 finish_drawing(&mut tool, &mut document, now);
             } else {
-                let corner = square_up(&corners, at);
+                let corner = if tool.free { at } else { square_up(&corners, at) };
                 if let Some(drawing) = tool.drawing.as_mut() {
                     drawing.push(Vec2::new(snap(corner.x), snap(corner.y)));
                 }
@@ -527,7 +536,8 @@ fn piece_at(plan: &BuildingPlan, at: Vec2) -> Option<PlanPiece> {
 /// that can't close is let go.
 pub fn finish_drawing(tool: &mut BuildingTool, document: &mut Document, now: f64) {
     let Some(corners) = tool.drawing.take() else { return };
-    match close(&corners) {
+    let closed = if tool.free { (corners.len() >= 3).then_some(corners) } else { close(&corners) };
+    match closed {
         Some(outline) => {
             let style = if tool.new_style.is_empty() {
                 styles(document).first().map(|style| style.id.clone()).unwrap_or_default()
@@ -674,7 +684,8 @@ fn draw_building_guides(
         let pointer = pointer_ray(&window, &view, *camera).and_then(|(ray, _)| raycast_ground(&store, ray));
         let mut line: Vec<Vec3> = corners.iter().map(|&p| at(p, 0.15)).collect();
         if let Some(pointer) = pointer {
-            let next = square_up(corners, Vec2::new(pointer.x, pointer.z));
+            let pointer = Vec2::new(pointer.x, pointer.z);
+            let next = if tool.free { pointer } else { square_up(corners, pointer) };
             line.push(at(next, 0.15));
         }
         gizmos.linestrip(line, gold);
@@ -906,6 +917,9 @@ mod tests {
         let outline = vec![(0.0, 0.0), (8.0, 0.0), (8.0, 5.0), (0.0, 5.0)];
         let moved = move_corner(&outline, 2, Vec2::new(10.0, 6.0));
         assert_eq!(moved, vec![(0.0, 0.0), (10.0, 0.0), (10.0, 6.0), (0.0, 6.0)]);
+        // A free-angled one's corner moves alone.
+        let skewed = vec![(0.0, 0.0), (8.0, 0.0), (9.0, 5.0), (0.0, 5.0)];
+        assert_eq!(move_corner(&skewed, 2, Vec2::new(10.0, 6.0))[1], (8.0, 0.0));
     }
 
     #[test]

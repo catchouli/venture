@@ -228,33 +228,33 @@ fn door(builder: &mut Builder, (start, along, out): (Vec3, Vec3, Vec3), opening:
 
 /// Floors: the ground floor's boards, and each floor above (boards on top, a ceiling under).
 pub fn floors(builder: &mut Builder) {
-    let rects = wings(&builder.footprint.inside);
     let storey = builder.style.storey;
     let boards = builder.colours.trim.map(|c| c * 1.25);
+    let plaster = builder.colours.plaster;
+    let frame = builder.footprint.frame;
+    let inside = builder.footprint.inside.clone();
+    // The floor's pieces: rectangles if it's square, triangles if not.
+    let pieces: Vec<Vec<Vec2>> = if builder.footprint.square {
+        wings(&inside)
+            .iter()
+            .map(|rect| {
+                vec![rect.low, Vec2::new(rect.high.x, rect.low.y), rect.high, Vec2::new(rect.low.x, rect.high.y)]
+            })
+            .collect()
+    } else {
+        super::plan::triangulate(&inside).iter().map(|triangle| triangle.map(|i| inside[i]).to_vec()).collect()
+    };
     for level in 0..builder.floors {
         let height = level as f32 * storey;
         let upper = level > 0;
-        for rect in &rects {
-            let frame = builder.footprint.frame;
-            let corners = |y: f32| {
-                [
-                    frame.point(rect.low, y),
-                    frame.point(Vec2::new(rect.high.x, rect.low.y), y),
-                    frame.point(rect.high, y),
-                    frame.point(Vec2::new(rect.low.x, rect.high.y), y),
-                ]
-            };
-            let uvs = [
-                [rect.low.x, rect.low.y],
-                [rect.high.x, rect.low.y],
-                [rect.high.x, rect.high.y],
-                [rect.low.x, rect.high.y],
-            ];
-            let top = corners(height + 0.02);
+        for piece in &pieces {
+            let corner = |k: usize| piece[k.min(piece.len() - 1)];
+            let points = [corner(0), corner(1), corner(2), corner(3)];
+            let uvs = points.map(|p| [p.x, p.y]);
+            let top = points.map(|p| frame.point(p, height + 0.02));
             quad_facing(builder.mesh(Surface::Floor, Detail::Full, upper), top, uvs, boards, Vec3::Y);
             if upper {
-                let under = corners(height - FLOOR_THICKNESS);
-                let plaster = builder.colours.plaster;
+                let under = points.map(|p| frame.point(p, height - FLOOR_THICKNESS));
                 quad_facing(builder.mesh(Surface::Plaster, Detail::Full, true), under, uvs, plaster, -Vec3::Y);
             }
         }
