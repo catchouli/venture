@@ -233,6 +233,21 @@ for. That's `VENTURE_SERVER` when it was compiled, if it was set; otherwise
 VENTURE_SERVER=https://play.example.com cargo build --release -p venture_client
 ```
 
+**A Windows build, from a Mac.** Cross-compile with the GNU target and
+MinGW-w64 (which provides the linker):
+
+```sh
+brew install mingw-w64
+rustup target add x86_64-pc-windows-gnu
+VENTURE_SERVER=http://your-server:8080 cargo build --release -p venture_client --target x86_64-pc-windows-gnu
+x86_64-w64-mingw32-strip -o Venture.exe target/x86_64-pc-windows-gnu/release/venture_client.exe
+```
+
+The `.exe` is all a player needs. Its shaders are built in, and the world and
+content come from the server. It uses only Windows' own DLLs (Windows 10 or
+later). Stripping takes it from about 240 MB to about 135 MB, which is about
+48 MB zipped. On Windows, login tokens are kept in `%USERPROFILE%\.venture`.
+
 `--local` runs the real server code inside the client, connected through an
 in-memory link instead of the network (with `--world <folder>` to choose the
 world). Profiles are kept in `local_data/`. Two flags help while working on
