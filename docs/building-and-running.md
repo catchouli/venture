@@ -224,6 +224,15 @@ cargo run -p venture_client -- --connect http://192.168.1.20:8080
 cargo run -p venture_client -- --local                        # a server inside the client
 ```
 
+Without `--connect`, the desktop client connects to the server it was built
+for. That's `VENTURE_SERVER` when it was compiled, if it was set; otherwise
+`http://127.0.0.1:8080`. So a build to hand out can point at your server
+(and `--connect` still overrides it):
+
+```sh
+VENTURE_SERVER=https://play.example.com cargo build --release -p venture_client
+```
+
 `--local` runs the real server code inside the client, connected through an
 in-memory link instead of the network (with `--world <folder>` to choose the
 world). Profiles are kept in `local_data/`. Two flags help while working on
