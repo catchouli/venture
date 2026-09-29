@@ -18,9 +18,10 @@ use venture_content::{
     AbilityDef, AppearanceDef, ClassDef, ContentError, ContentPack, ItemDef, MonsterDef, NewCharacterDef, NpcDef,
     QuestDef, RespawnPoint, ShopDef, SkillDef, SpawnerDef,
 };
+use venture_structures::bridges::BRIDGES_FILE;
 use venture_structures::buildings::{BUILDINGS_FILE, BuildingStyle, STYLES_FILE, check_buildings};
 use venture_structures::{WALLS_FILE, WallDef, check_walls};
-use venture_world::BuildingPlan;
+use venture_world::{BridgePlan, BuildingPlan};
 
 /// Changes to the same file this close together (seconds) undo as one (so
 /// typing a name is one step, not one per letter).
@@ -60,6 +61,15 @@ entries_with_ids!(
 );
 
 impl Entry for WallDef {
+    fn key(&self) -> String {
+        self.id.clone()
+    }
+    fn set_key(&mut self, key: String) {
+        self.id = key;
+    }
+}
+
+impl Entry for BridgePlan {
     fn key(&self) -> String {
         self.id.clone()
     }
@@ -421,6 +431,9 @@ impl Document {
                 .push(Box::new(Collection::<WallDef>::load(folder, "Walls", Place::List(WALLS_FILE))?.authored()));
             collections.push(Box::new(
                 Collection::<BuildingPlan>::load(folder, "Buildings", Place::List(BUILDINGS_FILE))?.authored(),
+            ));
+            collections.push(Box::new(
+                Collection::<BridgePlan>::load(folder, "Bridges", Place::List(BRIDGES_FILE))?.authored(),
             ));
         }
         let mut document = Self {

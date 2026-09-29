@@ -502,4 +502,44 @@ mod tests {
         }
         assert!(at.0 < 20.0, "never got over: {at:?}");
     }
+
+    #[test]
+    fn bridges_are_run_across_over_deep_water() {
+        use venture_world::{BridgeKind, BridgePlan, Fluid, FluidBody, FluidKind};
+        for kind in BridgeKind::ALL {
+            let mut world = Collision::new();
+            for y in 0..2 {
+                for x in 0..2 {
+                    let mut chunk = Chunk::new(ChunkPos::new(x, y));
+                    if x == 0 {
+                        // A deep river from x = 30 to 40.
+                        for cy in 0..=64 {
+                            for cx in 31..=39 {
+                                chunk.set_corner_height(cx, cy, -3.0);
+                            }
+                        }
+                        for cy in 0..64 {
+                            for cx in 30..40 {
+                                chunk.cell_mut(cx, cy).fluid =
+                                    Some(Fluid { kind: FluidKind::Water, body: FluidBody::River, level: -1.5 });
+                            }
+                        }
+                    }
+                    world.add_chunk(&chunk);
+                }
+            }
+            let plan = BridgePlan {
+                id: "bridge".into(),
+                kind,
+                points: vec![(26.0, 20.0), (44.0, 20.0)],
+                width: kind.usual_width(),
+                curve: kind.usual_curve(),
+                seed: 1,
+            };
+            world.set_bridges(&[venture_structures::bridges::bake_bridge(&plan, |_, _| 0.0)]);
+            let mut movement = Movement::Steer((1.0, 0.0));
+            let (x, _) = run(&world, (20.0, 20.0), &mut Body::standing(0.0), &mut movement, 6.0);
+            assert!(x > 46.0, "{kind:?}: across, not stopped at the water: {x}");
+        }
+    }
 }

@@ -7539,6 +7539,7 @@ dependencies = [
  "serde",
  "venture_collision",
  "venture_navigation",
+ "venture_structures",
  "venture_world",
 ]
 
@@ -7590,6 +7591,7 @@ dependencies = [
 name = "venture_worldgen"
 version = "0.1.0"
 dependencies = [
+ "glam 0.32.1",
  "image",
  "mimalloc",
  "noise",

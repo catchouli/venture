@@ -22,7 +22,7 @@ use rapier3d::parry::shape::Capsule;
 use rapier3d::pipeline::{QueryFilter, QueryPipeline};
 use rapier3d::prelude::{Collider, ColliderHandle, ColliderSet, IslandManager, Ray, RigidBodySet, SoftBodySet};
 use venture_structures::buildings::BuildingStyle;
-use venture_world::{BakedBuilding, BakedWall, CHUNK_SIZE, CellPos, Chunk, ChunkPos, FluidKind};
+use venture_world::{BakedBridge, BakedBuilding, BakedWall, CHUNK_SIZE, CellPos, Chunk, ChunkPos, FluidKind};
 
 pub use rapier3d::math::Vector;
 pub use shapes::to_rapier;
@@ -78,6 +78,9 @@ struct LoadedChunk {
     no_entry: Vec<bool>,
     /// Its cells of shallow water (waded through), `y * CHUNK_SIZE + x`.
     shallows: Vec<bool>,
+    /// The level of the water (or lava) in each of its cells no one may
+    /// enter (anywhere above it, such as on a bridge, is fine).
+    levels: Vec<f32>,
 }
 
 /// The solid world, as far as it's loaded.
@@ -89,6 +92,7 @@ pub struct Collision {
     bvh: Bvh,
     chunks: HashMap<ChunkPos, LoadedChunk>,
     structures: Vec<ColliderHandle>,
+    bridges: Vec<ColliderHandle>,
 }
 
 impl Default for Collision {
@@ -108,12 +112,13 @@ impl Collision {
             bvh: Bvh::new(),
             chunks: HashMap::new(),
             structures: Vec::new(),
+            bridges: Vec::new(),
         }
     }
 
     fn insert(&mut self, mut collider: Collider) -> ColliderHandle {
         // (The ground's triangles are told apart from everything else's by this.)
-        if collider.shape().as_heightfield().is_none() {
+        if collider.shape().as_heightfield().is_none() && collider.user_data == 0 {
             collider.user_data = SOLID;
         }
         let aabb = collider.compute_aabb();
@@ -142,7 +147,9 @@ impl Collision {
         let size = CHUNK_SIZE as usize;
         let shallows =
             (0..size * size).map(|i| !no_entry[i] && chunk.cell(i % size, i / size).fluid.is_some()).collect();
-        self.chunks.insert(chunk.pos, LoadedChunk { ground: Some(ground), props, no_entry, shallows });
+        let levels =
+            (0..size * size).map(|i| chunk.cell(i % size, i / size).fluid.map_or(f32::MIN, |f| f.level)).collect();
+        self.chunks.insert(chunk.pos, LoadedChunk { ground: Some(ground), props, no_entry, shallows, levels });
     }
 
     /// Unloads a chunk (if it's loaded).
@@ -227,6 +234,26 @@ impl Collision {
         loaded.no_entry[local_y * CHUNK_SIZE as usize + local_x]
     }
 
+    /// Whether a character's feet at `(x, y)`, `height` would be in a cell no
+    /// one may enter: deep water or lava (not well above it, as on a
+    /// bridge), or somewhere not loaded.
+    pub fn no_entry_at(&self, x: f32, y: f32, height: f32) -> bool {
+        let cell = CellPos::new(x.floor() as i32, y.floor() as i32);
+        let Some(loaded) = self.chunks.get(&cell.chunk()) else { return true };
+        let (local_x, local_y) = cell.local();
+        let index = local_y * CHUNK_SIZE as usize + local_x;
+        loaded.no_entry[index] && height < loaded.levels[index] + ABOVE_WATER
+    }
+
+    /// Replaces the bridges.
+    pub fn set_bridges(&mut self, bridges: &[BakedBridge]) {
+        for handle in std::mem::take(&mut self.bridges) {
+            self.remove(handle);
+        }
+        let colliders: Vec<Collider> = bridges.iter().flat_map(shapes::bridge).collect();
+        self.bridges = colliders.into_iter().map(|collider| self.insert(collider)).collect();
+    }
+
     /// The height of the highest solid surface under a point, looking down
     /// from `from_height`, if there's one within `depth` metres.
     pub fn surface_below(&self, (x, y): (f32, f32), from_height: f32, depth: f32) -> Option<f32> {
@@ -239,7 +266,7 @@ impl Collision {
     /// height) would be clear of everything solid (and out of cells no one
     /// may enter). The ground under its feet doesn't count.
     pub fn fits(&self, (x, y, height): (f32, f32, f32)) -> bool {
-        if self.no_entry(x.floor() as i32, y.floor() as i32) {
+        if self.no_entry_at(x, y, height) {
             return false;
         }
         // (Lifted a little, so the ground it stands on isn't in the way.)
@@ -284,11 +311,11 @@ impl Collision {
         let mut end = (feet.0 + moved.x, feet.1 + moved.z, feet.2 + moved.y);
         // Deep water and lava turn characters away, sliding along their edges
         // (unless they're somehow in them already, when they may leave).
-        let entering = |(x, y): (f32, f32)| self.no_entry(x.floor() as i32, y.floor() as i32);
-        if entering((end.0, end.1)) && !entering((feet.0, feet.1)) {
+        let entering = |(x, y): (f32, f32), height: f32| self.no_entry_at(x, y, height);
+        if entering((end.0, end.1), end.2) && !entering((feet.0, feet.1), feet.2) {
             let across = (feet.0 + moved.x, feet.1);
             let along = (feet.0, feet.1 + moved.z);
-            let open = |(x, y): (f32, f32)| !self.no_entry(x.floor() as i32, y.floor() as i32);
+            let open = |(x, y): (f32, f32)| !self.no_entry_at(x, y, end.2);
             let (x, y) = [across, along].into_iter().find(|&at| open(at)).unwrap_or((feet.0, feet.1));
             end = (x, y, end.2);
         }
@@ -357,6 +384,10 @@ impl Triangles {
 
 /// A collider's user data: it's not the ground.
 const SOLID: u128 = 1;
+/// A collider's user data: it's walked on, though not the ground (a bridge's deck).
+pub(crate) const DECK: u128 = 2;
+/// Feet this far above deep water or lava (on a bridge) aren't in it, in metres.
+const ABOVE_WATER: f32 = 0.5;
 
 impl Collision {
     /// The solid world's triangles within the rectangle from `low` to `high`
@@ -388,12 +419,18 @@ impl Collision {
                 capsule.to_trimesh(8, 4)
             } else if let Some(ball) = shape.as_ball() {
                 ball.to_trimesh(8, 4)
+            } else if let Some(hull) = shape.as_convex_polyhedron() {
+                hull.to_trimesh()
             } else {
                 continue;
             };
             let vertices: Vec<Vector> = vertices.into_iter().map(|v| pose.transform_point(v)).collect();
             if collider.user_data == SOLID {
                 found.add(vertices, &triangles, |corners| within(&corners).then_some(Surface::Solid));
+                continue;
+            }
+            if collider.user_data == DECK {
+                found.add(vertices, &triangles, |corners| within(&corners).then_some(Surface::Ground));
                 continue;
             }
             found.add(vertices, &triangles, |corners| {

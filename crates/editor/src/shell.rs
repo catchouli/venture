@@ -14,6 +14,7 @@ use venture_content::ContentError;
 use crate::Project;
 use venture_client::common::coords::{from_bevy, to_bevy};
 
+use crate::bridges::{BridgeTool, add_bridge_at, bridge_buttons, bridges_list};
 use crate::buildings::{BuildingTool, add_building_at, building_buttons, buildings_list};
 use crate::camera::EditorCamera;
 use crate::document::Document;
@@ -573,6 +574,7 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
     let mut cameras = world.query::<&EditorCamera>();
     let focus = cameras.single(world).map(|camera| from_bevy(camera.focus)).unwrap_or_default();
     let mut wall_go_to = None;
+    world.resource_scope(|world, mut bridges: Mut<BridgeTool>| {
     world.resource_scope(|world, mut buildings: Mut<BuildingTool>| {
     world.resource_scope(|world, mut tool: Mut<WallTool>| {
         world.resource_scope(|world, mut selection: Mut<Selection>| {
@@ -592,6 +594,9 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                     }
                     if ui.button("Building").on_hover_text("Where the camera is looking (or draw one: see Buildings)").clicked() {
                         action = Some(WorldAction::AddBuilding);
+                    }
+                    if ui.button("Bridge").on_hover_text("Where the camera is looking: then edit its path").clicked() {
+                        action = Some(WorldAction::AddBridge);
                     }
                 });
                 if let Some(place) = &chosen_place {
@@ -653,7 +658,17 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                     if let Some(at) = buildings_list(ui, &mut buildings, document, nearby, focus, now) {
                         selection.0 = None;
                         tool.choose(None);
+                        bridges.choose(None);
                         wall_go_to = Some(at);
+                    }
+                    if let Some(at) = bridges_list(ui, &mut bridges, document, nearby, focus) {
+                        selection.0 = None;
+                        tool.choose(None);
+                        buildings.choose(None);
+                        wall_go_to = Some((at.x, at.y));
+                    }
+                    if bridges.chosen.is_some() {
+                        selection.0 = None;
                     }
                     if buildings.drawing.is_some() {
                         tool.choose(None);
@@ -680,6 +695,11 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
             let chosen = places.list.iter().find(|place| selection.is(place)).map(|place| place.entry);
             let wall = if chosen.is_none() { chosen_wall(document, &tool) } else { None };
             let building = if chosen.is_none() && wall.is_none() { chosen_building(document, &buildings) } else { None };
+            let bridge = if chosen.is_none() && wall.is_none() && building.is_none() {
+                chosen_bridge(document, &bridges)
+            } else {
+                None
+            };
             let before = wall
                 .and_then(|_| tool.chosen.clone())
                 .and_then(|id| wall_defs(document).into_iter().find(|def| def.id == id));
@@ -710,6 +730,15 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
                             changed = Some(entry);
                         }
                     }
+                    (None, None, None) if bridge.is_some() => {
+                        bridge_buttons(ui, &mut bridges, document, now);
+                        ui.separator();
+                        if let Some(entry) = bridge
+                            && edit_entry(ui, world, document, entry)
+                        {
+                            changed = Some(entry);
+                        }
+                    }
                     (None, None, None) => {
                         ui.heading("Nothing chosen");
                         ui.weak("Click something in the view, or in the list on the left, to see and change it here.");
@@ -731,7 +760,11 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
             if buildings.chosen.is_some() && chosen_building(document, &buildings).is_none() {
                 buildings.choose(None);
             }
+            if bridges.chosen.is_some() && chosen_bridge(document, &bridges).is_none() {
+                bridges.choose(None);
+            }
         });
+    });
     });
     });
     if wall_go_to.is_some() {
@@ -774,6 +807,7 @@ fn world_tab(root: &mut egui::Ui, world: &mut World, shell: &mut Shell, document
 enum WorldAction {
     Add(PlaceKind),
     AddBuilding,
+    AddBridge,
     Copy(Place),
     Delete(Place),
     PlayHere,
@@ -783,6 +817,17 @@ enum WorldAction {
 const BAKE_HELP: &str = "Saves, then bakes the world again (in the background, about a second: only the chunks \
 walls touch), with the walls as they are: they block the ground they stand on and clear trees from their way. \
 A game or server that's running loads the new world by itself.";
+
+/// The chosen bridge's entry in the document, if there is one.
+fn chosen_bridge(document: &Document, tool: &BridgeTool) -> Option<EntryRef> {
+    let id = tool.chosen.as_ref()?;
+    let (collection, plans) = document.find::<venture_world::BridgePlan>()?;
+    plans
+        .files()
+        .iter()
+        .enumerate()
+        .find_map(|(f, file)| file.entries.iter().position(|plan| &plan.id == id).map(|i| (collection, f, i)))
+}
 
 /// The chosen building's entry in the document, if there is one.
 fn chosen_building(document: &Document, tool: &BuildingTool) -> Option<EntryRef> {
@@ -830,6 +875,17 @@ fn world_action(world: &mut World, shell: &mut Shell, document: &mut Document, a
             let style = tool.new_style.clone();
             let id = add_building_at(document, &style, Vec2::new(focus.0, focus.1), now);
             tool.choose(id);
+            world.resource_mut::<WallTool>().choose(None);
+            world.resource_mut::<Selection>().0 = None;
+            shell.check_due = Some(now + CHECK_DELAY);
+            return;
+        }
+        WorldAction::AddBridge => {
+            let id = add_bridge_at(document, Vec2::new(focus.0, focus.1), now);
+            let mut bridges = world.resource_mut::<BridgeTool>();
+            bridges.choose(id);
+            bridges.editing = true;
+            world.resource_mut::<BuildingTool>().choose(None);
             world.resource_mut::<WallTool>().choose(None);
             world.resource_mut::<Selection>().0 = None;
             shell.check_due = Some(now + CHECK_DELAY);

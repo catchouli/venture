@@ -66,6 +66,16 @@ as for `--local`.
     where it ends), **Doors** (click a wall, outer or inner) and
     **Choose** (click a door or inner wall; Delete removes it). **Done**
     (or Escape) leaves it, and the building is made again.
+  - **Bridges** (`world_authoring/bridges.ron`, baked into the world; see
+    [plan-bridges.md](plan-bridges.md)) are listed too. **Bridge** in the
+    Add row adds a stone one where the camera looks, with its path being
+    edited. Click a bridge (or its name) to choose it. **Edit path** shows
+    its points and where its deck will go: drag a point to move it, click
+    the ground to add one at the nearer end, and Delete removes the chosen
+    point. **Done** (or Escape) builds it again. Its kind (Stone or Rope),
+    width, curve (up in the middle; down, if negative) and seed are its
+    fields. The bridges the bake placed over rivers are shown too, but
+    aren't in the file.
   - Building styles are a tab of their own (`content/buildings/styles.ron`):
     changes show on the buildings at once.
   - **Save and bake** saves, then bakes the world again in the background

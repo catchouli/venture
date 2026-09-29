@@ -30,17 +30,19 @@ use std::time::Instant;
 
 use venture_collision::Collision;
 use venture_navigation::build_tile;
+use venture_structures::bridges::{BRIDGES_FILE, check_bridges, parse_bridges};
 use venture_structures::buildings::{
     BUILDINGS_FILE, BuildingStyle, STYLES_FILE, bake_building, building_clearing, cell_bounds, check_plan, levelled,
     parse_buildings, parse_styles,
 };
 use venture_structures::{WALLS_FILE, cells_near, check_walls, parse_walls};
 use venture_world::{
-    BakedBuilding, BakedWall, CHUNK_FORMAT_VERSION, CHUNK_SIZE, CellPos, Chunk, ChunkPos, Ground, MANIFEST_FILE,
-    SettlementInfo, WorldManifest, chunk_file_path, decode_chunk, encode_chunk,
+    BakedBridge, BakedBuilding, BakedWall, BridgePlan, CHUNK_FORMAT_VERSION, CHUNK_SIZE, CellPos, Chunk, ChunkPos,
+    Ground, MANIFEST_FILE, SettlementInfo, WorldManifest, chunk_file_path, decode_chunk, encode_chunk,
 };
+use venture_worldgen::bridges::place_bridges;
 use venture_worldgen::map_render::bake_map;
-use venture_worldgen::structures::bake_authored_wall;
+use venture_worldgen::structures::{bake_authored_bridge, bake_authored_wall};
 use venture_worldgen::{GENERATOR_VERSION, WorldGenConfig, WorldGenerator};
 
 #[global_allocator]
@@ -80,22 +82,26 @@ fn main() -> std::io::Result<()> {
         tree_species: world.config().tree_species(),
         walls: Vec::new(),
         buildings: Vec::new(),
+        bridges: Vec::new(),
     };
     let mut manifest = manifest;
     let styles = building_styles(Path::new(CONTENT_FOLDER));
     manifest.walls = bake_walls(&world, &authoring);
     manifest.buildings = bake_buildings(&world, &authoring, &styles);
-    let structures = Structures::of(&manifest.walls, &manifest.buildings);
+    manifest.bridges = bake_bridges(&world, &authoring, &manifest.walls, &manifest.buildings);
+    let structures = Structures::of(&manifest.walls, &manifest.buildings, &manifest.bridges);
     std::fs::create_dir_all(output.join("chunks"))?;
 
     // Only the chunks walls and buildings touch, if asked and the world there matches.
-    let only = only_structures.then(|| previous_structures(&output, &manifest)).flatten().map(|(walls, buildings)| {
-        let mut chunks = structures.chunks();
-        chunks.extend(Structures::of(&walls, &buildings).chunks());
-        chunks.sort_unstable_by_key(|pos| (pos.y, pos.x));
-        chunks.dedup();
-        chunks
-    });
+    let only = only_structures.then(|| previous_structures(&output, &manifest)).flatten().map(
+        |(walls, buildings, bridges)| {
+            let mut chunks = structures.chunks();
+            chunks.extend(Structures::of(&walls, &buildings, &bridges).chunks());
+            chunks.sort_unstable_by_key(|pos| (pos.y, pos.x));
+            chunks.dedup();
+            chunks
+        },
+    );
     if only_structures && only.is_none() {
         println!("The world in {} doesn't match (or isn't there), so all of it is baked.", output.display());
     }
@@ -128,7 +134,10 @@ fn main() -> std::io::Result<()> {
 /// The walls and buildings of the world already baked in `folder`, if it
 /// was baked the same way as `manifest` (so only the chunks they touch need
 /// baking again).
-fn previous_structures(folder: &Path, manifest: &WorldManifest) -> Option<(Vec<BakedWall>, Vec<BakedBuilding>)> {
+fn previous_structures(
+    folder: &Path,
+    manifest: &WorldManifest,
+) -> Option<(Vec<BakedWall>, Vec<BakedBuilding>, Vec<BakedBridge>)> {
     let text = std::fs::read_to_string(folder.join(MANIFEST_FILE)).ok()?;
     let old = WorldManifest::from_ron(&text).ok()?;
     let same = old.seed == manifest.seed
@@ -136,7 +145,7 @@ fn previous_structures(folder: &Path, manifest: &WorldManifest) -> Option<(Vec<B
         && old.chunk_format == manifest.chunk_format
         && old.generator_version == manifest.generator_version
         && old.tree_species == manifest.tree_species;
-    same.then_some((old.walls, old.buildings))
+    same.then_some((old.walls, old.buildings, old.bridges))
 }
 
 /// The content's folder (for building styles).
@@ -170,6 +179,51 @@ fn bake_buildings(world: &WorldGenerator, folder: &Path, styles: &[BuildingStyle
     buildings
 }
 
+/// Bridges placed over rivers are left out this near an authored bridge, in metres.
+const AUTHORED_BRIDGE_ROOM: f32 = 150.0;
+/// Bridges placed over rivers are left out this near a building or wall, in metres.
+const STRUCTURE_ROOM: f32 = 40.0;
+/// Trees and rocks this near a bridge (beyond its deck) are cleared, in metres.
+const BRIDGE_CLEARANCE: f32 = 1.5;
+
+/// The authored bridges (if there's a bridges file), and those placed over
+/// rivers (away from the authored ones), baked.
+fn bake_bridges(
+    world: &WorldGenerator,
+    folder: &Path,
+    walls: &[BakedWall],
+    buildings: &[BakedBuilding],
+) -> Vec<BakedBridge> {
+    let path = folder.join(BRIDGES_FILE);
+    let authored = match std::fs::read_to_string(&path) {
+        Ok(text) => {
+            let plans = parse_bridges(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            let problems = check_bridges(&plans);
+            if !problems.is_empty() {
+                panic!("{}: {}", path.display(), problems.join("; "));
+            }
+            plans
+        }
+        Err(_) => Vec::new(),
+    };
+    let middle = |plan: &BridgePlan| {
+        let (sum_x, sum_y) = plan.points.iter().fold((0.0, 0.0), |(x, y), p| (x + p.0, y + p.1));
+        (sum_x / plan.points.len().max(1) as f32, sum_y / plan.points.len().max(1) as f32)
+    };
+    let placed: Vec<BridgePlan> = place_bridges(world)
+        .into_iter()
+        .filter(|plan| {
+            let (x, y) = middle(plan);
+            let far = |(ox, oy): (f32, f32), room: f32| (x - ox).hypot(y - oy) > room;
+            authored.iter().all(|other| far(middle(other), AUTHORED_BRIDGE_ROOM))
+                && buildings.iter().flat_map(|b| &b.plan.outline).all(|&corner| far(corner, STRUCTURE_ROOM))
+                && walls.iter().flat_map(|w| &w.samples).all(|s| far((s.x, s.y), STRUCTURE_ROOM))
+        })
+        .collect();
+    println!("{} bridges baked from {}, and {} placed over rivers.", authored.len(), path.display(), placed.len());
+    authored.iter().chain(&placed).map(|plan| bake_authored_bridge(world, plan)).collect()
+}
+
 /// The authored world data's folder (unless another is given).
 const AUTHORING_FOLDER: &str = "world_authoring";
 /// Trees and rocks this near a wall's line (beyond its own width) are cleared, in metres.
@@ -201,7 +255,7 @@ struct Structures {
 }
 
 impl Structures {
-    fn of(walls: &[BakedWall], buildings: &[BakedBuilding]) -> Self {
+    fn of(walls: &[BakedWall], buildings: &[BakedBuilding], bridges: &[BakedBridge]) -> Self {
         let mut structures = Self::default();
         // A world cell as its chunk and its index in it.
         let place = |(x, y): (i32, i32)| {
@@ -215,6 +269,20 @@ impl Structures {
         };
         for wall in walls {
             cells_near(wall, wall.kind.half_width() + WALL_CLEARANCE).into_iter().for_each(&mut clear);
+        }
+        for bridge in bridges {
+            let reach = bridge.plan.width / 2.0 + BRIDGE_CLEARANCE;
+            let cells = reach.ceil() as i32;
+            for &[x, y, _] in &bridge.deck {
+                for dy in -cells..=cells {
+                    for dx in -cells..=cells {
+                        let (cx, cy) = (x.floor() as i32 + dx, y.floor() as i32 + dy);
+                        if (cx as f32 + 0.5 - x).hypot(cy as f32 + 0.5 - y) <= reach {
+                            clear((cx, cy));
+                        }
+                    }
+                }
+            }
         }
         for building in buildings {
             building_clearing(building, BUILDING_CLEARANCE).into_iter().for_each(&mut clear);
@@ -390,6 +458,21 @@ fn bake_navmesh(
                             .cloned()
                             .collect();
                         solid.set_structures(&walls, &buildings, styles);
+                        let bridges: Vec<BakedBridge> = manifest
+                            .bridges
+                            .iter()
+                            .filter(|bridge| {
+                                let (low, high) = bridge.deck.iter().fold(
+                                    ((f32::MAX, f32::MAX), (f32::MIN, f32::MIN)),
+                                    |(low, high), p| {
+                                        ((low.0.min(p[0]), low.1.min(p[1])), (high.0.max(p[0]), high.1.max(p[1])))
+                                    },
+                                );
+                                near(pos, low, high)
+                            })
+                            .cloned()
+                            .collect();
+                        solid.set_bridges(&bridges);
                         let mut chunk = chunk.expect("the chunk itself is in the world");
                         chunk.navmesh = build_tile(&solid, pos);
                         write_chunk(output, &chunk)?;
@@ -412,7 +495,7 @@ mod tests {
         let samples =
             (0..=36).map(|i| WallSample { x: 2.0 + i as f32 * 0.5, y: 10.5, ground: 0.0, open: false }).collect();
         let wall = BakedWall { id: "w".into(), kind: WallKind::DryStone, height: 1.3, seed: 0, samples };
-        let structures = Structures::of(&[wall], &[]);
+        let structures = Structures::of(&[wall], &[], &[]);
         let boulder =
             |x: f32, y: f32| Prop { kind: PropKind::Boulder, x, y, ground_height: 0.0, scale: 1.0, rotation: 0.0 };
         let mut chunk = Chunk::new(ChunkPos::new(0, 0));

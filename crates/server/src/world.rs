@@ -191,6 +191,7 @@ impl ServerWorld {
         let mut solid = venture_collision::Collision::new();
         chunks.iter().for_each(|chunk| solid.add_chunk(chunk));
         solid.set_structures(&manifest.walls, &manifest.buildings, &[]);
+        solid.set_bridges(&manifest.bridges);
         let tile = |chunk: &Chunk| {
             if chunk.navmesh.is_empty() {
                 venture_navigation::build_tile(&solid, chunk.pos)

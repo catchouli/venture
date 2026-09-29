@@ -1,0 +1,4 @@
+// Bridges (see docs/plan-bridges.md): each a path (its points, end to end), a kind
+// (Stone or Rope), a width and a curve (up in the middle; down, if negative), in metres.
+// The bake also places bridges over rivers (away from these).
+[]

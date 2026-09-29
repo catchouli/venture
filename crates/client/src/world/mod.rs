@@ -1,6 +1,7 @@
 //! The world as the client shows it: the baked world's chunks, loaded around
 //! the camera and turned into terrain, water, lava, props and walls, under the sky and sun.
 
+pub mod bridges;
 pub mod buildings;
 pub mod collision;
 pub mod daylight;
@@ -36,6 +37,7 @@ impl Plugin for WorldPlugin {
             trees::TreesPlugin,
             walls::WallsPlugin,
             buildings::BuildingsPlugin,
+            bridges::BridgesPlugin,
             surfaces::SurfacesPlugin,
             collision::CollisionPlugin,
         ));

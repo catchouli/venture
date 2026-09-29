@@ -15,6 +15,7 @@
 // lists and query types are normal here.
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
+mod bridges;
 mod buildings;
 mod camera;
 mod document;
@@ -97,6 +98,7 @@ fn main() {
         screenshot::ScreenshotPlugin,
         walls::WallToolsPlugin,
         buildings::BuildingToolsPlugin,
+        bridges::BridgeToolsPlugin,
     ));
     {
         let registry = app.world().resource::<AppTypeRegistry>().clone();

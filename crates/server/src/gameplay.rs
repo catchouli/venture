@@ -22,6 +22,16 @@ use crate::requests::{PlayerAction, PlayerRequest};
 use crate::world::ServerWorld;
 use crate::{GameRules, ServerSystems};
 
+/// How high a character put at `at` stands: on the lowest place there that
+/// can be stood on (the ground, not a roof or a wall's top), or failing that
+/// on the highest solid surface.
+fn standing_height(world: &ServerWorld, solid: &Solid, at: (f32, f32)) -> Option<f32> {
+    let highest = solid.0.surface_below(at, HIGHEST, HIGHEST - LOWEST)?;
+    let lowest = world.nav.standing_near(at, 0.5).map(|[_, _, height]| height);
+    // (The navigation mesh sits a little above what it's on: the solid surface under it.)
+    Some(lowest.and_then(|height| solid.0.surface_below(at, height + 0.5, 2.0)).unwrap_or(highest))
+}
+
 /// A player whose client hasn't reported a move for this long (seconds) has stopped.
 const STOPPED_AFTER: f32 = 0.3;
 
@@ -356,6 +366,7 @@ fn accept_moves(
 /// stopped reporting moves have stopped moving.
 fn place_players(
     time: Res<Time>,
+    world: Res<ServerWorld>,
     solid: Res<Solid>,
     mut link: ResMut<Link>,
     mut players: Query<(&Player, &Position, &mut Feet, &mut ClientMoves, &mut Mover, Option<&RunSpeed>)>,
@@ -374,11 +385,7 @@ fn place_players(
             continue;
         }
         // (Put back after a move that wasn't allowed, it keeps its height; anywhere else, on the ground.)
-        let height = if moves.put_back {
-            Some(feet.body.height)
-        } else {
-            solid.0.surface_below(position.0, HIGHEST, HIGHEST - LOWEST)
-        };
+        let height = if moves.put_back { Some(feet.body.height) } else { standing_height(&world, &solid, position.0) };
         let Some(height) = height else { continue };
         moves.put_back = false;
         feet.body = Body::standing(height);
@@ -396,6 +403,7 @@ fn place_players(
 /// script) is stood on the ground there first.
 fn simulate(
     time: Res<Time>,
+    world: Res<ServerWorld>,
     solid: Res<Solid>,
     rules: Res<GameRules>,
     mut movers: Query<(&mut Position, &mut Mover, &mut Feet, Option<&RunSpeed>), Without<Player>>,
@@ -403,7 +411,7 @@ fn simulate(
     let dt = time.delta_secs();
     for (mut position, mut mover, mut feet, speed) in &mut movers {
         if feet.at != Some(position.0) {
-            let Some(ground) = solid.0.surface_below(position.0, HIGHEST, HIGHEST - LOWEST) else { continue };
+            let Some(ground) = standing_height(&world, &solid, position.0) else { continue };
             feet.body = Body::standing(ground);
         }
         let speed = speed.map_or(RUN_SPEED, |speed| speed.0);

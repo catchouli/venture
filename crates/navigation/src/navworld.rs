@@ -391,4 +391,67 @@ mod tests {
         let end = *up.last().unwrap();
         assert!(end[0] < 91.0 && end[2] < 0.5, "at the foot: {end:?}");
     }
+
+    #[test]
+    fn bridges_are_crossed_over_deep_water() {
+        use venture_world::{BridgeKind, BridgePlan, Fluid, FluidBody, FluidKind};
+        // A deep river from x = 60 to 70, the whole way across: its bed 3 m
+        // down, its water 1.5 m below the banks.
+        let river = |chunk: &mut Chunk| {
+            let (origin_x, _) = chunk.pos.origin_cell();
+            for y in 0..=CHUNK_SIZE as usize {
+                for x in 0..=CHUNK_SIZE as usize {
+                    if (61..=69).contains(&(origin_x + x as i32)) {
+                        chunk.set_corner_height(x, y, -3.0);
+                    }
+                }
+            }
+            for y in 0..CHUNK_SIZE as usize {
+                for x in 0..CHUNK_SIZE as usize {
+                    if (60..70).contains(&(origin_x + x as i32)) {
+                        chunk.cell_mut(x, y).fluid =
+                            Some(Fluid { kind: FluidKind::Water, body: FluidBody::River, level: -1.5 });
+                    }
+                }
+            }
+        };
+        let (start, goal) = ([40.0, 50.0, 0.0], [90.0, 50.0, 0.0]);
+        let (_, nav) = world_of(&[], &[], river);
+        let without = nav.route(start, goal).expect("as near as it can");
+        assert!(without.last().unwrap()[0] < 60.0, "no way over without a bridge: {without:?}");
+
+        for kind in BridgeKind::ALL {
+            let plan = BridgePlan {
+                id: "bridge".into(),
+                kind,
+                points: vec![(56.0, 50.0), (74.0, 50.0)],
+                width: kind.usual_width(),
+                curve: kind.usual_curve(),
+                seed: 1,
+            };
+            let bridge = venture_structures::bridges::bake_bridge(&plan, |_, _| 0.0);
+            let mut solid = Collision::new();
+            for y in 0..2 {
+                for x in 0..2 {
+                    let mut chunk = Chunk::new(ChunkPos::new(x, y));
+                    river(&mut chunk);
+                    solid.add_chunk(&chunk);
+                }
+            }
+            solid.set_bridges(std::slice::from_ref(&bridge));
+            let mut nav = NavWorld::new();
+            for y in 0..2 {
+                for x in 0..2 {
+                    nav.add_tile(ChunkPos::new(x, y), &build_tile(&solid, ChunkPos::new(x, y))).unwrap();
+                }
+            }
+            nav.join();
+            let route = nav.route(start, goal).expect("a way over the bridge");
+            assert!(flat_distance(*route.last().unwrap(), goal) < 0.2, "{kind:?}: {route:?}");
+            assert!(
+                route.iter().all(|p| (p[1] - 50.0).abs() < kind.usual_width()),
+                "{kind:?} over the bridge: {route:?}"
+            );
+        }
+    }
 }
