@@ -71,18 +71,20 @@ This is how most MMOs of Lineage 2's era and since are built. Lineage 2's own
     terrain mesh where needed (a per-cell "hole" flag).
 - **Upper floors and stairs** as parts of buildings, with no global floor numbers.
 
-The old "layer" idea survives in the navigation grid: at any `(x, y)` there
+The old "layer" idea survives in the navigation mesh: at any `(x, y)` there
 may be several places to stand (the valley floor, the bridge above it, the
-cave below), and the grid records each one. Characters move freely in 3D, and
-the server checks movement against the grid.
+cave below), and the mesh has a polygon for each. Characters move freely in
+3D through the world's solid shapes.
 
 ### Where we are now
 
-`venture_navigation` has the first, single-layer version: each chunk has a
-grid of blocked cells (`ChunkObstacles`: deep water, lava, slopes steeper than
-a step, tree trunks and boulders), and `find_path` runs A* over it and then
-smooths the route with line-of-sight checks. The multi-layer grid below
-replaces the blocked-cell grid when structures arrive.
+See [plan-collision.md](plan-collision.md). Characters are capsules moved
+through the world's solid shapes (`venture_collision`, with Rapier): the
+ground as heightfields, walls, buildings, tree trunks and rocks. Deep water
+and lava are cells no one may enter. Routes are found on navigation mesh
+tiles, one per chunk (`venture_navigation`: baked with Recast, from the same
+shapes, and searched with landmass), which already handle several levels,
+so bridges and upper floors need only their shapes.
 
 ### What this means for the data (planned)
 
@@ -91,13 +93,12 @@ replaces the blocked-cell grid when structures arrive.
   generated volume) with a position, rotation and footprint. Structures come
   from the generator (cave entrances, standing stones) and from authored
   overlays (towns, dungeons).
-- A `NavGrid` per chunk: for each cell, a small list of walkable surfaces
-  (height, flags such as water or no-go), built from the heightfield plus
-  structures. Used for click-to-move pathfinding on the client and movement
-  checks on the server.
-- Transitions between surfaces (stairs, ladders, cave mouths) are simply
-  places where surfaces connect in the nav grid. Ladders and similar can be
-  interactive links between two surfaces.
+- A navigation mesh tile per chunk (done: `Chunk::navmesh`), from the
+  heightfield plus structures. Used for click-to-move routes on the client
+  and the server.
+- Transitions between surfaces (stairs, cave mouths) are simply places
+  where the mesh's surfaces meet. Ladders and similar can be links between
+  two surfaces, as drops down banks already are.
 
 ## Props
 

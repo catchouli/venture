@@ -198,7 +198,7 @@ fn carry_out_admin_commands(
                         ((*x, *y), format!("{x:.0}, {y:.0}"))
                     }
                 };
-                let Some(spot) = world.open_ground_near(aim, TELEPORT_SEARCH) else {
+                let Some(spot) = world.standing_near(aim, TELEPORT_SEARCH) else {
                     tell(format!("There's nowhere to stand near {place}."));
                     continue;
                 };

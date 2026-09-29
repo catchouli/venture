@@ -1,6 +1,6 @@
 # Plan: precise collision, falling, and real jumps
 
-Status: agreed (2026-09-29), with pathfinding moved to a navmesh. Steps 1–5 done (shapes, movement, the server, the protocol and client, and jumps); 6–8 (the navmesh) next.
+Status: done (2026-09-29). See "As built" at the end for where it differs from the plan.
 
 ## Why
 
@@ -261,3 +261,36 @@ make routes good and ready for bridges.
 - **Young crates.** rerecast is marked unstable, and landmass and Rapier change their APIs between versions. Versions are
   pinned, and each crate is used from one place: `venture_collision` for Rapier and the triangles, `venture_navigation`
   for rerecast and landmass.
+
+## As built
+
+All eight steps are done, with these differences from the plan above:
+
+- **Recast's cells are 0.125 m.** A power of two keeps every navmesh corner exact in `f32` anywhere in the world, so
+  corners in a straight line test exactly straight, which landmass checks. Characters are kept 0.375 m (three cells)
+  from walls.
+- **Rerecast is vendored with a fix** (`third_party/rerecast`, see its README). Its ear-clipping stored squared lengths in
+  `u16`, which overflowed on our 524-cell tiles.
+- **Tiles are stored in the chunk file** (`Chunk::navmesh`, chunk format 5), so the client streams them with the
+  chunks. `bake` makes them in a second pass, from each chunk and its neighbours as written: about 25 s for the whole
+  world. The bake binary uses mimalloc, because the system allocator made it five times slower.
+- **Tiles are tidied.** Where overlapping ground makes Recast put three polygons on one edge, the extra ones are
+  dropped, because landmass won't take them.
+- **The server holds every tile.** It already reads every chunk at load; joining the whole world's 4,096 tiles takes
+  about 0.35 s. Solid shapes are still only built round characters. Worlds made in memory (tests) have their tiles built
+  as they're made.
+- **Trees are in the tiles**, because the tiles are made from every collider. A felled tree's spot stays out of routes
+  until the next bake, though characters can walk through it. Routes could leave trunks out if that matters.
+- **Routes never fail outright:** a goal that can't be reached (fenced in) is gone as near to as possible, trying points
+  on the way back to the start.
+- **Drops** are found at bake along each tile's outer edges (not the chunk's own edges). A drop falls 0.6–6 m, and
+  lands 0.6 m past the first spot a character can stand below.
+- **Landmass agents** (avoidance between NPCs and monsters) aren't used yet. Routes are planned with
+  `NavWorld::route`, and characters follow them with the character controller.
+- `server.ron` has a `movement` section: gravity, `jump_height`, `max_climb_degrees` and `step_height`.
+
+To check a route on the baked world:
+
+```text
+cargo run --release -p venture_navigation --example route -- 2328 2168 2380 2190
+```

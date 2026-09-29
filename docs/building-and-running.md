@@ -15,15 +15,18 @@ The server and clients use a **baked** world: generated once, ahead of
 time, and written to the `world/` folder.
 
 ```sh
-cargo run --release -p venture_worldgen --bin bake [--walls] [folder] [seed] [authoring folder]
+cargo run --release -p venture_worldgen --bin bake [--structures] [folder] [seed] [authoring folder]
 ```
 
 Bake again whenever world generation changes. The bake reads the authored
-world data in `world_authoring/` too (walls and fences: see
-[plan-walls.md](plan-walls.md)). With `--walls`, only the chunks walls
-touch are baked again (about a second, not five; the editor's **Save and
-bake** does this); it bakes everything if the world there was baked
-differently.
+world data in `world_authoring/` too (walls, fences and buildings: see
+[plan-walls.md](plan-walls.md) and [plan-buildings.md](plan-buildings.md)),
+and makes each chunk's navigation mesh tile (see
+[plan-collision.md](plan-collision.md)): a whole bake takes about 30
+seconds, most of it the tiles. With `--structures` (or `--walls`), only the
+chunks walls and buildings touch (and their tiles, and their neighbours'
+tiles) are baked again, in a few seconds; the editor's **Save and bake** does
+this. It bakes everything if the world there was baked differently.
 
 **A running server (or `--local` game) picks up a new bake by itself:** it
 watches the world's manifest (which the bake writes last), loads the world

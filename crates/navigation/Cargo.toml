@@ -1,6 +1,6 @@
 [package]
 name = "venture_navigation"
-description = "Where characters can walk, and finding paths across the terrain."
+description = "Where characters can walk (navigation mesh tiles, baked with Recast) and finding routes over it (with landmass)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,13 @@ rust-version.workspace = true
 
 [dependencies]
 venture_world.workspace = true
+venture_collision.workspace = true
+glam.workspace = true
+rerecast = "0.4"
+landmass = "0.9"
+
+[dev-dependencies]
+venture_structures.workspace = true
 
 [lints]
 workspace = true

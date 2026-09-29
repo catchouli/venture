@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// The version of the chunk file layout. Increase it whenever the layout changes.
-pub const CHUNK_FORMAT_VERSION: u16 = 4;
+pub const CHUNK_FORMAT_VERSION: u16 = 5;
 
 /// Name of the manifest file in a baked world folder.
 pub const MANIFEST_FILE: &str = "manifest.ron";
@@ -138,7 +138,7 @@ struct ChunkFile {
     heights: Vec<i16>,
     cells: Vec<CellRecord>,
     props: Vec<Prop>,
-    structure_cells: Vec<u16>,
+    navmesh: crate::NavTile,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -179,7 +179,7 @@ pub fn encode_chunk(chunk: &Chunk) -> Vec<u8> {
         heights,
         cells,
         props: chunk.props.clone(),
-        structure_cells: chunk.structure_cells.clone(),
+        navmesh: chunk.navmesh.clone(),
     };
     postcard::to_stdvec(&file).expect("a chunk always serialises")
 }
@@ -206,7 +206,7 @@ pub fn decode_chunk(bytes: &[u8]) -> Result<Chunk, BakedWorldError> {
         };
     }
     chunk.props = file.props;
-    chunk.structure_cells = file.structure_cells;
+    chunk.navmesh = file.navmesh;
     Ok(chunk)
 }
 
@@ -231,7 +231,6 @@ mod tests {
         assert!((decoded.cell(1, 2).fluid.unwrap().level - 40.004).abs() <= 0.005);
         assert_eq!(decoded.cell(1, 2).fluid.unwrap().body, FluidBody::Lake);
         assert_eq!(decoded.props, chunk.props);
-        assert_eq!(decoded.structure_cells, chunk.structure_cells);
     }
 
     #[test]

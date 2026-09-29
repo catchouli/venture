@@ -1,12 +1,14 @@
 //! The world's solid shapes, for predicting the player's own movement (see
 //! `venture_collision`): kept in step with the loaded chunks, the walls and
-//! buildings, and the felled trees, just as the server keeps its own.
+//! buildings, and the felled trees, just as the server keeps its own. And
+//! the loaded chunks' navigation mesh tiles, for predicting routes.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use bevy::prelude::*;
 use venture_collision::Collision;
+use venture_navigation::NavWorld;
 use venture_protocol::TreeId;
 use venture_world::{Chunk, ChunkPos};
 
@@ -21,6 +23,7 @@ pub struct CollisionPlugin;
 impl Plugin for CollisionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Solid>()
+            .init_resource::<Nav>()
             .init_resource::<Loaded>()
             .add_systems(Update, (follow_structures, follow_chunks, follow_felling).chain().in_set(SolidSystems));
     }
@@ -33,6 +36,10 @@ pub struct SolidSystems;
 /// The solid world, as far as it's loaded.
 #[derive(Resource, Default)]
 pub struct Solid(pub Collision);
+
+/// The loaded chunks' navigation mesh tiles, joined.
+#[derive(Resource, Default)]
+pub struct Nav(pub NavWorld);
 
 /// Which chunk data each loaded chunk was made from, and which felled trees
 /// are out of the way.
@@ -55,6 +62,7 @@ fn follow_chunks(
     store: Res<ChunkStore>,
     felled: Res<FelledTrees>,
     mut solid: ResMut<Solid>,
+    mut nav: ResMut<Nav>,
     mut loaded: ResMut<Loaded>,
 ) {
     if !store.is_changed() {
@@ -68,6 +76,7 @@ fn follow_chunks(
         .collect();
     for pos in gone {
         solid.0.remove_chunk(pos);
+        nav.0.remove_tile(pos);
         loaded.chunks.remove(&pos);
     }
     for (&pos, chunk) in &store.0 {
@@ -75,11 +84,15 @@ fn follow_chunks(
             continue;
         }
         solid.0.add_chunk(chunk);
+        if let Err(problem) = nav.0.add_tile(pos, &chunk.navmesh) {
+            warn!("{problem}");
+        }
         for tree in felled.0.keys().filter(|tree| (tree.chunk_x, tree.chunk_y) == (pos.x, pos.y)) {
             solid.0.set_prop_standing(pos, tree.index, false);
         }
         loaded.chunks.insert(pos, chunk.clone());
     }
+    nav.0.join();
 }
 
 /// Felled trees are out of the way, until they grow back.

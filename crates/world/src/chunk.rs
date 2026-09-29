@@ -1,6 +1,6 @@
 //! Chunks: square blocks of terrain.
 
-use crate::{CHUNK_CORNERS, CHUNK_SIZE, ChunkPos, Prop, TerrainCell};
+use crate::{CHUNK_CORNERS, CHUNK_SIZE, ChunkPos, NavTile, Prop, TerrainCell};
 
 /// A `CHUNK_SIZE` × `CHUNK_SIZE` block of terrain: a heightfield plus the
 /// cells on it.
@@ -18,9 +18,8 @@ pub struct Chunk {
     pub pos: ChunkPos,
     /// Trees, rocks and bushes whose base is inside this chunk.
     pub props: Vec<Prop>,
-    /// Cells a structure (a wall, a fence) stands on, so can't be walked
-    /// through: indices `y * CHUNK_SIZE + x`, in order.
-    pub structure_cells: Vec<u16>,
+    /// Where characters can stand, as a navigation mesh (empty until baked).
+    pub navmesh: NavTile,
     heights: Vec<f32>,
     cells: Vec<TerrainCell>,
 }
@@ -31,7 +30,7 @@ impl Chunk {
         Self {
             pos,
             props: Vec::new(),
-            structure_cells: Vec::new(),
+            navmesh: NavTile::default(),
             heights: vec![0.0; (CHUNK_CORNERS * CHUNK_CORNERS) as usize],
             cells: vec![TerrainCell::default(); (CHUNK_SIZE * CHUNK_SIZE) as usize],
         }

@@ -34,8 +34,7 @@ use glam::{Vec2, Vec3};
 use venture_world::{BakedBuilding, WallRef};
 
 pub use bake::{
-    WallBand, bake_building, building_cells, building_clearing, building_walls, cell_bounds, check_buildings, levelled,
-    parse_buildings,
+    WallBand, bake_building, building_clearing, building_walls, cell_bounds, check_buildings, levelled, parse_buildings,
 };
 pub use plan::{Footprint, Frame, Opening, OpeningKind, check_plan};
 pub use style::{BuildingStyle, WallConstruction, check_styles, parse_styles};

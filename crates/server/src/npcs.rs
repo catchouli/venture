@@ -16,7 +16,7 @@ use venture_simulation::plan_route;
 
 use crate::ServerSystems;
 use crate::content::LoadedContent;
-use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
+use crate::entities::{DisplayName, EntityIds, Feet, Mover, NetworkId, Player, Position, appeared};
 use crate::link::Link;
 use crate::quests::QuestAdvanced;
 use crate::scripting::{NpcView, PlayerView, ScriptCommand, Scripts};
@@ -108,7 +108,7 @@ fn match_content(
 
     for def in content.pack.npcs.iter().filter(|def| !kept.contains(&def.id)) {
         let home = def.at;
-        if world.is_blocked(home.0.floor() as i32, home.1.floor() as i32) {
+        if !world.can_stand(home) {
             warn!("NPC \"{}\" stands somewhere that can't be walked on (at {home:?}).", def.id);
         }
         let id = ids.allocate();
@@ -181,13 +181,13 @@ fn apply_script_commands(
     scripts: Res<Scripts>,
     world: Res<ServerWorld>,
     mut link: ResMut<Link>,
-    mut npcs: Query<(&Npc, &NetworkId, &DisplayName, &Position, &mut Mover)>,
+    mut npcs: Query<(&Npc, &NetworkId, &DisplayName, &Position, &Feet, &mut Mover)>,
     players: Query<(&Player, &Position)>,
 ) {
     for command in scripts.take_commands() {
         match command {
             ScriptCommand::Say { npc, text } => {
-                let Ok((_, &NetworkId(from), name, &Position(position), _)) = npcs.get(npc) else { continue };
+                let Ok((_, &NetworkId(from), name, &Position(position), ..)) = npcs.get(npc) else { continue };
                 let Some(text) = clean_chat_text(&text) else { continue };
                 let nearby = players
                     .iter()
@@ -196,19 +196,19 @@ fn apply_script_commands(
                 link.broadcast(nearby, &ServerMessage::Chat { from, name: name.0.clone(), text });
             }
             ScriptCommand::Wander { npc } => {
-                let Ok((npc, _, _, &Position(position), mut mover)) = npcs.get_mut(npc) else { continue };
+                let Ok((npc, _, _, &Position(position), feet, mut mover)) = npcs.get_mut(npc) else { continue };
                 if let Some(spot) = wander_spot(npc, &world) {
-                    mover.0 = plan_route(position, spot, |x, y| world.is_blocked(x, y));
+                    mover.0 = plan_route(&world.nav, [position.0, position.1, feet.body.height], spot);
                 }
             }
             ScriptCommand::MoveTo { npc, x, y } => {
-                let Ok((npc, _, _, &Position(position), mut mover)) = npcs.get_mut(npc) else { continue };
+                let Ok((npc, _, _, &Position(position), feet, mut mover)) = npcs.get_mut(npc) else { continue };
                 if !x.is_finite() || !y.is_finite() || npc.definition.wander_radius <= 0.0 {
                     continue;
                 }
                 // Keep it within the NPC's wander radius of home.
                 let goal = venture_simulation::clamp_move_goal(npc.home, (x, y), npc.definition.wander_radius);
-                mover.0 = plan_route(position, goal, |x, y| world.is_blocked(x, y));
+                mover.0 = plan_route(&world.nav, [position.0, position.1, feet.body.height], goal);
             }
         }
     }
@@ -224,7 +224,7 @@ fn wander_spot(npc: &Npc, world: &ServerWorld) -> Option<Point> {
         let angle = fastrand::f32() * std::f32::consts::TAU;
         let reach = radius * fastrand::f32().sqrt();
         let spot = (npc.home.0 + angle.cos() * reach, npc.home.1 + angle.sin() * reach);
-        (!world.is_blocked(spot.0.floor() as i32, spot.1.floor() as i32)).then_some(spot)
+        world.standing_near(spot, 1.0)
     })
 }
 

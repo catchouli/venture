@@ -73,8 +73,13 @@ fn wood_chunks() -> (WorldManifest, Vec<Chunk>) {
 /// Writes a world to a folder, as the bake does.
 fn write_world(folder: &std::path::Path, manifest: &WorldManifest, chunks: &[Chunk]) {
     std::fs::create_dir_all(folder.join("chunks")).unwrap();
+    // With their navigation mesh tiles, as the bake makes them.
+    let mut solid = venture_collision::Collision::new();
+    chunks.iter().for_each(|chunk| solid.add_chunk(chunk));
     for chunk in chunks {
-        std::fs::write(folder.join(venture_world::chunk_file_path(chunk.pos)), venture_world::encode_chunk(chunk))
+        let mut chunk = chunk.clone();
+        chunk.navmesh = venture_navigation::build_tile(&solid, chunk.pos);
+        std::fs::write(folder.join(venture_world::chunk_file_path(chunk.pos)), venture_world::encode_chunk(&chunk))
             .unwrap();
     }
     std::fs::write(folder.join(venture_world::MANIFEST_FILE), manifest.to_ron()).unwrap();
@@ -1118,7 +1123,9 @@ fn admins_teleport_players_and_change_their_speed() {
     assert_eq!(notices(&boss.receive()), ["You moved Visitor to 108, 50."]);
     assert_eq!(notices(&visitor.receive()), ["An admin moved you to 108, 50."]);
     server.run(1);
-    assert_eq!(visitor.latest_position(visitor_id), Some((103.5, 50.5)));
+    // (The river starts at 104; the bank's edge is a character's width back from it.)
+    let (x, y) = visitor.latest_position(visitor_id).unwrap();
+    assert!((103.3..104.0).contains(&x) && (y - 50.3).abs() < 0.1, "{x}, {y}");
 
     // To a player (and nowhere that isn't one, or is off the world).
     boss.send(&teleport(None, TeleportTo::Player("visitor".to_string())));
@@ -1130,7 +1137,7 @@ fn admins_teleport_players_and_change_their_speed() {
     assert_eq!(said[1], "There's nobody called \"Nobody\" in the game.");
     assert!(said[2].starts_with("That's outside the world"), "{said:?}");
     server.run(1);
-    assert_eq!(boss.latest_position(boss_id), Some((103.5, 50.5)));
+    assert_eq!(boss.latest_position(boss_id), visitor.latest_position(visitor_id), "beside the visitor");
 
     // Running five times as fast, then back to the usual.
     boss.send(&ClientMessage::Admin(AdminCommand::SetSpeed { scale: 5.0 }));

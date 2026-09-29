@@ -17,26 +17,34 @@
 //!
 //! Authored world data (`world_authoring/`, see `docs/world-authoring.md`)
 //! is baked in too: walls and fences (`walls.ron`, see `docs/plan-walls.md`)
-//! go in the manifest, block the cells they stand on, and clear the trees and
-//! rocks in their way.
+//! go in the manifest, and clear the trees and rocks in their way.
+//!
+//! Last, each chunk's navigation mesh tile is made (see
+//! `docs/plan-collision.md`) from the solid shapes of it and the chunks round
+//! it, as written: those of every chunk baked, and of their neighbours.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
+use venture_collision::Collision;
+use venture_navigation::build_tile;
 use venture_structures::buildings::{
-    BUILDINGS_FILE, BuildingStyle, STYLES_FILE, bake_building, building_cells, building_clearing, cell_bounds,
-    check_plan, levelled, parse_buildings, parse_styles,
+    BUILDINGS_FILE, BuildingStyle, STYLES_FILE, bake_building, building_clearing, cell_bounds, check_plan, levelled,
+    parse_buildings, parse_styles,
 };
-use venture_structures::{WALLS_FILE, cells_near, check_walls, parse_walls, wall_cells};
+use venture_structures::{WALLS_FILE, cells_near, check_walls, parse_walls};
 use venture_world::{
     BakedBuilding, BakedWall, CHUNK_FORMAT_VERSION, CHUNK_SIZE, CellPos, Chunk, ChunkPos, Ground, MANIFEST_FILE,
-    SettlementInfo, WorldManifest, chunk_file_path, encode_chunk,
+    SettlementInfo, WorldManifest, chunk_file_path, decode_chunk, encode_chunk,
 };
 use venture_worldgen::map_render::bake_map;
 use venture_worldgen::structures::bake_authored_wall;
 use venture_worldgen::{GENERATOR_VERSION, WorldGenConfig, WorldGenerator};
+
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() -> std::io::Result<()> {
     let (flags, positional): (Vec<String>, Vec<String>) =
@@ -77,13 +85,13 @@ fn main() -> std::io::Result<()> {
     let styles = building_styles(Path::new(CONTENT_FOLDER));
     manifest.walls = bake_walls(&world, &authoring);
     manifest.buildings = bake_buildings(&world, &authoring, &styles);
-    let structures = Structures::of(&manifest.walls, &manifest.buildings, &styles);
+    let structures = Structures::of(&manifest.walls, &manifest.buildings);
     std::fs::create_dir_all(output.join("chunks"))?;
 
     // Only the chunks walls and buildings touch, if asked and the world there matches.
     let only = only_structures.then(|| previous_structures(&output, &manifest)).flatten().map(|(walls, buildings)| {
         let mut chunks = structures.chunks();
-        chunks.extend(Structures::of(&walls, &buildings, &styles).chunks());
+        chunks.extend(Structures::of(&walls, &buildings).chunks());
         chunks.sort_unstable_by_key(|pos| (pos.y, pos.x));
         chunks.dedup();
         chunks
@@ -100,6 +108,11 @@ fn main() -> std::io::Result<()> {
     let positions = only.unwrap_or(all);
     bake_chunks(&world, &positions, &structures, &output)?;
     println!("{} chunks baked in {:.2?}.", positions.len(), started.elapsed());
+
+    let started = Instant::now();
+    let tiles = with_neighbours(&positions, &manifest);
+    bake_navmesh(&tiles, &manifest, &styles, &output)?;
+    println!("{} navigation mesh tiles made in {:.2?}.", tiles.len(), started.elapsed());
 
     // The map is drawn from the chunks just written.
     let started = Instant::now();
@@ -176,18 +189,19 @@ fn bake_walls(world: &WorldGenerator, folder: &Path) -> Vec<BakedWall> {
     walls
 }
 
-/// What walls and buildings do to each chunk: the cells they block, the
-/// cells they clear of trees and rocks, and (buildings) the ground they level.
+/// What walls and buildings do to each chunk: the cells they clear of trees
+/// and rocks (their own ground among them), and (buildings) the ground they
+/// level. (What they block is their shapes: see `venture_collision`, and the
+/// navigation mesh tiles made from them.)
 #[derive(Default)]
 struct Structures {
-    blocked: HashMap<ChunkPos, Vec<u16>>,
     cleared: HashMap<ChunkPos, HashSet<u16>>,
     /// The buildings levelling ground in each chunk.
     levelled: HashMap<ChunkPos, Vec<BakedBuilding>>,
 }
 
 impl Structures {
-    fn of(walls: &[BakedWall], buildings: &[BakedBuilding], styles: &[BuildingStyle]) -> Self {
+    fn of(walls: &[BakedWall], buildings: &[BakedBuilding]) -> Self {
         let mut structures = Self::default();
         // A world cell as its chunk and its index in it.
         let place = |(x, y): (i32, i32)| {
@@ -195,18 +209,6 @@ impl Structures {
             let (local_x, local_y) = cell.local();
             (cell.chunk(), (local_y * CHUNK_SIZE as usize + local_x) as u16)
         };
-        let mut block = |cell| {
-            let (chunk, index) = place(cell);
-            structures.blocked.entry(chunk).or_default().push(index);
-        };
-        for wall in walls {
-            wall_cells(wall).into_iter().for_each(&mut block);
-        }
-        for building in buildings {
-            if let Some(style) = styles.iter().find(|style| style.id == building.plan.style) {
-                building_cells(building, style).into_iter().for_each(&mut block);
-            }
-        }
         let mut clear = |cell| {
             let (chunk, index) = place(cell);
             structures.cleared.entry(chunk).or_default().insert(index);
@@ -224,23 +226,16 @@ impl Structures {
                 }
             }
         }
-        for cells in structures.blocked.values_mut() {
-            cells.sort_unstable();
-            cells.dedup();
-        }
         structures
     }
 
     /// The chunks walls and buildings touch.
     fn chunks(&self) -> Vec<ChunkPos> {
-        self.blocked.keys().chain(self.cleared.keys()).chain(self.levelled.keys()).copied().collect()
+        self.cleared.keys().chain(self.levelled.keys()).copied().collect()
     }
 
     /// Puts the walls' and buildings' effects into a freshly generated chunk.
     fn apply(&self, chunk: &mut Chunk) {
-        if let Some(cells) = self.blocked.get(&chunk.pos) {
-            chunk.structure_cells = cells.clone();
-        }
         let (origin_x, origin_y) = chunk.pos.origin_cell();
         if let Some(cleared) = self.cleared.get(&chunk.pos) {
             chunk.props.retain(|prop| {
@@ -301,26 +296,128 @@ fn bake_chunks(
     })
 }
 
+/// The chunks and their neighbours (in the world), in order.
+fn with_neighbours(positions: &[ChunkPos], manifest: &WorldManifest) -> Vec<ChunkPos> {
+    let mut all: Vec<ChunkPos> = positions
+        .iter()
+        .flat_map(|pos| (-1..=1).flat_map(move |dy| (-1..=1).map(move |dx| ChunkPos::new(pos.x + dx, pos.y + dy))))
+        .filter(|&pos| manifest.contains_chunk(pos))
+        .collect();
+    all.sort_unstable_by_key(|pos| (pos.y, pos.x));
+    all.dedup();
+    all
+}
+
+/// Reads a chunk already written.
+fn read_chunk(output: &Path, pos: ChunkPos) -> std::io::Result<Chunk> {
+    let bytes = std::fs::read(output.join(chunk_file_path(pos)))?;
+    decode_chunk(&bytes).map_err(|error| std::io::Error::other(format!("chunk {pos:?}: {error}")))
+}
+
+/// Writes a chunk's file whole (so no one reading it sees half of it).
+fn write_chunk(output: &Path, chunk: &Chunk) -> std::io::Result<()> {
+    let path = output.join(chunk_file_path(chunk.pos));
+    let partial = path.with_extension("partial");
+    std::fs::write(&partial, encode_chunk(chunk))?;
+    std::fs::rename(partial, path)
+}
+
+/// Makes the navigation mesh tiles of these chunks (already written), from
+/// them and the chunks round them, with the walls and buildings near, and
+/// writes them in, spreading the work over all CPU cores.
+fn bake_navmesh(
+    positions: &[ChunkPos],
+    manifest: &WorldManifest,
+    styles: &[BuildingStyle],
+    output: &Path,
+) -> std::io::Result<()> {
+    let next = AtomicUsize::new(0);
+    let threads = std::thread::available_parallelism().map_or(4, |count| count.get());
+    // (Anything within this of a chunk's edge matters to its tile.)
+    let near = |pos: ChunkPos, low: (f32, f32), high: (f32, f32)| {
+        let (x, y) = pos.origin_cell();
+        let (x, y, size, margin) = (x as f32, y as f32, CHUNK_SIZE as f32, 4.0);
+        high.0 >= x - margin && low.0 <= x + size + margin && high.1 >= y - margin && low.1 <= y + size + margin
+    };
+    let wall_bounds = |wall: &BakedWall| {
+        wall.samples.iter().fold(((f32::MAX, f32::MAX), (f32::MIN, f32::MIN)), |(low, high), s| {
+            ((low.0.min(s.x), low.1.min(s.y)), (high.0.max(s.x), high.1.max(s.y)))
+        })
+    };
+    let building_bounds = |building: &BakedBuilding| {
+        building.plan.outline.iter().fold(((f32::MAX, f32::MAX), (f32::MIN, f32::MIN)), |(low, high), &(x, y)| {
+            ((low.0.min(x), low.1.min(y)), (high.0.max(x), high.1.max(y)))
+        })
+    };
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                scope.spawn(|| -> std::io::Result<()> {
+                    loop {
+                        let index = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(&pos) = positions.get(index) else { return Ok(()) };
+                        let mut solid = Collision::new();
+                        let mut chunk = None;
+                        for dy in -1..=1 {
+                            for dx in -1..=1 {
+                                let at = ChunkPos::new(pos.x + dx, pos.y + dy);
+                                if !manifest.contains_chunk(at) {
+                                    continue;
+                                }
+                                let read = read_chunk(output, at)?;
+                                solid.add_chunk(&read);
+                                if at == pos {
+                                    chunk = Some(read);
+                                }
+                            }
+                        }
+                        let walls: Vec<BakedWall> = manifest
+                            .walls
+                            .iter()
+                            .filter(|wall| {
+                                let (low, high) = wall_bounds(wall);
+                                near(pos, low, high)
+                            })
+                            .cloned()
+                            .collect();
+                        let buildings: Vec<BakedBuilding> = manifest
+                            .buildings
+                            .iter()
+                            .filter(|building| {
+                                let (low, high) = building_bounds(building);
+                                near(pos, low, high)
+                            })
+                            .cloned()
+                            .collect();
+                        solid.set_structures(&walls, &buildings, styles);
+                        let mut chunk = chunk.expect("the chunk itself is in the world");
+                        chunk.navmesh = build_tile(&solid, pos);
+                        write_chunk(output, &chunk)?;
+                    }
+                })
+            })
+            .collect();
+        workers.into_iter().try_for_each(|worker| worker.join().expect("a navigation mesh worker panicked"))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use venture_world::{Prop, PropKind, WallKind, WallSample};
 
     #[test]
-    fn walls_block_their_cells_and_clear_props_from_their_way() {
+    fn walls_clear_props_from_their_way() {
         // A straight wall along y = 10.5, from x = 2 to x = 20, in the first chunk.
         let samples =
             (0..=36).map(|i| WallSample { x: 2.0 + i as f32 * 0.5, y: 10.5, ground: 0.0, open: false }).collect();
         let wall = BakedWall { id: "w".into(), kind: WallKind::DryStone, height: 1.3, seed: 0, samples };
-        let structures = Structures::of(&[wall], &[], &[]);
+        let structures = Structures::of(&[wall], &[]);
         let boulder =
             |x: f32, y: f32| Prop { kind: PropKind::Boulder, x, y, ground_height: 0.0, scale: 1.0, rotation: 0.0 };
         let mut chunk = Chunk::new(ChunkPos::new(0, 0));
         chunk.props = vec![boulder(10.2, 11.3), boulder(10.2, 20.5)];
         structures.apply(&mut chunk);
-        let index = |x: usize, y: usize| (y * CHUNK_SIZE as usize + x) as u16;
-        assert!(chunk.structure_cells.contains(&index(10, 10)));
-        assert!(!chunk.structure_cells.contains(&index(10, 13)));
         assert_eq!(chunk.props, vec![boulder(10.2, 20.5)], "only the boulder in the wall's way goes");
     }
 }

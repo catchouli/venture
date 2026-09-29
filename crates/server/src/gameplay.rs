@@ -76,7 +76,7 @@ fn act_on_requests(
             PlayerAction::MoveTo(goal) => {
                 stop_following();
                 let goal = clamp_move_goal(position, *goal, rules.0.max_move_distance);
-                mover.0 = plan_route(position, goal, |x, y| world.is_blocked(x, y));
+                mover.0 = plan_route(&world.nav, [position.0, position.1, feet.body.height], goal);
             }
             PlayerAction::Steer(direction) => {
                 stop_following();
@@ -193,9 +193,9 @@ fn update_followers(
     rules: Res<GameRules>,
     positions: Query<&Position>,
     mut interactions: MessageWriter<NpcInteraction>,
-    mut followers: Query<(Entity, &mut Following, &Position, &mut Mover, Option<&PendingInteraction>)>,
+    mut followers: Query<(Entity, &mut Following, &Position, &Feet, &mut Mover, Option<&PendingInteraction>)>,
 ) {
-    for (entity, mut following, &Position(position), mut mover, pending) in &mut followers {
+    for (entity, mut following, &Position(position), feet, mut mover, pending) in &mut followers {
         let Ok(&Position(target)) = positions.get(following.target) else {
             mover.0 = Movement::Idle;
             commands.entity(entity).remove::<(Following, PendingInteraction)>();
@@ -209,9 +209,9 @@ fn update_followers(
             commands.entity(entity).remove::<(Following, PendingInteraction)>();
             continue;
         }
-        let outcome = following
-            .follow
-            .update(position, target, &mut mover.0, rules.0.max_move_distance, |x, y| world.is_blocked(x, y));
+        let outcome = following.follow.update(position, target, &mut mover.0, rules.0.max_move_distance, |from, to| {
+            plan_route(&world.nav, [from.0, from.1, feet.body.height], to)
+        });
         if outcome == FollowOutcome::Stop {
             mover.0 = Movement::Idle;
             commands.entity(entity).remove::<(Following, PendingInteraction)>();
@@ -226,9 +226,9 @@ fn update_attackers(
     world: Res<ServerWorld>,
     rules: Res<GameRules>,
     targets: Query<&Position, Without<Dead>>,
-    mut attackers: Query<(Entity, &mut Attacking, &Position, &mut Mover)>,
+    mut attackers: Query<(Entity, &mut Attacking, &Position, &Feet, &mut Mover)>,
 ) {
-    for (entity, mut attacking, &Position(position), mut mover) in &mut attackers {
+    for (entity, mut attacking, &Position(position), feet, mut mover) in &mut attackers {
         let Ok(&Position(target)) = targets.get(attacking.target) else {
             mover.0 = Movement::Idle;
             commands.entity(entity).remove::<Attacking>();
@@ -238,9 +238,9 @@ fn update_attackers(
             mover.0 = Movement::Idle;
             continue;
         }
-        let outcome = attacking
-            .follow
-            .update(position, target, &mut mover.0, rules.0.max_move_distance, |x, y| world.is_blocked(x, y));
+        let outcome = attacking.follow.update(position, target, &mut mover.0, rules.0.max_move_distance, |from, to| {
+            plan_route(&world.nav, [from.0, from.1, feet.body.height], to)
+        });
         if outcome == FollowOutcome::Stop {
             mover.0 = Movement::Idle;
             commands.entity(entity).remove::<Attacking>();
@@ -264,9 +264,9 @@ fn update_casters(
     world: Res<ServerWorld>,
     rules: Res<GameRules>,
     targets: Query<&Position, Without<Dead>>,
-    mut casters: Query<(Entity, &mut PendingAbility, &Position, &mut Mover), Without<Attacking>>,
+    mut casters: Query<(Entity, &mut PendingAbility, &Position, &Feet, &mut Mover), Without<Attacking>>,
 ) {
-    for (entity, mut pending, &Position(position), mut mover) in &mut casters {
+    for (entity, mut pending, &Position(position), feet, mut mover) in &mut casters {
         let Ok(&Position(target)) = targets.get(pending.target) else {
             mover.0 = Movement::Idle;
             commands.entity(entity).remove::<PendingAbility>();
@@ -276,9 +276,9 @@ fn update_casters(
             mover.0 = Movement::Idle;
             continue;
         }
-        let outcome = pending
-            .follow
-            .update(position, target, &mut mover.0, rules.0.max_move_distance, |x, y| world.is_blocked(x, y));
+        let outcome = pending.follow.update(position, target, &mut mover.0, rules.0.max_move_distance, |from, to| {
+            plan_route(&world.nav, [from.0, from.1, feet.body.height], to)
+        });
         if outcome == FollowOutcome::Stop {
             mover.0 = Movement::Idle;
             commands.entity(entity).remove::<PendingAbility>();

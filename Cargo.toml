@@ -16,6 +16,8 @@ members = [
     "crates/structures",
     "crates/collision",
 ]
+# Vendored crates, patched (see third_party/README.md).
+exclude = ["third_party/rerecast"]
 
 [workspace.package]
 version = "0.1.0"
@@ -48,6 +50,9 @@ bevy = { version = "0.19", default-features = false }
 bevy_reflect = "0.19"
 glam = "0.32"
 serde_json = "1"
+
+[patch.crates-io]
+rerecast = { path = "third_party/rerecast" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

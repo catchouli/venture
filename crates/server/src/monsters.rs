@@ -15,14 +15,14 @@ use std::ops::Range;
 
 use bevy::prelude::*;
 use venture_content::{MonsterDef, SpawnerDef};
-use venture_navigation::Point;
+use venture_navigation::{Point, Point3};
 use venture_protocol::{EntityKind, ServerMessage};
 use venture_simulation::{Follow, FollowOutcome, MELEE_RANGE, Movement, plan_route};
 
 use crate::ServerSystems;
 use crate::combat::{Health, KnockedOut, Strike};
 use crate::content::LoadedContent;
-use crate::entities::{DisplayName, EntityIds, Mover, NetworkId, Player, Position, appeared};
+use crate::entities::{DisplayName, EntityIds, Feet, Mover, NetworkId, Player, Position, appeared};
 use crate::link::Link;
 use crate::world::ServerWorld;
 
@@ -186,19 +186,20 @@ fn think(
     world: Res<ServerWorld>,
     mut knocked_out: MessageReader<KnockedOut>,
     mut strikes: MessageWriter<Strike>,
-    mut monsters: Query<(Entity, &mut Monster, &Position, &mut Mover, &mut Health), Without<Dead>>,
+    mut monsters: Query<(Entity, &mut Monster, &Position, &Feet, &mut Mover, &mut Health), Without<Dead>>,
     players: Query<(Entity, &Position), With<Player>>,
 ) {
     let dt = time.delta_secs();
-    let blocked = |x, y| world.is_blocked(x, y);
     let knocked_out: Vec<Entity> = knocked_out.read().map(|&KnockedOut(player)| player).collect();
-    for (entity, mut monster, &Position(position), mut mover, mut health) in &mut monsters {
+    for (entity, mut monster, &Position(position), feet, mut mover, mut health) in &mut monsters {
+        let height = feet.body.height;
+        let plan = |from: Point, to: Point| plan_route(&world.nav, [from.0, from.1, height], to);
         monster.cooldown = (monster.cooldown - dt).max(0.0);
         // A knocked-out player is no longer a target: go home.
         if monster.target.is_some_and(|target| knocked_out.contains(&target)) {
             monster.target = None;
             health.restore();
-            mover.0 = plan_route(position, monster.home, blocked);
+            mover.0 = plan(position, monster.home);
         }
 
         // Pick a fight: whoever attacked it, or (if aggressive) any player near enough.
@@ -219,7 +220,7 @@ fn think(
         }
 
         let Some(target) = monster.target else {
-            wander(&mut monster, position, &mut mover, dt, &world);
+            wander(&mut monster, [position.0, position.1, height], &mut mover, dt, &world);
             continue;
         };
         // Give up if the target's gone or it's been led too far from home.
@@ -227,11 +228,11 @@ fn think(
         let Some(target_at) = target_at.filter(|_| distance(position, monster.home) <= LEASH) else {
             monster.target = None;
             health.restore();
-            mover.0 = plan_route(position, monster.home, blocked);
+            mover.0 = plan(position, monster.home);
             continue;
         };
         if distance(position, target_at) > MELEE_RANGE {
-            let outcome = monster.chase.update(position, target_at, &mut mover.0, LEASH * 2.0, blocked);
+            let outcome = monster.chase.update(position, target_at, &mut mover.0, LEASH * 2.0, plan);
             if outcome == FollowOutcome::Stop {
                 monster.target = None;
             }
@@ -246,13 +247,13 @@ fn think(
 }
 
 /// An idle monster now and then walks somewhere near home.
-fn wander(monster: &mut Monster, position: Point, mover: &mut Mover, dt: f32, world: &ServerWorld) {
+fn wander(monster: &mut Monster, position: Point3, mover: &mut Mover, dt: f32, world: &ServerWorld) {
     if mover.0.is_moving() || !monster.idle.tick(std::time::Duration::from_secs_f32(dt)).is_finished() {
         return;
     }
     monster.idle = idle_timer();
     if let Some(spot) = walkable_spot(monster.home, monster.def.wander_radius, world) {
-        mover.0 = plan_route(position, spot, |x, y| world.is_blocked(x, y));
+        mover.0 = plan_route(&world.nav, position, spot);
     }
 }
 
@@ -282,15 +283,14 @@ fn remove_the_dead(
 
 /// A random walkable spot within `radius` of `centre`, if one turns up.
 fn walkable_spot(centre: Point, radius: f32, world: &ServerWorld) -> Option<Point> {
-    let walkable = |spot: Point| !world.is_blocked(spot.0.floor() as i32, spot.1.floor() as i32);
     if radius <= 0.0 {
-        return walkable(centre).then_some(centre);
+        return world.can_stand(centre).then_some(centre);
     }
     (0..SPOT_ATTEMPTS).find_map(|_| {
         let angle = fastrand::f32() * std::f32::consts::TAU;
         let reach = radius * fastrand::f32().sqrt();
         let spot = (centre.0 + angle.cos() * reach, centre.1 + angle.sin() * reach);
-        walkable(spot).then_some(spot)
+        world.standing_near(spot, 1.0)
     })
 }
 

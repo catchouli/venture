@@ -1,0 +1,4 @@
+# On the web, `getrandom` (used by landmass, through `rand`) takes its
+# randomness from the browser: see https://docs.rs/getrandom/#webassembly-support.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

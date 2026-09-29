@@ -4,10 +4,10 @@
 //! These read the loaded chunk data (from the server's baked world).
 
 use bevy::math::{Ray3d, Vec3};
-use venture_world::{CHUNK_SIZE, CellPos, FluidKind};
+use venture_world::{CellPos, FluidKind};
 
 use crate::common::coords::{from_bevy, to_bevy};
-use crate::world::streaming::{ChunkStore, ObstacleStore};
+use crate::world::streaming::ChunkStore;
 
 /// How far a ray is followed looking for the ground, in metres.
 const RAY_MAX_DISTANCE: f32 = 600.0;
@@ -85,14 +85,4 @@ pub fn shown_height(store: &ChunkStore, x: f32, y: f32, feet: f32) -> f32 {
         Some(ground) if (feet - ground).abs() < ON_THE_GROUND => ground,
         _ => feet,
     }
-}
-
-/// Whether terrain cell `(x, y)` is blocked. Unloaded cells count as blocked,
-/// so paths stay on loaded ground.
-pub fn is_blocked(obstacles: &ObstacleStore, x: i32, y: i32) -> bool {
-    let cell = CellPos::new(x, y);
-    let Some(chunk) = obstacles.0.get(&cell.chunk()) else { return true };
-    let (local_x, local_y) = cell.local();
-    debug_assert!(local_x < CHUNK_SIZE as usize && local_y < CHUNK_SIZE as usize);
-    chunk.is_blocked(local_x, local_y)
 }

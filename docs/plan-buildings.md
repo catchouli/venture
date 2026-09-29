@@ -18,7 +18,7 @@ should grow into that without starting again:
 
 It works the same way as walls and fences (see [plan-walls.md](plan-walls.md)):
 - **authored data** in `world_authoring/buildings.ron`;
-- **baked** into the world: the manifest, blocked cells, cleared trees;
+- **baked** into the world: the manifest, cleared trees (and, since the collision work, solid shapes and navigation mesh tiles);
 - **built into meshes** by a standalone generator on each client, and live in
   the editor.
 
@@ -176,8 +176,10 @@ As for walls:
 - The bake reads `world_authoring/buildings.ron` and writes the manifest's
   `buildings`, with the ground's height under each corner (for the
   plinth's depth).
-- **Blocked cells:** cells under walls are blocked, except doorways. Inside
-  is walkable (on the ground floor), so you can go in.
+- **Solid walls:** walls are solid (boxes, see
+  [plan-collision.md](plan-collision.md)), except doorways. Inside is
+  walkable (on the ground floor), so you can go in. (At first these were
+  blocked cells, which the collision work replaced.)
 - **Cleared:** trees and rocks inside and near the footprint are cleared.
 - `bake --walls` becomes `bake --structures`, covering both. A running game
   loads it by itself, as walls do now.
@@ -240,7 +242,7 @@ As for walls:
   doors standing open inward, floors, inner walls), `roof.rs` (gable or hip
   thatch over each wing, reaching into its neighbours so they make
   valleys; rolled ridges and hips; gable walls; chimney with pots),
-  `bake.rs` (floor level, levelled ground, blocked cells, clearing). A
+  `bake.rs` (floor level, levelled ground, walls as they stand in the way, clearing). A
   cottage is 20 to 40 thousand triangles close up, a tenth of that far away.
   No preview tool yet: the game and editor have been enough.
 - [x] 3. Baking: `world_authoring/buildings.ron`; the ground under a

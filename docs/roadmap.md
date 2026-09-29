@@ -18,6 +18,11 @@ like the finished game, with a character walking around it.
   window tabs moved to the bottom edge (see [plan-map.md](plan-map.md)).
 - Parties: `/party`, invitations that run out, a party tab and frames for
   the other members; `/target` by name, or the nearest monster within 5 m.
+- Precise collision and navigation (see [plan-collision.md](plan-collision.md)):
+  characters are capsules moved through the world's solid shapes by Rapier's
+  character controller (sliding along walls, falling, real 1.4 m jumps), and
+  routes are found on navigation mesh tiles baked with Recast and searched
+  with landmass (through doorways, down banks). Clicking the minimap runs there.
 
 ## Now: soul (the vertical slice's look and feel)
 
