@@ -9,7 +9,7 @@
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{EntityId, EntityKind, ServerMessage};
-use venture_simulation::{Body, Follow, Movement};
+use venture_simulation::{Body, Follow, MoveBudget, Movement};
 
 use crate::link::ConnectionId;
 use crate::profiles::ProfileKey;
@@ -38,6 +38,21 @@ pub struct DisplayName(pub String);
 #[derive(Component, Clone, Copy)]
 pub struct Position(pub Point);
 
+/// A player's own moves, as their client reports them (see
+/// `gameplay::accept_moves`): which placement they're from, how far the
+/// character may still move, and when it last did.
+#[derive(Component, Default)]
+pub struct ClientMoves {
+    /// The placement moves must be from (the last `ServerMessage::Placed` sent).
+    pub placement: u32,
+    /// How far the character may still move.
+    pub budget: MoveBudget,
+    /// When it last moved (seconds of game time).
+    pub last_moved: f32,
+    /// Whether its last move wasn't allowed (so it's placed back where it was).
+    pub put_back: bool,
+}
+
 /// How an entity is moving.
 #[derive(Component, Default)]
 #[require(Feet)]
@@ -62,6 +77,7 @@ pub struct RunSpeed(pub f32);
 
 /// A player in the game.
 #[derive(Component)]
+#[require(ClientMoves)]
 pub struct Player {
     /// The connection they play through.
     pub connection: ConnectionId,

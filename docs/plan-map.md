@@ -20,8 +20,9 @@ them.
 4. **Tiles** (baked; `venture_world::MapInfo`, `venture_worldgen::map_render`):
    see below.
 5. **Zoom:** the wheel on both, smoothly between tile levels (below).
-6. **Markers:** anything with a `MapMarker` shows on both maps; so far only
-   the player's own character, as an arrow turned the way they face.
+6. **Markers:** anything with a `MapMarker` shows on both maps: the player's
+   own character, as an arrow turned the way they face, and where they're
+   running to (the move marker left where they clicked), as a blue dot.
 
 ## Tiles
 

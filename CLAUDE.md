@@ -5,7 +5,8 @@
 - Every RPG rule (stats, levels, health, mana, attack rolls, damage, points per level) lives in `venture_rpg`, as small
   tested functions. Don't write RPG maths anywhere else; the server and client both call it.
 - The server is authoritative for anything that matters (positions, items, damage, progress). Don't build game
-  rules into the client; see `docs/client-server.md`.
+  rules into the client; see `docs/client-server.md`. (Players' clients move their own characters, but the
+  server checks every move and puts them back if it isn't allowed: see "Movement" there.)
 - On the server, client messages are only read and validated in `requests.rs` (the gate); players are only
   created/removed in `sessions.rs` and changed in `gameplay.rs`; profiles only touched in `profiles.rs`.
   Inventories only change through `Inventory::apply` (`inventory.rs`), which is checked and all-or-nothing;

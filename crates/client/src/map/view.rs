@@ -33,6 +33,10 @@ use crate::world::source::WorldSource;
 const ZOOM_STEP: f32 = 1.2;
 /// Size of the player's arrow, in pixels.
 const ARROW_SIZE: f32 = 20.0;
+/// Width of the dot where the player's running to, in pixels.
+const DESTINATION_SIZE: f32 = 9.0;
+/// The dot's colour: the move marker's glowing blue.
+const DESTINATION_COLOUR: Color = Color::srgb(0.35, 0.65, 1.0);
 /// The colour behind the tiles (the sea, and the world's edge).
 const BACKGROUND: Color = Color::srgb(0.13, 0.27, 0.45);
 
@@ -473,10 +477,19 @@ fn draw_markers(
                     transform.set_if_neq(turn);
                 }
                 None => {
-                    let entity = commands
-                        .spawn((place, turn, ImageNode::new(arrow.0.clone()), Pickable::IGNORE, ChildOf(layer)))
-                        .id();
-                    parts.markers.insert(thing, entity);
+                    let mut shown = commands.spawn((place, turn, Pickable::IGNORE, ChildOf(layer)));
+                    match marker {
+                        MapMarker::Player => {
+                            shown.insert(ImageNode::new(arrow.0.clone()));
+                        }
+                        MapMarker::Destination => {
+                            shown.insert((
+                                BackgroundColor(DESTINATION_COLOUR),
+                                BorderColor::all(Color::BLACK.with_alpha(0.7)),
+                            ));
+                        }
+                    }
+                    parts.markers.insert(thing, shown.id());
                 }
             }
         }
@@ -494,6 +507,13 @@ fn draw_markers(
 fn marker_size(marker: MapMarker) -> Node {
     match marker {
         MapMarker::Player => Node { width: px(ARROW_SIZE), height: px(ARROW_SIZE), ..default() },
+        MapMarker::Destination => Node {
+            width: px(DESTINATION_SIZE),
+            height: px(DESTINATION_SIZE),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::MAX,
+            ..default()
+        },
     }
 }
 

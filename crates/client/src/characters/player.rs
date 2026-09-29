@@ -1,9 +1,10 @@
-//! The player's own character: shown where the server says it is, and moved
-//! instantly by the player's input using the shared movement rules
-//! (prediction), then quietly corrected towards the server's position.
+//! The player's own character: moved instantly by the player's input with
+//! the shared movement rules, through the same solid world as the server's,
+//! and reported to the server, which checks each move and puts the character
+//! back if it isn't allowed (or when it moves it itself: `/town`, respawning).
 //!
-//! Input here only *asks* the server to move (with [`ToServer`] commands).
-//! See "Movement" in `docs/client-server.md`.
+//! Orders (run there, steer, follow, jump) are also sent to the server
+//! ([`ToServer`]), which acts on them. See "Movement" in `docs/client-server.md`.
 
 use bevy::prelude::*;
 use venture_navigation::Point;
@@ -27,15 +28,8 @@ const HIGHEST: f32 = 2000.0;
 const LOWEST: f32 = -500.0;
 /// How quickly the character turns to face where it's going (per second).
 const TURN_RATE: f32 = 12.0;
-/// While moving, the prediction may run this far ahead of the server (in
-/// metres) before it's snapped back. Running ahead is normal: the server
-/// hears about each move a little later. (Running faster than usual, it's
-/// that much further.)
-const MAX_PREDICTION_ERROR: f32 = 3.0;
-/// When standing still, the character glides to the server's position at this rate (per second).
-const SETTLE_RATE: f32 = 8.0;
-/// Differences smaller than this (in metres) are ignored.
-const SETTLE_TOLERANCE: f32 = 0.02;
+/// How often the client says where the character is while it moves, in seconds.
+const REPORT_EVERY: f32 = 0.05;
 /// The fewest seconds between steering updates sent to the server.
 const STEERING_SEND_INTERVAL: f32 = 0.1;
 
@@ -54,8 +48,9 @@ impl Plugin for PlayerPlugin {
                 jump_with_space.run_if(in_state(ClientState::Playing)),
                 stop_following_when_deselected,
                 predict_following,
+                follow_placements,
                 predict_movement,
-                correct_towards_server,
+                report_moves,
             )
                 .chain()
                 .in_set(PlayerSystems)
@@ -87,9 +82,12 @@ pub struct LocalPlayer {
     /// How high its feet are, and how it's rising or falling, as predicted.
     pub body: Body,
     /// Where it was when it was last moved by the prediction (`None`: not
-    /// yet). Found anywhere else (placed by the server), it's stood on the
-    /// ground there first.
+    /// yet). Found anywhere else, it's stood on the ground there first.
     pub moved_to: Option<Point>,
+    /// The server's last placement of the character (moves are reported from it).
+    pub placement: u32,
+    /// Where the server was last told the character is.
+    pub reported: Option<[f32; 3]>,
 }
 
 /// Following another character.
@@ -164,6 +162,8 @@ fn place_on_welcome(
                 speed: RUN_SPEED,
                 body: Body::default(),
                 moved_to: None,
+                placement: 0,
+                reported: None,
             },
             Nameplate(name.clone()),
         ));
@@ -354,49 +354,63 @@ fn predict_movement(
     gait.speed = if dt > 0.0 { moved / dt } else { 0.0 };
 }
 
-/// The server's height for the player's feet, in its last snapshot.
+/// Where the server has put the character, until there's a character to put there.
 #[derive(Default)]
-struct ServerHeight(f32);
+struct PendingPlacement(Option<(f32, f32, f32, u32)>);
 
-/// Compares the prediction with the server's position in each snapshot. A
-/// large difference (such as the server moving the character with `/town`)
-/// snaps the character to the server and drops the predicted route; when both
-/// have stopped, it glides the last bit.
-fn correct_towards_server(
-    time: Res<Time>,
+/// Moves the character where the server puts it ([`ServerMessage::Placed`]:
+/// arriving, `/town`, a teleport, respawning, or a move it didn't allow),
+/// dropping what it was doing, and takes the placement for the moves it
+/// reports from there. (Otherwise the client moves its own character: see
+/// [`report_moves`].) Snapshots say whether it's resting.
+fn follow_placements(
     mut events: MessageReader<FromServer>,
-    mut server_position: Local<Option<(Point, bool)>>,
-    mut server_height: Local<ServerHeight>,
+    mut pending: Local<PendingPlacement>,
     player: Option<Single<(&mut Transform, &mut LocalPlayer, &mut Gait)>>,
 ) {
+    let mut resting = None;
+    for FromServer(message) in events.read() {
+        match *message {
+            ServerMessage::Placed { x, y, height, placement } => pending.0 = Some((x, y, height, placement)),
+            ServerMessage::Snapshot { ref entities, .. } => {
+                resting = Some(entities.iter().map(|state| (state.id, state.resting)).collect::<Vec<_>>());
+            }
+            _ => {}
+        }
+    }
     let Some(player) = player else { return };
     let (mut transform, mut player, mut gait) = player.into_inner();
-    for FromServer(message) in events.read() {
-        if let ServerMessage::Snapshot { entities, .. } = message
-            && let Some(me) = entities.iter().find(|state| state.id == player.id)
-        {
-            *server_position = Some(((me.x, me.y), me.moving));
-            server_height.0 = me.height;
-            gait.resting = me.resting;
-        }
+    if let Some(me) = resting.and_then(|all| all.into_iter().find(|&(id, _)| id == player.id)) {
+        gait.resting = me.1;
     }
-    let Some(((server_x, server_y), server_moving)) = *server_position else { return };
+    let Some((x, y, height, placement)) = pending.0.take() else { return };
+    transform.translation = to_bevy(x, y, height);
+    player.body = Body { height, ..Body::default() };
+    player.moved_to = Some((x, y));
+    player.movement = Movement::Idle;
+    player.following = None;
+    player.placement = placement;
+    player.reported = Some([x, y, height]);
+}
 
-    let (x, y) = from_bevy(transform.translation);
-    let error = (server_x - x).hypot(server_y - y);
-    if error > MAX_PREDICTION_ERROR * (player.speed / RUN_SPEED).max(1.0) {
-        transform.translation.x = server_x;
-        transform.translation.z = server_y;
-        // (Found somewhere it didn't move to, it'll be stood on the ground there; in the air, it falls from here.)
-        transform.translation.y = server_height.0;
-        // The prediction was wrong, so its route is too; the server will say where we're going.
-        if !server_moving {
-            player.movement = Movement::Idle;
-            player.following = None;
-        }
-    } else if !server_moving && !player.movement.is_moving() && error > SETTLE_TOLERANCE {
-        let blend = (SETTLE_RATE * time.delta_secs()).min(1.0);
-        transform.translation.x += (server_x - x) * blend;
-        transform.translation.z += (server_y - y) * blend;
+/// Tells the server where the character has got to, about twenty times a
+/// second while it moves (and once more when it stops).
+fn report_moves(
+    time: Res<Time>,
+    mut to_server: MessageWriter<ToServer>,
+    mut since: Local<f32>,
+    player: Option<Single<&mut LocalPlayer>>,
+) {
+    *since += time.delta_secs();
+    let Some(mut player) = player else { return };
+    let Some((x, y)) = player.moved_to else { return };
+    let now = [x, y, player.body.height];
+    let moved = player.reported.is_none_or(|last| (0..3).any(|i| (now[i] - last[i]).abs() > 0.005));
+    if !moved || *since < REPORT_EVERY {
+        return;
     }
+    *since = 0.0;
+    player.reported = Some(now);
+    let placement = player.placement;
+    to_server.write(ToServer(ClientMessage::Moved { x, y, height: now[2], placement }));
 }

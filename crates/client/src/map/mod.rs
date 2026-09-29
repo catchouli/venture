@@ -3,8 +3,8 @@
 //! Both are a [`view::MapView`]: the world map's tiles (baked with the world:
 //! see `venture_world::MapInfo` and `docs/plan-map.md`), fetched as needed
 //! ([`tiles`]), with the place names written over them, sized and shown by
-//! zoom, and markers for things in the world that have a [`MapMarker`]
-//! (only the player's own character, so far).
+//! zoom, and markers for things in the world that have a [`MapMarker`]: the
+//! player's own character, and where they're running to.
 //!
 //! - [`minimap`]: follows the player; the mouse wheel zooms it, and its
 //!   button opens the full map.
@@ -19,6 +19,7 @@ pub mod window;
 use bevy::prelude::*;
 
 use crate::characters::player::LocalPlayer;
+use crate::interaction::move_marker::MoveMarker;
 
 /// Shows the minimap and the map.
 pub struct MapPlugin;
@@ -26,7 +27,7 @@ pub struct MapPlugin;
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((tiles::MapTilesPlugin, view::MapViewPlugin, minimap::MinimapPlugin, window::MapWindowPlugin))
-            .add_systems(Update, mark_the_player);
+            .add_systems(Update, (mark_the_player, mark_destinations));
     }
 }
 
@@ -36,6 +37,15 @@ impl Plugin for MapPlugin {
 pub enum MapMarker {
     /// The player's own character: an arrow pointing the way they face.
     Player,
+    /// Where the player's running to (the move marker): a dot.
+    Destination,
+}
+
+/// Puts a marker where the player's running to (on the move marker left where they clicked).
+fn mark_destinations(mut commands: Commands, markers: Query<Entity, (With<MoveMarker>, Without<MapMarker>)>) {
+    for marker in &markers {
+        commands.entity(marker).insert(MapMarker::Destination);
+    }
 }
 
 /// Puts a marker on the player's character.
