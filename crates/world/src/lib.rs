@@ -10,6 +10,7 @@
 
 mod baked;
 mod biome;
+mod bridges;
 mod buildings;
 mod chunk;
 mod coords;
@@ -24,6 +25,7 @@ pub use baked::{
     encode_chunk,
 };
 pub use biome::Biome;
+pub use bridges::{BakedBridge, BridgeKind, BridgePlan};
 pub use buildings::{BakedBuilding, BuildingPlan, DoorPlan, RoofShape, WallRef};
 pub use chunk::Chunk;
 pub use coords::{CellPos, ChunkPos};

@@ -11,6 +11,7 @@ venture_world.workspace = true
 venture_structures.workspace = true
 venture_collision.workspace = true
 venture_navigation.workspace = true
+glam.workspace = true
 noise.workspace = true
 # (A faster allocator for the bake: Recast allocates a lot, and the system's
 # spends more time than the work itself.)

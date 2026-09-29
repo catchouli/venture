@@ -16,3 +16,4 @@ workspace = true
 
 [dev-dependencies]
 venture_world.workspace = true
+venture_structures.workspace = true

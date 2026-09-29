@@ -22,7 +22,9 @@ stamps (see [world-generation-engine.md](world-generation-engine.md)), the
 generator's own prop scattering and roads, content placed at world
 positions (see [content-authoring.md](content-authoring.md)), and walls and
 fences (`world_authoring/walls.ron`, drawn in the editor and baked; see
-[plan-walls.md](plan-walls.md)).
+[plan-walls.md](plan-walls.md)), buildings (`world_authoring/buildings.ron`;
+see [plan-buildings.md](plan-buildings.md)) and bridges
+(`world_authoring/bridges.ron`; see [plan-bridges.md](plan-bridges.md)).
 
 ## The layers
 

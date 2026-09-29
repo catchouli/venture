@@ -13,6 +13,7 @@
 //! position, so chunks can be generated in any order and always line up with
 //! their neighbours.
 
+pub mod bridges;
 mod chunk_gen;
 mod config;
 mod distance_field;

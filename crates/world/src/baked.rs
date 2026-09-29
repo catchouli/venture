@@ -55,6 +55,9 @@ pub struct WorldManifest {
     /// The world's buildings (authored, then baked: see `docs/plan-buildings.md`).
     #[serde(default)]
     pub buildings: Vec<crate::BakedBuilding>,
+    /// The world's bridges (authored, and placed over rivers by the bake: see `docs/plan-bridges.md`).
+    #[serde(default)]
+    pub bridges: Vec<crate::BakedBridge>,
 }
 
 /// A settlement site in a baked world.
@@ -247,6 +250,7 @@ mod tests {
             tree_species: Vec::new(),
             walls: Vec::new(),
             buildings: Vec::new(),
+            bridges: Vec::new(),
         };
         assert_eq!(WorldManifest::from_ron(&manifest.to_ron()).unwrap(), manifest);
     }

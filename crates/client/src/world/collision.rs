@@ -54,6 +54,7 @@ fn follow_structures(world: Option<Res<WorldInfo>>, content: Res<ContentStore>, 
     let Some(world) = world else { return };
     if world.is_changed() || content.is_changed() {
         solid.0.set_structures(&world.0.walls, &world.0.buildings, &content.building_styles);
+        solid.0.set_bridges(&world.0.bridges);
     }
 }
 

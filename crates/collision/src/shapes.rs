@@ -7,8 +7,9 @@
 use rapier3d::math::{Pose, Vector};
 use rapier3d::parry::utils::Array2;
 use rapier3d::prelude::{Collider, ColliderBuilder};
+use venture_structures::bridges::bridge_pieces;
 use venture_structures::buildings::{BuildingStyle, building_walls};
-use venture_world::{BUSH_SCALE, BakedBuilding, BakedWall, CHUNK_SIZE, Chunk, Prop, PropKind};
+use venture_world::{BUSH_SCALE, BakedBridge, BakedBuilding, BakedWall, CHUNK_SIZE, Chunk, Prop, PropKind};
 
 /// How far below the ground walls reach (so no slope leaves a gap under them), in metres.
 const FOOTING: f32 = 0.5;
@@ -69,6 +70,19 @@ fn upright_box(from: (f32, f32), to: (f32, f32), half: f32, bottom: f32, top: f3
     ColliderBuilder::cuboid(length / 2.0 + OVERLAP, (top - bottom) / 2.0, half)
         .position(Pose::new(middle, Vector::new(0.0, angle, 0.0)))
         .build()
+}
+
+/// A bridge's colliders: a convex hull for each solid piece (its deck is walked on).
+pub fn bridge(bridge: &BakedBridge) -> Vec<Collider> {
+    bridge_pieces(bridge)
+        .into_iter()
+        .filter(|piece| !piece.decoration)
+        .filter_map(|piece| {
+            let points: Vec<Vector> = piece.corners.iter().map(|c| Vector::new(c.x, c.y, c.z)).collect();
+            let builder = ColliderBuilder::convex_hull(&points)?;
+            Some(builder.user_data(if piece.walkable { crate::DECK } else { 0 }).build())
+        })
+        .collect()
 }
 
 /// A wall's colliders: a box for each stretch between two samples, except where it's open.

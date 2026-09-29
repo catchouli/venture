@@ -57,6 +57,7 @@ fn follow_world_changes(
     if world.is_changed() || content.is_changed() {
         let manifest = &world.manifest;
         solid.0.set_structures(&manifest.walls, &manifest.buildings, &content.pack.building_styles);
+        solid.0.set_bridges(&manifest.bridges);
     }
     for reload in reloads.read() {
         for &pos in &reload.changed {

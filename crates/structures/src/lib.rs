@@ -10,6 +10,7 @@
 //!   where it's open.
 //! - Clients (and the editor) build its meshes ([`walls::build_wall`]).
 
+pub mod bridges;
 pub mod buildings;
 pub mod mesh;
 pub mod path;

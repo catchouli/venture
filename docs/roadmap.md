@@ -23,6 +23,10 @@ like the finished game, with a character walking around it.
   character controller (sliding along walls, falling, real 1.4 m jumps), and
   routes are found on navigation mesh tiles baked with Recast and searched
   with landmass (through doorways, down banks). Clicking the minimap runs there.
+- Bridges (see [plan-bridges.md](plan-bridges.md)): stone arches and rope
+  bridges along drawn paths, with a curve up or down, drawn in the editor,
+  and placed over rivers by the bake (stone near settlements, rope further
+  out); walked over, and routed over.
 
 ## Now: soul (the vertical slice's look and feel)
 

@@ -356,6 +356,7 @@ mod tests {
             tree_species: Vec::new(),
             walls: Vec::new(),
             buildings: Vec::new(),
+            bridges: Vec::new(),
         }
     }
 
