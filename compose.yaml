@@ -1,0 +1,21 @@
+# Hosting the Venture server with Docker Compose (see
+# `docs/building-and-running.md`, "Hosting with Docker"):
+#
+#     docker compose up -d --build
+#
+# Then open http://<host>:8080 in a browser.
+services:
+  venture:
+    build: .
+    image: venture-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Players' profiles.
+      - venture-data:/srv/venture/server_data
+      # To use your own settings (admins, rules), put them in `deploy/server.ron` and uncomment:
+      # - ./deploy/server.ron:/srv/venture/server.ron:ro
+
+volumes:
+  venture-data:

@@ -114,6 +114,59 @@ stops (Ctrl+C).
 If other devices can't connect, check that your computer's firewall allows
 the port.
 
+## Hosting with Docker
+
+To host the game somewhere others can play it, build the Docker image
+(`Dockerfile`). It has everything the server needs:
+- the server;
+- the web client it serves;
+- the content;
+- a world baked from `world_authoring/`.
+
+Players' profiles go in a volume, so they outlive the container.
+
+Build it on the host machine itself, from a checkout with its Git LFS files
+pulled. (The content's textures and models are LFS files; without them, the
+image has pointer files instead.)
+
+```sh
+git clone <repository> venture && cd venture
+git lfs pull
+docker compose up -d --build
+```
+
+Then open `http://<host>:8080` in a browser.
+
+**Building:**
+- The first build compiles the server and the web client and bakes the world.
+  That takes a while.
+- Cargo's caches are kept between builds, so after a `git pull`, the same
+  command rebuilds in a few minutes.
+- Building on a Mac for an x86 host (`docker buildx build --platform linux/amd64`)
+  works, but compiling under emulation is very slow. Build on the host instead.
+
+**Settings and data:**
+- **Settings:** the image uses the repository's `server.ron`. To change settings
+  (admins especially), copy it to `deploy/server.ron`, edit it, and uncomment
+  the line for it in `compose.yaml`.
+- **Profiles:** they live in the `venture-data` volume
+  (`/srv/venture/server_data`).
+- **Stopping:** `docker compose down` stops the server as Ctrl-C would, so it
+  saves everyone's profile first.
+
+**Without Compose:**
+
+```sh
+docker build -t venture-server .
+docker run -d --name venture -p 8080:8080 -v venture-data:/srv/venture/server_data venture-server
+docker logs -f venture
+```
+
+**Over the internet:** the server speaks plain HTTP and WebSockets. Put it
+behind a reverse proxy with TLS (Caddy, nginx) that forwards WebSocket
+upgrades; the web client connects back to whichever address served it, so
+`https://` becomes `wss://` by itself.
+
 ## Web client
 
 Build it once (and again after changing the client), then run the server,
