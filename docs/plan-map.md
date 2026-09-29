@@ -10,8 +10,9 @@ them.
    the bottom edge, left of the hotbar; the windows open just above them,
    beside the hotbar. The top-right corner is the minimap's.
 2. **Minimap** (`client/src/map/minimap.rs`): a square frame in the top
-   right, following the player (always in the middle). The mouse wheel
-   zooms it; the Map button in its corner opens the full map.
+   right, following the player (always in the middle). Clicking it runs
+   there, just like clicking the ground (at most `max_move_distance` away).
+   The mouse wheel zooms it; the Map button in its corner opens the full map.
 3. **Map window** (`client/src/map/window.rs`, **M**): a big window in the
    middle of the screen. It opens on the player; the wheel zooms towards the
    mouse, out as far as the whole world, and dragging moves it. The bottom
