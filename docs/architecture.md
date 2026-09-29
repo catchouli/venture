@@ -17,6 +17,7 @@ venture_worldgen ──► venture_world, venture_structures   (the bake tool; t
 
 venture_trees                          (the tree generator; depends on nothing of ours)
 venture_structures ──► venture_world, venture_trees   (walls, fences and hedges: paths, baking, meshes)
+venture_collision ──► venture_world, venture_structures, rapier3d   (solid shapes, moving characters through them)
 ```
 
 | Crate | Purpose |
@@ -25,6 +26,7 @@ venture_structures ──► venture_world, venture_trees   (walls, fences and h
 | `venture_worldgen` | The world generation engine, and the `bake` tool that writes the world (and its map) to disk. |
 | `venture_trees` | The tree generator: realistic procedural trees from a species (data in `content/trees/`) and a few choices (age, height, branchiness, fullness, lean, seed), as meshes, textures (painted, or from photographs), preview pictures and glTF models, with the `tree` tool. See [plan-trees.md](plan-trees.md). |
 | `venture_structures` | The structures generator: dry stone walls, fences and hedges (with a tree species' leaves, from `venture_trees`) along a drawn path (a centripetal Catmull–Rom spline), baked from `world_authoring/walls.ron` into the manifest (samples with the ground's height, gaps at roads) and the chunks (blocked cells), and built into meshes in 16 m stretches with a far level of detail. See [plan-walls.md](plan-walls.md). |
+| `venture_collision` | The world's collision, with Rapier (queries only, no simulation): each chunk's ground as a heightfield, tree trunks and boulders, walls as boxes along their samples, buildings' walls as boxes with their doorways open, and cells no one may enter (deep water, lava). Moves a character's capsule (0.3 m round, 1.8 m tall) with Rapier's kinematic character controller: sliding along walls, stepping up ledges, climbing only what it can and sliding down what it can't. No Bevy, so the server and client share it. See [plan-collision.md](plan-collision.md). |
 | `venture_navigation` | Where characters can walk (blocked cells per chunk) and pathfinding (A* plus line-of-sight smoothing). |
 | `venture_simulation` | Game rules both sides run: movement, speed and input validation, the day cycle, and the fight with a hooked fish. The client uses them to predict, and the server to decide. |
 | `venture_rpg` | The RPG rules: stats and modifiers, dice, experience and levels, points per level, health, mana, armour class, attack speed, attack resolution, and fishing (what bites, hooks, strikes, shadows, reels, traps). Based on the SRD 5.1 (CC BY 4.0), adapted for real time. |
