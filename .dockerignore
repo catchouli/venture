@@ -1,0 +1,12 @@
+# Built, baked or saved locally: the image makes its own.
+target
+world
+preview
+local_data
+server_data
+crates/client/dist
+# Not needed to build or run the server.
+.git
+design_docs
+tools
+**/.DS_Store
