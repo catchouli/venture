@@ -125,9 +125,11 @@ To host the game somewhere others can play it, build the Docker image
 
 Players' profiles go in a volume, so they outlive the container.
 
-Build it on the host machine itself, from a checkout with its Git LFS files
-pulled. (The content's textures and models are LFS files; without them, the
-image has pointer files instead.)
+Build it from a checkout with its Git LFS files pulled (`git lfs pull`). The
+content's textures and models are LFS files; without them, the image has
+pointer files instead.
+
+**On the host (an AMD64 Linux machine):**
 
 ```sh
 git clone <repository> venture && cd venture
@@ -137,13 +139,30 @@ docker compose up -d --build
 
 Then open `http://<host>:8080` in a browser.
 
+**On a Mac, for an AMD64 host.** The image builds for any platform from any
+platform, at full speed:
+- The build stage runs on the building machine's own platform.
+- Only the server is compiled for the image's platform: a pure-Rust cross
+  compile, with Debian's cross linker.
+- The web client (WebAssembly) and the world (data) are the same everywhere.
+
+So build it for `linux/amd64` and send it over:
+
+```sh
+docker buildx build --platform linux/amd64 -t venture-server --load .
+docker save venture-server | gzip | ssh <host> 'gunzip | docker load'
+```
+
+Then, on the host, run it with Docker Compose (as below, without `--build`)
+or `docker run`. (Or push it to a registry both can reach.) A plain
+`docker build` on a Mac makes an `arm64` image, which is only for trying it
+on the Mac.
+
 **Building:**
 - The first build compiles the server and the web client and bakes the world.
   That takes a while.
-- Cargo's caches are kept between builds, so after a `git pull`, the same
-  command rebuilds in a few minutes.
-- Building on a Mac for an x86 host (`docker buildx build --platform linux/amd64`)
-  works, but compiling under emulation is very slow. Build on the host instead.
+- Cargo's caches are kept between builds, so after a `git pull`, a rebuild
+  takes a few minutes.
 
 **Settings and data:**
 - **Settings:** the image uses the repository's `server.ron`. To change settings
