@@ -9,7 +9,12 @@ rust-version.workspace = true
 [dependencies]
 venture_world.workspace = true
 venture_structures.workspace = true
+venture_collision.workspace = true
+venture_navigation.workspace = true
 noise.workspace = true
+# (A faster allocator for the bake: Recast allocates a lot, and the system's
+# spends more time than the work itself.)
+mimalloc = { version = "0.1", default-features = false }
 # (For baking the world map's tiles: see `map_render`.)
 image = { workspace = true, features = ["png", "jpeg"] }
 

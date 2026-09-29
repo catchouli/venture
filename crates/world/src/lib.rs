@@ -15,6 +15,7 @@ mod chunk;
 mod coords;
 mod ground;
 mod map;
+mod navmesh;
 mod prop;
 mod walls;
 
@@ -28,6 +29,7 @@ pub use chunk::Chunk;
 pub use coords::{CellPos, ChunkPos};
 pub use ground::{Fluid, FluidBody, FluidKind, Ground, TerrainCell};
 pub use map::{LabelKind, MAP_LABELS_FILE, MapInfo, MapLabel, MapLabels, map_tile_path};
+pub use navmesh::{NavDetail, NavDrop, NavKind, NavTile};
 pub use prop::{BUSH_SCALE, Prop, PropKind, TREE_VARIANTS};
 pub use walls::{BakedWall, WALL_SAMPLE_SPACING, WallKind, WallSample};
 

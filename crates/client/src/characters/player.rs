@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use venture_navigation::Point;
 use venture_protocol::{ClientMessage, EntityId, PlayerLook, ServerMessage};
-use venture_simulation::{Body, Follow, FollowOutcome, Movement, RUN_SPEED, Rules, step};
+use venture_simulation::{Body, Follow, FollowOutcome, Movement, RUN_SPEED, Rules, plan_route, step};
 
 use crate::camera::{CameraHeading, CameraMode, wasd_direction};
 use crate::characters::humans::HumanLook;
@@ -18,9 +18,9 @@ use crate::common::coords::{from_bevy, to_bevy};
 use crate::interaction::targeting::Target;
 use crate::network::{ClientState, FromServer, ToServer};
 use crate::ui::text_input::KeyboardFocus;
-use crate::world::collision::{Solid, SolidSystems};
-use crate::world::query::{ground_height, is_blocked, shown_height};
-use crate::world::streaming::{ChunkStore, ObstacleStore};
+use crate::world::collision::{Nav, Solid, SolidSystems};
+use crate::world::query::{ground_height, shown_height};
+use crate::world::streaming::ChunkStore;
 
 /// The highest and lowest anything in the world is, in metres (for finding the ground under a point).
 const HIGHEST: f32 = 2000.0;
@@ -292,13 +292,13 @@ fn stop_following_when_deselected(
 /// shared rules the server uses.
 fn predict_following(
     rules: Res<GameRules>,
-    obstacles: Res<ObstacleStore>,
+    nav: Res<Nav>,
     targets: Query<&Transform, Without<LocalPlayer>>,
     player: Option<Single<(&Transform, &mut LocalPlayer)>>,
 ) {
     let Some(player) = player else { return };
     let (transform, mut player) = player.into_inner();
-    let LocalPlayer { following, movement, .. } = &mut *player;
+    let LocalPlayer { following, movement, body, .. } = &mut *player;
     let Some(chase) = following else { return };
     let Ok(target) = targets.get(chase.target) else {
         *following = None;
@@ -310,8 +310,10 @@ fn predict_following(
         *movement = Movement::Idle;
         return;
     }
-    let outcome =
-        chase.follow.update(position, target, movement, rules.0.max_move_distance, |x, y| is_blocked(&obstacles, x, y));
+    let height = body.height;
+    let outcome = chase.follow.update(position, target, movement, rules.0.max_move_distance, |from, to| {
+        plan_route(&nav.0, [from.0, from.1, height], to)
+    });
     if outcome == FollowOutcome::Stop {
         *following = None;
     }

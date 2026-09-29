@@ -7,7 +7,7 @@
 //!   kind, height and seed.
 //! - The bake turns it into a [`BakedWall`] ([`bake_wall`]): the path
 //!   sampled evenly ([`path`]), with the ground's height at each sample and
-//!   where it's open, and works out the cells it blocks ([`wall_cells`]).
+//!   where it's open.
 //! - Clients (and the editor) build its meshes ([`walls::build_wall`]).
 
 pub mod buildings;
@@ -116,13 +116,6 @@ pub fn bake_wall(def: &WallDef, ground: impl Fn(f32, f32) -> f32, opens: impl Fn
     }
 }
 
-/// The cells (1 m squares, by their corner) a baked wall stands on, so
-/// can't be walked through: those within its half-width of its line,
-/// except where it's open.
-pub fn wall_cells(wall: &BakedWall) -> Vec<(i32, i32)> {
-    cells_near(wall, wall.kind.half_width())
-}
-
 /// The cells (by their corner) within `reach` metres of a baked wall's line,
 /// except where it's open (for clearing trees and rocks from its way).
 pub fn cells_near(wall: &BakedWall, reach: f32) -> Vec<(i32, i32)> {
@@ -180,19 +173,6 @@ mod tests {
         assert!(baked.samples[20].open, "open where the road is");
         assert!(baked.samples[17].open, "and a little either side");
         assert!(!baked.samples[5].open && !baked.samples[35].open);
-    }
-
-    #[test]
-    fn walls_block_the_cells_they_stand_on_but_not_their_gaps() {
-        let baked = bake_wall(&line(WallKind::Fence), |_, _| 0.0, |x, _| (9.0..11.0).contains(&x));
-        let cells = wall_cells(&baked);
-        assert!(cells.contains(&(3, 0)) && cells.contains(&(15, 0)));
-        assert!(!cells.contains(&(10, 0)), "the gap stays open");
-        assert!(!cells.contains(&(3, 2)), "nothing well off the line");
-        // Continuous: every metre along (outside the gap) has a blocked cell.
-        for x in (0..8).chain(13..20) {
-            assert!(cells.iter().any(|&(cx, _)| cx == x), "a hole at {x}");
-        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Baking buildings into the world: their floor's level (the ground
-//! under them is levelled to it, blending into the land around), the
-//! cells their walls block (with their doorways open), and the cells
-//! cleared of trees and rocks.
+//! under them is levelled to it, blending into the land around), their
+//! walls as they stand in the way (with their doorways open: see
+//! `venture_collision`), and the cells cleared of trees and rocks.
 
 use glam::Vec2;
 use venture_world::{BakedBuilding, BuildingPlan, WallRef};
@@ -13,9 +13,6 @@ use super::style::BuildingStyle;
 const LEVEL_BLEND: f32 = 2.5;
 /// How far past its outline the ground is quite level, in metres.
 const LEVEL_EDGE: f32 = 0.4;
-/// Walls block cells this far past their faces (so characters don't
-/// clip into them), in metres.
-const WALL_REACH: f32 = 0.25;
 
 /// One of a building's walls, as it stands in the way: along its middle from
 /// one point to another (in the building's [`Frame`]), its half-thickness,
@@ -177,33 +174,6 @@ pub fn cell_bounds(building: &BakedBuilding, reach: f32) -> ((i32, i32), (i32, i
     ((low.x.floor() as i32, low.y.floor() as i32), (high.x.floor() as i32, high.y.floor() as i32))
 }
 
-/// The cells a building's walls stand on (so can't be walked through),
-/// except its doorways. Inside is open.
-pub fn building_cells(building: &BakedBuilding, style: &BuildingStyle) -> Vec<(i32, i32)> {
-    let Some((frame, walls)) = building_walls(building, style) else { return Vec::new() };
-    let ((x0, y0), (x1, y1)) = cell_bounds(building, 0.0);
-    let mut cells = Vec::new();
-    for y in y0..=y1 {
-        for x in x0..=x1 {
-            let centre = frame.local(Vec2::new(x as f32 + 0.5, y as f32 + 0.5));
-            let blocked = walls.iter().any(|wall| {
-                let (a, b, half, doors) = (wall.from, wall.to, wall.half, &wall.doorways);
-                let run = b - a;
-                let length = run.length().max(1e-4);
-                let along = (centre - a).dot(run / length);
-                let across = (centre - a).perp_dot(run / length).abs();
-                let on = (-half..length + half).contains(&along) && across <= half + WALL_REACH;
-                let in_doorway = doors.iter().any(|&(from, to)| along > from + 0.05 && along < to - 0.05);
-                on && !in_doorway
-            });
-            if blocked {
-                cells.push((x, y));
-            }
-        }
-    }
-    cells
-}
-
 /// The cells within `reach` metres of a building (or under it), cleared of trees and rocks.
 pub fn building_clearing(building: &BakedBuilding, reach: f32) -> Vec<(i32, i32)> {
     let points = outline(building);
@@ -246,7 +216,7 @@ mod tests {
             plan.outline.truncate(corners);
             let baked = bake_building(&plan, |_, _| 5.0);
             assert_eq!(baked.floor, 5.0);
-            assert!(building_cells(&baked, &styles[0]).is_empty());
+            assert!(building_walls(&baked, &styles[0]).is_none());
             assert!(corners > 0 || building_clearing(&baked, 2.0).is_empty());
             let _ = levelled(&baked, 0.0, 0.0, 1.0);
             assert!(crate::buildings::build_building(&baked, &styles[0]).is_none());
@@ -254,17 +224,17 @@ mod tests {
     }
 
     #[test]
-    fn walls_block_but_doorways_and_inside_are_open() {
+    fn walls_have_their_doorways_open() {
         let styles = styles();
         let building = cottage("stone", RoofShape::Gable, 1);
-        let cells = building_cells(&building, &styles[0]);
-        // The cottage is 9 × 5.5 m from (0, 0): its south wall runs along y = 0.
-        assert!(cells.contains(&(1, 0)) && cells.contains(&(7, 0)), "the south wall");
-        assert!(!cells.contains(&(2, 2)), "inside is open");
-        // Its door is 30% along the south wall (2.7 m), and in the inner wall at x = 4.5.
-        assert!(!cells.contains(&(2, 0)), "the front door is open");
-        assert!(cells.contains(&(4, 1)) || cells.contains(&(4, 4)), "the inner wall");
-        assert!(!cells.contains(&(4, 2)) || !cells.contains(&(4, 3)), "with a doorway");
+        let (_, walls) = building_walls(&building, &styles[0]).expect("walls");
+        // Four outer walls and the inner one; the front door is 30% along the south wall.
+        assert_eq!(walls.len(), 5);
+        let south = &walls[0];
+        assert_eq!(south.doorways.len(), 1);
+        let solid = south.solid();
+        assert_eq!(solid.len(), 2, "either side of the door: {solid:?}");
+        assert!(solid[0].1 < 2.7 && solid[1].0 > 2.7);
         let cleared = building_clearing(&building, 1.5);
         assert!(cleared.contains(&(-1, 3)) && !cleared.contains(&(-3, 3)));
     }

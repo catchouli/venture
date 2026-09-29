@@ -94,8 +94,12 @@ server loads the solid shapes of the chunks round every character that moves
 (`collision.rs`, the only code that changes them), with the walls, buildings
 and felled trees; the client keeps its own in step with the chunks it has
 loaded. Snapshots carry each entity's height as well as where it is, so
-others are seen jumping and falling. Routes are still planned on the 1 m
-grid for now; a character held up on one for a second gives up on it. When
+others are seen jumping and falling. Routes (clicks, following, NPCs and
+monsters) are found on the navigation mesh (`venture_navigation::NavWorld`):
+the server has the whole world's, the client the loaded chunks'. They go
+straight across open ground, round walls and through doorways, down banks
+too steep to climb (one-way drops), and as near as they can to anywhere
+fenced in. A character held up on a route for a second gives up on it. When
 the prediction and the
 server's position differ by more than a few metres while moving (more, running
 faster than usual), the client snaps to the server. Once both have stopped, it glides the last few
@@ -122,9 +126,10 @@ World generation is a **build step**, not something done while playing:
    heights, cells and props, and the world map drawn from them (tiles and
    place names: see [plan-map.md](plan-map.md)). Because this happens offline, the generator can
    afford to be slow and thorough (for example, erosion simulation later).
-2. **Server:** loads the baked world. Collision and navigation data
-   (`ChunkObstacles` now, the multi-layer nav grid later) are built from it at
-   load time, so pathfinding and movement checks use exactly the baked terrain.
+2. **Server:** loads the baked world: every chunk's navigation mesh tile
+   (joined, for routes), and the solid shapes of the chunks round characters
+   as they move (see [plan-collision.md](plan-collision.md)), so routes and
+   movement use exactly the baked terrain.
 3. **Clients:** download chunk files from the server over HTTP as the player
    moves (small and compressed, and cached by the browser), then mesh them as
    they do now. The desktop build can ship with the whole world file instead.

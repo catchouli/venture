@@ -15,6 +15,7 @@ pub mod shapes;
 use std::collections::HashMap;
 
 use rapier3d::control::{CharacterAutostep, CharacterLength, KinematicCharacterController};
+use rapier3d::parry::bounding_volume::Aabb;
 use rapier3d::parry::partitioning::Bvh;
 use rapier3d::parry::query::{DefaultQueryDispatcher, ShapeCastOptions};
 use rapier3d::parry::shape::Capsule;
@@ -75,6 +76,8 @@ struct LoadedChunk {
     props: HashMap<u16, (Option<ColliderHandle>, Collider)>,
     /// Its cells no one may enter (deep water, lava), `y * CHUNK_SIZE + x`.
     no_entry: Vec<bool>,
+    /// Its cells of shallow water (waded through), `y * CHUNK_SIZE + x`.
+    shallows: Vec<bool>,
 }
 
 /// The solid world, as far as it's loaded.
@@ -108,7 +111,11 @@ impl Collision {
         }
     }
 
-    fn insert(&mut self, collider: Collider) -> ColliderHandle {
+    fn insert(&mut self, mut collider: Collider) -> ColliderHandle {
+        // (The ground's triangles are told apart from everything else's by this.)
+        if collider.shape().as_heightfield().is_none() {
+            collider.user_data = SOLID;
+        }
         let aabb = collider.compute_aabb();
         let handle = self.colliders.insert(collider);
         self.bvh.insert(aabb, leaf(handle));
@@ -132,7 +139,10 @@ impl Collision {
             }
         }
         let no_entry = no_entry(chunk, MAX_WADING_DEPTH);
-        self.chunks.insert(chunk.pos, LoadedChunk { ground: Some(ground), props, no_entry });
+        let size = CHUNK_SIZE as usize;
+        let shallows =
+            (0..size * size).map(|i| !no_entry[i] && chunk.cell(i % size, i / size).fluid.is_some()).collect();
+        self.chunks.insert(chunk.pos, LoadedChunk { ground: Some(ground), props, no_entry, shallows });
     }
 
     /// Unloads a chunk (if it's loaded).
@@ -302,6 +312,109 @@ impl Collision {
         self.queries()
             .cast_shape(&pose, Vector::NEG_Y, &shape, options)
             .is_some_and(|(_, hit)| hit.normal1.y >= settings.max_climb_degrees.to_radians().cos() - 1e-3)
+    }
+}
+
+/// What a triangle of the solid world is (see [`Collision::triangles_in`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Surface {
+    /// Dry ground.
+    Ground,
+    /// The ground under shallow water.
+    Shallows,
+    /// Anything else: walls, buildings, trees, rocks.
+    Solid,
+}
+
+/// The solid world's triangles somewhere, as Recast (the navigation mesh
+/// generator) takes them: Y-up, like Rapier (see [`to_rapier`]).
+#[derive(Clone, Debug, Default)]
+pub struct Triangles {
+    /// The corners: `[x, height, y]`, in metres.
+    pub vertices: Vec<[f32; 3]>,
+    /// The triangles, as indices into `vertices`, anticlockwise seen from outside.
+    pub triangles: Vec<[u32; 3]>,
+    /// What each triangle is.
+    pub surfaces: Vec<Surface>,
+}
+
+impl Triangles {
+    fn add(&mut self, vertices: Vec<Vector>, triangles: &[[u32; 3]], surface: impl Fn([Vector; 3]) -> Option<Surface>) {
+        let base = self.vertices.len() as u32;
+        let mut used = false;
+        for triangle in triangles {
+            let corners = triangle.map(|i| vertices[i as usize]);
+            let Some(kind) = surface(corners) else { continue };
+            self.triangles.push(triangle.map(|i| i + base));
+            self.surfaces.push(kind);
+            used = true;
+        }
+        if used {
+            self.vertices.extend(vertices.iter().map(|v| [v.x, v.y, v.z]));
+        }
+    }
+}
+
+/// A collider's user data: it's not the ground.
+const SOLID: u128 = 1;
+
+impl Collision {
+    /// The solid world's triangles within the rectangle from `low` to `high`
+    /// (world `(x, y)`; triangles reaching into it count), as Recast takes
+    /// them. The ground under deep water and lava is left out (no one may
+    /// stand there).
+    pub fn triangles_in(&self, low: (f32, f32), high: (f32, f32)) -> Triangles {
+        let area = Aabb::new(Vector::new(low.0, -1.0e5, low.1), Vector::new(high.0, 1.0e5, high.1));
+        let within = |corners: &[Vector; 3]| {
+            let (min_x, max_x) = (
+                corners.iter().map(|c| c.x).fold(f32::INFINITY, f32::min),
+                corners.iter().map(|c| c.x).fold(f32::NEG_INFINITY, f32::max),
+            );
+            let (min_z, max_z) = (
+                corners.iter().map(|c| c.z).fold(f32::INFINITY, f32::min),
+                corners.iter().map(|c| c.z).fold(f32::NEG_INFINITY, f32::max),
+            );
+            max_x >= low.0 && min_x <= high.0 && max_z >= low.1 && min_z <= high.1
+        };
+        let mut found = Triangles::default();
+        for (_, collider) in self.queries().intersect_aabb_conservative(area) {
+            let pose = collider.position();
+            let shape = collider.shape();
+            let (vertices, triangles) = if let Some(field) = shape.as_heightfield() {
+                field.to_trimesh()
+            } else if let Some(cuboid) = shape.as_cuboid() {
+                cuboid.to_trimesh()
+            } else if let Some(capsule) = shape.as_capsule() {
+                capsule.to_trimesh(8, 4)
+            } else if let Some(ball) = shape.as_ball() {
+                ball.to_trimesh(8, 4)
+            } else {
+                continue;
+            };
+            let vertices: Vec<Vector> = vertices.into_iter().map(|v| pose.transform_point(v)).collect();
+            if collider.user_data == SOLID {
+                found.add(vertices, &triangles, |corners| within(&corners).then_some(Surface::Solid));
+                continue;
+            }
+            found.add(vertices, &triangles, |corners| {
+                if !within(&corners) {
+                    return None;
+                }
+                let middle = (corners[0] + corners[1] + corners[2]) / 3.0;
+                let cell = CellPos::new(middle.x.floor() as i32, middle.z.floor() as i32);
+                let loaded = self.chunks.get(&cell.chunk())?;
+                let (x, y) = cell.local();
+                let index = y * CHUNK_SIZE as usize + x;
+                if loaded.no_entry[index] {
+                    None
+                } else if loaded.shallows[index] {
+                    Some(Surface::Shallows)
+                } else {
+                    Some(Surface::Ground)
+                }
+            });
+        }
+        found
     }
 }
 

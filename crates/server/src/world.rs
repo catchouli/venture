@@ -1,5 +1,5 @@
-//! The baked world, as the server needs it: which cells can be walked on,
-//! which are water (of what body, in what biome: for fishing), and where the
+//! The baked world, as the server needs it: where characters can stand
+//! (its navigation mesh, for routes), which cells are water (of what body, in what biome: for fishing), and where the
 //! trees are (for woodcutting).
 //!
 //! When the world is baked again (its manifest changes, and stays unchanged
@@ -14,10 +14,10 @@ use std::thread::JoinHandle;
 use std::time::SystemTime;
 
 use bevy::prelude::*;
-use venture_navigation::{ChunkObstacles, WalkingLimits};
+use venture_navigation::NavWorld;
 use venture_protocol::{ServerMessage, TreeId};
 use venture_world::{
-    Biome, CHUNK_SIZE, CellPos, Chunk, ChunkPos, FluidBody, FluidKind, MANIFEST_FILE, PropKind, WorldManifest,
+    Biome, CHUNK_SIZE, CellPos, Chunk, ChunkPos, FluidBody, FluidKind, MANIFEST_FILE, NavTile, PropKind, WorldManifest,
     chunk_file_path, decode_chunk,
 };
 
@@ -26,8 +26,6 @@ use venture_world::{
 pub struct ServerWorld {
     /// The world's description.
     pub manifest: WorldManifest,
-    /// Blocked cells for every chunk, indexed `y * chunks_per_side + x`.
-    obstacles: Vec<ChunkObstacles>,
     /// Each cell's water, for every chunk (see [`Waters`]), in the same order.
     waters: Vec<Waters>,
     /// Each chunk's trees (bushes too: they're small trees), by their place among its props, in the same order.
@@ -40,6 +38,21 @@ pub struct ServerWorld {
     /// Every chunk, for a world made in memory (one loaded from a folder
     /// reads its chunks from there as they're needed).
     in_memory: Vec<Chunk>,
+    /// Where characters can stand: every chunk's navigation mesh tile,
+    /// joined, for finding routes.
+    pub nav: NavWorld,
+}
+
+/// The world's navigation: every chunk's tile, joined.
+fn nav_of(tiles: impl IntoIterator<Item = (ChunkPos, NavTile)>) -> NavWorld {
+    let mut nav = NavWorld::new();
+    for (pos, tile) in tiles {
+        if let Err(problem) = nav.add_tile(pos, &tile) {
+            warn!("{problem} Routes won't go there: bake the world again.");
+        }
+    }
+    nav.join();
+    nav
 }
 
 /// A hash of a chunk file's bytes.
@@ -122,13 +135,11 @@ impl ServerWorld {
         let positions: Vec<ChunkPos> = (0..chunks * chunks).map(|i| ChunkPos::new(i % chunks, i / chunks)).collect();
         let threads = std::thread::available_parallelism().map_or(4, |count| count.get());
         let batch = positions.len().div_ceil(threads);
-        let limits = WalkingLimits::default();
 
         let loaded = std::thread::scope(|scope| {
             let workers: Vec<_> = positions
                 .chunks(batch)
                 .map(|batch| {
-                    let limits = &limits;
                     scope.spawn(move || {
                         batch
                             .iter()
@@ -139,10 +150,10 @@ impl ServerWorld {
                                 let chunk =
                                     decode_chunk(&bytes).map_err(|error| format!("{}: {error}", path.display()))?;
                                 Ok((
-                                    ChunkObstacles::from_chunk(&chunk, limits),
                                     Waters::from_chunk(&chunk),
                                     trees_in(&chunk),
                                     hash_of(&bytes),
+                                    (pos, chunk.navmesh),
                                 ))
                             })
                             .collect::<Result<Vec<_>, String>>()
@@ -155,27 +166,40 @@ impl ServerWorld {
                 .collect::<Result<Vec<_>, String>>()
         })?;
 
-        let (mut obstacles, mut waters, mut trees, mut hashes) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-        for (chunk_obstacles, chunk_waters, chunk_trees, hash) in loaded.into_iter().flatten() {
-            obstacles.push(chunk_obstacles);
+        let (mut waters, mut trees, mut hashes, mut tiles) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for (chunk_waters, chunk_trees, hash, tile) in loaded.into_iter().flatten() {
             waters.push(chunk_waters);
             trees.push(chunk_trees);
             hashes.push(hash);
+            tiles.push(tile);
         }
+        let started = std::time::Instant::now();
+        let nav = nav_of(tiles);
+        info!("Joined the world's navigation mesh in {:.2?}.", started.elapsed());
         let source = Some((folder.to_path_buf(), changed_at));
-        Ok(Self { manifest, obstacles, waters, trees, hashes, source, in_memory: Vec::new() })
+        Ok(Self { manifest, waters, trees, hashes, source, in_memory: Vec::new(), nav })
     }
 
     /// A world made from chunks already in memory (for tests and tools).
     /// `chunks` must hold every chunk in the manifest, in row order.
     pub fn from_chunks(manifest: WorldManifest, chunks: &[Chunk]) -> Self {
         assert_eq!(chunks.len(), manifest.chunks_per_side().pow(2) as usize, "one chunk per world chunk");
-        let limits = WalkingLimits::default();
-        let obstacles = chunks.iter().map(|chunk| ChunkObstacles::from_chunk(chunk, &limits)).collect();
         let waters = chunks.iter().map(Waters::from_chunk).collect();
         let trees = chunks.iter().map(trees_in).collect();
         let hashes = chunks.iter().map(|chunk| hash_of(&venture_world::encode_chunk(chunk))).collect();
-        Self { manifest, obstacles, waters, trees, hashes, source: None, in_memory: chunks.to_vec() }
+        // (Chunks made in memory usually haven't had their tiles baked: make them.)
+        let mut solid = venture_collision::Collision::new();
+        chunks.iter().for_each(|chunk| solid.add_chunk(chunk));
+        solid.set_structures(&manifest.walls, &manifest.buildings, &[]);
+        let tile = |chunk: &Chunk| {
+            if chunk.navmesh.is_empty() {
+                venture_navigation::build_tile(&solid, chunk.pos)
+            } else {
+                chunk.navmesh.clone()
+            }
+        };
+        let nav = nav_of(chunks.iter().map(|chunk| (chunk.pos, tile(chunk))));
+        Self { manifest, waters, trees, hashes, source: None, in_memory: chunks.to_vec(), nav }
     }
 
     /// A chunk of the world, in full (read from the world's folder, for a
@@ -210,15 +234,15 @@ impl ServerWorld {
             .collect()
     }
 
-    /// Whether cell `(x, y)` can't be walked on. Everything outside the world is blocked.
-    pub fn is_blocked(&self, x: i32, y: i32) -> bool {
-        let cell = CellPos::new(x, y);
-        let chunk = cell.chunk();
-        if !self.manifest.contains_chunk(chunk) {
-            return true;
-        }
-        let (local_x, local_y) = cell.local();
-        self.obstacles[(chunk.y * self.manifest.chunks_per_side() + chunk.x) as usize].is_blocked(local_x, local_y)
+    /// The nearest point to `at` a character can stand on (on the
+    /// navigation mesh), at most `reach` metres away, or `None` if there's none.
+    pub fn standing_near(&self, at: (f32, f32), reach: f32) -> Option<(f32, f32)> {
+        self.nav.standing_near(at, reach).map(|[x, y, _]| (x, y))
+    }
+
+    /// Whether a character can stand at a point (on the navigation mesh).
+    pub fn can_stand(&self, at: (f32, f32)) -> bool {
+        self.standing_near(at, 0.1).is_some()
     }
 
     /// The water at a point (in metres), if it's in water: its body, and the
@@ -260,24 +284,6 @@ impl ServerWorld {
     pub fn contains(&self, (x, y): (f32, f32)) -> bool {
         let size = self.manifest.world_size as f32;
         (0.0..size).contains(&x) && (0.0..size).contains(&y)
-    }
-
-    /// The nearest point to `at` that can be stood on, at most `reach`
-    /// metres away (`at` itself if it's open; otherwise the middle of the
-    /// nearest open cell), or `None` if there's none.
-    pub fn open_ground_near(&self, at: (f32, f32), reach: f32) -> Option<(f32, f32)> {
-        let open = |(x, y): (f32, f32)| self.contains((x, y)) && !self.is_blocked(x.floor() as i32, y.floor() as i32);
-        if open(at) {
-            return Some(at);
-        }
-        let cells = reach.ceil() as i32;
-        let (centre_x, centre_y) = (at.0.floor() as i32, at.1.floor() as i32);
-        let distance = |point: (f32, f32)| (point.0 - at.0).hypot(point.1 - at.1);
-        (-cells..=cells)
-            .flat_map(|dy| (-cells..=cells).map(move |dx| (centre_x + dx, centre_y + dy)))
-            .map(|(x, y)| (x as f32 + 0.5, y as f32 + 0.5))
-            .filter(|&point| distance(point) <= reach && open(point))
-            .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
     }
 }
 

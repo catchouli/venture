@@ -5,7 +5,7 @@
 use std::collections::VecDeque;
 
 use venture_collision::Collision;
-use venture_navigation::{Point, find_path};
+use venture_navigation::{NavWorld, Point, Point3};
 
 use crate::rules::MovementRules;
 
@@ -24,9 +24,6 @@ const HELD_UP: f32 = 0.25;
 const GIVE_UP_AFTER: f32 = 1.0;
 /// The most waypoints passed in one step.
 const MOST_WAYPOINTS_AT_ONCE: usize = 4;
-
-/// The most terrain cells the pathfinder may explore when planning one route.
-const MAX_ROUTE_SEARCH_CELLS: usize = 40_000;
 
 /// What a character is doing with its legs.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -77,10 +74,12 @@ impl Body {
     }
 }
 
-/// Plans a route from `start` towards `goal`. See [`find_path`] for what
-/// happens when the goal can't be reached.
-pub fn plan_route(start: Point, goal: Point, is_blocked: impl Fn(i32, i32) -> bool) -> Movement {
-    let route: VecDeque<Point> = find_path(start, goal, is_blocked, MAX_ROUTE_SEARCH_CELLS).into();
+/// Plans a route over the navigation mesh from `start` (with the height of
+/// its feet) to `goal` (or the nearest point to it that can be stood on).
+/// Standing still if there's no way.
+pub fn plan_route(nav: &NavWorld, start: Point3, goal: Point) -> Movement {
+    let Some(route) = nav.route(start, [goal.0, goal.1, start[2]]) else { return Movement::Idle };
+    let route: VecDeque<Point> = route.into_iter().map(|[x, y, _]| (x, y)).collect();
     if route.is_empty() { Movement::Idle } else { Movement::Route(route) }
 }
 

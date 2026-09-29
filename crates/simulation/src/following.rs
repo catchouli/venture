@@ -3,7 +3,7 @@
 
 use venture_navigation::Point;
 
-use crate::movement::{Movement, plan_route};
+use crate::movement::Movement;
 
 /// Followers stop this close to whoever they follow, in metres.
 pub const FOLLOW_DISTANCE: f32 = 2.0;
@@ -40,16 +40,16 @@ pub enum FollowOutcome {
 
 impl Follow {
     /// Updates `movement` for a follower at `position` whose target is at
-    /// `target`: runs towards the target (re-planning when it moves), and
-    /// stands still once close. Gives up if the target is further than
-    /// `max_distance`.
+    /// `target`: runs towards the target (re-planning when it moves, with
+    /// `plan`: from and to), and stands still once close. Gives up if the
+    /// target is further than `max_distance`.
     pub fn update(
         &mut self,
         position: Point,
         target: Point,
         movement: &mut Movement,
         max_distance: f32,
-        is_blocked: impl Fn(i32, i32) -> bool,
+        plan: impl FnOnce(Point, Point) -> Movement,
     ) -> FollowOutcome {
         let distance = (target.0 - position.0).hypot(target.1 - position.1);
         if distance > max_distance {
@@ -64,7 +64,7 @@ impl Follow {
         let target_moved =
             self.planned_for.is_none_or(|planned| (target.0 - planned.0).hypot(target.1 - planned.1) > REPLAN_DISTANCE);
         if target_moved || !movement.is_moving() {
-            *movement = plan_route(position, target, is_blocked);
+            *movement = plan(position, target);
             self.planned_for = Some(target);
         }
         FollowOutcome::Continue
@@ -75,16 +75,19 @@ impl Follow {
 mod tests {
     use super::*;
 
-    const OPEN: fn(i32, i32) -> bool = |_, _| false;
+    /// Plans straight there.
+    fn straight(_: Point, to: Point) -> Movement {
+        Movement::Route([to].into())
+    }
 
     #[test]
     fn followers_run_towards_their_target_and_stop_close_by() {
         let mut follow = Follow::default();
         let mut movement = Movement::Idle;
-        assert_eq!(follow.update((0.0, 0.0), (10.0, 0.0), &mut movement, 150.0, OPEN), FollowOutcome::Continue);
+        assert_eq!(follow.update((0.0, 0.0), (10.0, 0.0), &mut movement, 150.0, straight), FollowOutcome::Continue);
         assert!(movement.is_moving());
 
-        follow.update((9.0, 0.0), (10.0, 0.0), &mut movement, 150.0, OPEN);
+        follow.update((9.0, 0.0), (10.0, 0.0), &mut movement, 150.0, straight);
         assert_eq!(movement, Movement::Idle);
     }
 
@@ -92,7 +95,7 @@ mod tests {
     fn following_stops_when_the_target_is_out_of_reach() {
         let mut follow = Follow::default();
         let mut movement = Movement::Idle;
-        assert_eq!(follow.update((0.0, 0.0), (500.0, 0.0), &mut movement, 150.0, OPEN), FollowOutcome::Stop);
+        assert_eq!(follow.update((0.0, 0.0), (500.0, 0.0), &mut movement, 150.0, straight), FollowOutcome::Stop);
         assert_eq!(movement, Movement::Idle);
     }
 }

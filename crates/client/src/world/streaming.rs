@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, IoTaskPool, Task, futures::check_ready};
-use venture_navigation::{ChunkObstacles, WalkingLimits};
 use venture_world::{Chunk, ChunkPos, FluidKind, decode_chunk};
 
 use crate::common::coords::to_bevy;
@@ -46,7 +45,6 @@ impl Plugin for ChunkStreamingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StreamingFocus>()
             .init_resource::<ChunkStore>()
-            .init_resource::<ObstacleStore>()
             .init_resource::<ShownChunks>()
             .init_resource::<StreamingProgress>()
             .init_resource::<DataTasks>()
@@ -76,10 +74,6 @@ pub struct StreamingFocus(pub Vec3);
 #[derive(Resource, Default)]
 pub struct ChunkStore(pub HashMap<ChunkPos, Arc<Chunk>>);
 
-/// Where characters can't walk, for every loaded chunk.
-#[derive(Resource, Default)]
-pub struct ObstacleStore(pub HashMap<ChunkPos, Arc<ChunkObstacles>>);
-
 /// The entity showing each visible chunk (whether its meshes are built yet or not).
 #[derive(Resource, Default)]
 pub struct ShownChunks(pub HashMap<ChunkPos, Entity>);
@@ -99,7 +93,7 @@ const RETRY_SECONDS: f32 = 2.0;
 /// Chunks whose data is being loaded.
 #[derive(Resource, Default)]
 struct DataTasks {
-    running: HashMap<ChunkPos, Task<Result<(Chunk, ChunkObstacles), String>>>,
+    running: HashMap<ChunkPos, Task<Result<Chunk, String>>>,
     /// Chunks that failed to load, and when they may be tried again (in seconds since startup).
     retry_at: HashMap<ChunkPos, f32>,
 }
@@ -176,14 +170,12 @@ fn reload_changed_chunks(
     mut commands: Commands,
     mut reloaded: MessageReader<WorldReloaded>,
     mut store: ResMut<ChunkStore>,
-    mut obstacles: ResMut<ObstacleStore>,
     mut shown: ResMut<ShownChunks>,
     mut data_tasks: ResMut<DataTasks>,
 ) {
     for reload in reloaded.read() {
         let changed = |pos: &ChunkPos| reload.chunks.as_ref().is_none_or(|chunks| chunks.contains(pos));
         store.0.retain(|pos, _| !changed(pos));
-        obstacles.0.retain(|pos, _| !changed(pos));
         data_tasks.running.retain(|pos, _| !changed(pos));
         data_tasks.retry_at.retain(|pos, _| !changed(pos));
         // (Their neighbours' edges are drawn from them too, so those are shown again as well.)
@@ -200,7 +192,6 @@ fn reload_changed_chunks(
 fn unload_distant_chunks(
     mut commands: Commands,
     mut store: ResMut<ChunkStore>,
-    mut obstacles: ResMut<ObstacleStore>,
     mut shown: ResMut<ShownChunks>,
     mut data_tasks: ResMut<DataTasks>,
     focus: Res<StreamingFocus>,
@@ -208,7 +199,6 @@ fn unload_distant_chunks(
     let centre = focus_chunk(&focus);
     let keep_data = |pos: &ChunkPos| chunk_distance(*pos, centre) <= DATA_RADIUS + UNLOAD_SLACK;
     store.0.retain(|pos, _| keep_data(pos));
-    obstacles.0.retain(|pos, _| keep_data(pos));
     // Dropping a task cancels it.
     data_tasks.running.retain(|pos, _| keep_data(pos));
     data_tasks.retry_at.retain(|pos, _| keep_data(pos));
@@ -240,28 +230,17 @@ fn start_data_tasks(
         .collect();
     for pos in missing {
         let read = source.read_chunk(pos);
-        data_tasks.running.insert(
-            pos,
-            pool.spawn(async move {
-                let chunk = decode_chunk(&read.await?).map_err(|error| error.to_string())?;
-                let obstacles = ChunkObstacles::from_chunk(&chunk, &WalkingLimits::default());
-                Ok((chunk, obstacles))
-            }),
-        );
+        data_tasks
+            .running
+            .insert(pos, pool.spawn(async move { decode_chunk(&read.await?).map_err(|error| error.to_string()) }));
     }
 }
 
-fn finish_data_tasks(
-    time: Res<Time>,
-    mut data_tasks: ResMut<DataTasks>,
-    mut store: ResMut<ChunkStore>,
-    mut obstacle_store: ResMut<ObstacleStore>,
-) {
+fn finish_data_tasks(time: Res<Time>, mut data_tasks: ResMut<DataTasks>, mut store: ResMut<ChunkStore>) {
     let DataTasks { running, retry_at } = &mut *data_tasks;
     running.retain(|&pos, task| match check_ready(task) {
-        Some(Ok((chunk, obstacles))) => {
+        Some(Ok(chunk)) => {
             store.0.insert(pos, Arc::new(chunk));
-            obstacle_store.0.insert(pos, Arc::new(obstacles));
             retry_at.remove(&pos);
             false
         }
@@ -368,7 +347,6 @@ mod tests {
         app.add_plugins(MinimalPlugins)
             .add_message::<WorldReloaded>()
             .init_resource::<ChunkStore>()
-            .init_resource::<ObstacleStore>()
             .init_resource::<ShownChunks>()
             .init_resource::<DataTasks>()
             .add_systems(Update, reload_changed_chunks);

@@ -11,15 +11,16 @@ use crate::characters::player::{Following, GameRules, LocalPlayer};
 use crate::common::coords::{from_bevy, to_bevy};
 use crate::interaction::move_marker::{MarkerAssets, MoveMarker, place_marker};
 use crate::network::ToServer;
-use crate::world::query::{ground_height, is_blocked};
-use crate::world::streaming::{ChunkStore, ObstacleStore};
+use crate::world::collision::Nav;
+use crate::world::query::ground_height;
+use crate::world::streaming::ChunkStore;
 
 /// Everything needed to give the player's character orders.
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct Orders<'w, 's> {
     /// The loaded terrain.
     pub store: Res<'w, ChunkStore>,
-    obstacles: Res<'w, ObstacleStore>,
+    nav: Res<'w, Nav>,
     rules: Res<'w, GameRules>,
     marker_assets: Res<'w, MarkerAssets>,
     markers: Query<'w, 's, Entity, With<MoveMarker>>,
@@ -39,7 +40,7 @@ impl Orders<'_, '_> {
         self.to_server.write(ToServer(ClientMessage::MoveTo { x: goal.0, y: goal.1 }));
 
         player.following = None;
-        player.movement = plan_route(start, goal, |x, y| is_blocked(&self.obstacles, x, y));
+        player.movement = plan_route(&self.nav.0, [start.0, start.1, player.body.height], goal);
         if let Movement::Route(route) = &player.movement
             && let Some(&(end_x, end_y)) = route.back()
         {

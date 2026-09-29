@@ -51,9 +51,10 @@ bake does three things with each wall:
 1. **Where it stands:** its samples, and the ground's height at each. These
    go in the manifest's `walls` (a few numbers a metre), so clients build
    its meshes without needing the terrain loaded.
-2. **What it blocks:** the cells under it are blocked (the chunk's
-   `structure_cells`, chunk format 4). So navigation, the server and the
-   client's prediction all treat it as solid, like water or cliffs.
+2. **What it blocks:** its shape (boxes along its samples, see
+   [plan-collision.md](plan-collision.md)) is solid to characters, and the
+   navigation mesh goes round it. (It began as the chunk's blocked cells,
+   `structure_cells`, which the collision work replaced.)
 3. **What it clears:** trees, bushes and rocks on its line are removed.
    Where it crosses a road or path, it leaves a gap (a gateway), so roads
    stay open.
@@ -125,9 +126,8 @@ In the World tab:
   `mesh.rs`). A dry stone wall is roughly 500 triangles a metre close
   up and a twentieth of that far away; fences are a few boxes a post.
 - [x] 3. Authored data and the bake: `world_authoring/walls.ron` is read by
-  `bake`, which writes the manifest's `walls`, blocks each chunk's
-  `structure_cells` (the wall's half-width: 0.4 m for dry stone, 0.15 m for
-  fences), clears trees and rocks within 1.5 m more, and opens gaps where a
+  `bake`, which writes the manifest's `walls` (solid to the wall's
+  half-width: 0.4 m for dry stone, 0.15 m for fences), clears trees and rocks within 1.5 m more, and opens gaps where a
   road comes within its half-width plus 0.5 m (widened by 1 m either side).
 - [x] 4. In the game: `crates/client/src/world/walls.rs` builds every wall in
   the background when the world arrives (the village's two take 4 ms: 17

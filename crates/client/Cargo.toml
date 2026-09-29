@@ -30,6 +30,9 @@ venture_server = { workspace = true, default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Crypto", "Document", "Element"] }
+# (landmass's avoidance uses `rand`, whose randomness on the web comes from the
+# browser; `.cargo/config.toml` picks that backend.)
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [lints]
 workspace = true
