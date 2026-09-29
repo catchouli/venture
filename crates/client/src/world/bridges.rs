@@ -11,6 +11,7 @@ use venture_structures::MeshPart;
 use venture_structures::bridges::{BridgeSurface, build_bridge};
 use venture_world::BakedBridge;
 
+use crate::common::visibility::web_safe;
 use crate::content::ContentStore;
 use crate::world::source::WorldInfo;
 use crate::world::surfaces::{SurfaceTextures, textured};
@@ -126,8 +127,11 @@ fn finish_building(mut commands: Commands, mut bridges: ResMut<Bridges>, mut mes
     for entity in std::mem::take(&mut bridges.shown) {
         commands.entity(entity).despawn();
     }
-    let range =
-        VisibilityRange { start_margin: 0.0..0.0, end_margin: DRAWN_UNTIL..DRAWN_UNTIL + 10.0, use_aabb: false };
+    let range = web_safe(VisibilityRange {
+        start_margin: 0.0..0.0,
+        end_margin: DRAWN_UNTIL..DRAWN_UNTIL + 10.0,
+        use_aabb: false,
+    });
     for (origin, parts) in built {
         let parent = commands
             .spawn((Bridge, Transform::from_translation(origin), Visibility::default()))

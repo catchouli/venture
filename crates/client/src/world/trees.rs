@@ -45,6 +45,7 @@ use venture_world::{BUSH_SCALE, CHUNK_SIZE, Chunk, Prop, PropKind};
 
 use crate::common::coords::to_bevy;
 use crate::common::mipmaps::{add_mipmaps, add_mipmaps_keeping_coverage};
+use crate::common::visibility::web_safe;
 use crate::content::ContentStore;
 use crate::interaction::targeting::{Level, PickShape, Target, TargetKind, TargetLabel, Targetable};
 use crate::network::FromServer;
@@ -542,6 +543,7 @@ fn lod_ranges(drawing: &TreeDrawing) -> [VisibilityRange; 3] {
             use_aabb: false,
         },
     ]
+    .map(web_safe)
 }
 
 fn plant_chunk(

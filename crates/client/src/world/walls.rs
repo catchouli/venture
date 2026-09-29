@@ -27,6 +27,7 @@ use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
 use venture_structures::{BakedWall, MeshPart, Stretch, WallKind, build_wall};
 
+use crate::common::visibility::web_safe;
 use crate::content::ContentStore;
 use crate::world::source::WorldInfo;
 use crate::world::surfaces::{SurfaceTextures, textured};
@@ -215,10 +216,12 @@ fn finish_building(mut commands: Commands, mut walls: ResMut<Walls>, mut meshes:
     }
     let material =
         |kind: WallKind| materials.get(&kind).or_else(|| materials.values().next()).cloned().unwrap_or_default();
-    let range = |from: f32, to: f32| VisibilityRange {
-        start_margin: from..if from > 0.0 { from + CROSSFADE } else { 0.0 },
-        end_margin: to..to + CROSSFADE,
-        use_aabb: false,
+    let range = |from: f32, to: f32| {
+        web_safe(VisibilityRange {
+            start_margin: from..if from > 0.0 { from + CROSSFADE } else { 0.0 },
+            end_margin: to..to + CROSSFADE,
+            use_aabb: false,
+        })
     };
     let (near, far, everywhere) = (range(0.0, FULL_UNTIL), range(FULL_UNTIL, DRAWN_UNTIL), range(0.0, DRAWN_UNTIL));
     for (key, wall, stretches) in built {
@@ -268,11 +271,11 @@ fn dress_hedges(
     else {
         return;
     };
-    let range = VisibilityRange {
+    let range = web_safe(VisibilityRange {
         start_margin: 0.0..0.0,
         end_margin: HEDGE_LEAVES_UNTIL..HEDGE_LEAVES_UNTIL + CROSSFADE,
         use_aabb: false,
-    };
+    });
     for (stretch, mesh) in walls.bare_hedges.drain(..) {
         if stretches.contains(stretch) {
             commands.entity(stretch).with_child((Mesh3d(mesh), MeshMaterial3d(leaves.clone()), range.clone()));
