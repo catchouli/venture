@@ -1,0 +1,16 @@
+[package]
+name = "venture_collision"
+description = "The world's collision shapes (terrain, walls, buildings, trees and rocks), and moving characters through them."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+venture_world.workspace = true
+venture_structures.workspace = true
+rapier3d = { version = "0.36", features = ["enhanced-determinism"] }
+glam.workspace = true
+
+[lints]
+workspace = true

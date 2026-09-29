@@ -1,6 +1,6 @@
 # Plan: precise collision, falling, and real jumps
 
-Status: agreed (2026-09-29), with pathfinding moved to a navmesh; not started.
+Status: agreed (2026-09-29), with pathfinding moved to a navmesh. Step 1 (shapes) done.
 
 ## Why
 

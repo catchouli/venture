@@ -14,6 +14,7 @@ members = [
     "crates/tools",
     "crates/trees",
     "crates/structures",
+    "crates/collision",
 ]
 
 [workspace.package]
@@ -32,6 +33,7 @@ venture_protocol = { path = "crates/protocol" }
 venture_content = { path = "crates/content" }
 venture_trees = { path = "crates/trees" }
 venture_structures = { path = "crates/structures" }
+venture_collision = { path = "crates/collision" }
 venture_server = { path = "crates/server", default-features = false }
 serde = { version = "1", features = ["derive"] }
 postcard = { version = "1", default-features = false, features = ["use-std"] }

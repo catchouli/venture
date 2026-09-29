@@ -6,7 +6,7 @@
 use glam::Vec2;
 use venture_world::{BakedBuilding, BuildingPlan, WallRef};
 
-use super::plan::{Footprint, contains, doors_in, snap_inner};
+use super::plan::{Footprint, Frame, contains, doors_in, snap_inner};
 use super::style::BuildingStyle;
 
 /// How far round a building the ground blends back into the land, in metres.
@@ -17,9 +17,70 @@ const LEVEL_EDGE: f32 = 0.4;
 /// clip into them), in metres.
 const WALL_REACH: f32 = 0.25;
 
-/// A wall as it blocks cells: along its middle from one point to another,
-/// its half-thickness, and its doorways (from and to, along it).
-type WallBand = (Vec2, Vec2, f32, Vec<(f32, f32)>);
+/// One of a building's walls, as it stands in the way: along its middle from
+/// one point to another (in the building's [`Frame`]), its half-thickness,
+/// and its doorways (from and to, in metres along it).
+#[derive(Clone, Debug, PartialEq)]
+pub struct WallBand {
+    /// Where its middle starts (in the building's frame).
+    pub from: Vec2,
+    /// Where its middle ends (in the building's frame).
+    pub to: Vec2,
+    /// Half its thickness.
+    pub half: f32,
+    /// Its doorways: from and to, in metres along it from `from`.
+    pub doorways: Vec<(f32, f32)>,
+}
+
+impl WallBand {
+    /// The solid stretches of it, in metres along it from `from` (its ends
+    /// reach `half` past each end, to meet the walls round the corners).
+    pub fn solid(&self) -> Vec<(f32, f32)> {
+        let mut pieces = Vec::new();
+        let mut start = -self.half;
+        let mut doorways = self.doorways.clone();
+        doorways.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (from, to) in doorways {
+            if from > start {
+                pieces.push((start, from));
+            }
+            start = start.max(to);
+        }
+        let end = self.from.distance(self.to) + self.half;
+        if end > start {
+            pieces.push((start, end));
+        }
+        pieces
+    }
+}
+
+/// A building's walls (outer and inner), in its frame, with its frame; `None`
+/// if it has too few corners to stand.
+pub fn building_walls(building: &BakedBuilding, style: &BuildingStyle) -> Option<(Frame, Vec<WallBand>)> {
+    let style = &style.scaled();
+    let plan = &super::plan::anticlockwise(&building.plan);
+    let footprint = Footprint::of(plan, style.wall_thickness)?;
+    let frame = footprint.frame;
+    let mut walls = Vec::new();
+    let doors_on = |wall: WallRef| -> Vec<f32> {
+        plan.doors.iter().filter(|door| door.wall == wall).map(|door| door.along).collect()
+    };
+    let half = style.wall_thickness / 2.0;
+    let doorways = |doors: Vec<super::plan::Opening>| doors.iter().map(|d| (d.from, d.to)).collect();
+    for i in 0..footprint.outline.len() {
+        let (a, b) = footprint.edge(i);
+        let inward = (b - a).normalize_or(Vec2::X).perp() * half;
+        let doors = doors_in(a.distance(b), &doors_on(WallRef::Outer(i as u32)), style);
+        walls.push(WallBand { from: a + inward, to: b + inward, half, doorways: doorways(doors) });
+    }
+    for (i, &(from, to)) in plan.inner_walls.iter().enumerate() {
+        let (from, to) = (frame.local(Vec2::from(from)), frame.local(Vec2::from(to)));
+        let (from, to) = (snap_inner(&footprint, style, from), snap_inner(&footprint, style, to));
+        let doors = doors_in(from.distance(to), &doors_on(WallRef::Inner(i as u32)), style);
+        walls.push(WallBand { from, to, half: style.inner_thickness / 2.0, doorways: doorways(doors) });
+    }
+    Some((frame, walls))
+}
 
 /// Reads the authored buildings file.
 pub fn parse_buildings(text: &str) -> Result<Vec<BuildingPlan>, String> {
@@ -119,34 +180,14 @@ pub fn cell_bounds(building: &BakedBuilding, reach: f32) -> ((i32, i32), (i32, i
 /// The cells a building's walls stand on (so can't be walked through),
 /// except its doorways. Inside is open.
 pub fn building_cells(building: &BakedBuilding, style: &BuildingStyle) -> Vec<(i32, i32)> {
-    let style = &style.scaled();
-    let plan = &super::plan::anticlockwise(&building.plan);
-    let Some(footprint) = Footprint::of(plan, style.wall_thickness) else { return Vec::new() };
-    let frame = footprint.frame;
-    // Every wall, along its middle, with its half-thickness and its doorways (along it).
-    let mut walls: Vec<WallBand> = Vec::new();
-    let doors_on = |wall: WallRef| -> Vec<f32> {
-        plan.doors.iter().filter(|door| door.wall == wall).map(|door| door.along).collect()
-    };
-    let half = style.wall_thickness / 2.0;
-    for i in 0..footprint.outline.len() {
-        let (a, b) = footprint.edge(i);
-        let inward = (b - a).normalize_or(Vec2::X).perp() * half;
-        let doors = doors_in(a.distance(b), &doors_on(WallRef::Outer(i as u32)), style);
-        walls.push((a + inward, b + inward, half, doors.iter().map(|d| (d.from, d.to)).collect()));
-    }
-    for (i, &(from, to)) in plan.inner_walls.iter().enumerate() {
-        let (from, to) = (frame.local(Vec2::from(from)), frame.local(Vec2::from(to)));
-        let (from, to) = (snap_inner(&footprint, style, from), snap_inner(&footprint, style, to));
-        let doors = doors_in(from.distance(to), &doors_on(WallRef::Inner(i as u32)), style);
-        walls.push((from, to, style.inner_thickness / 2.0, doors.iter().map(|d| (d.from, d.to)).collect()));
-    }
+    let Some((frame, walls)) = building_walls(building, style) else { return Vec::new() };
     let ((x0, y0), (x1, y1)) = cell_bounds(building, 0.0);
     let mut cells = Vec::new();
     for y in y0..=y1 {
         for x in x0..=x1 {
             let centre = frame.local(Vec2::new(x as f32 + 0.5, y as f32 + 0.5));
-            let blocked = walls.iter().any(|&(a, b, half, ref doors)| {
+            let blocked = walls.iter().any(|wall| {
+                let (a, b, half, doors) = (wall.from, wall.to, wall.half, &wall.doorways);
                 let run = b - a;
                 let length = run.length().max(1e-4);
                 let along = (centre - a).dot(run / length);
