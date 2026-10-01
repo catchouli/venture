@@ -188,3 +188,19 @@ game the same content, that awkward text survives, that undo works, that
 problems are found before saving, that placed things are added, copied,
 and deleted properly, and that walls are drawn, saved to the authoring
 folder and checked.
+
+## A packaged editor (for Windows)
+
+`tools/package_windows.sh [server address]` cross-compiles the editor, the
+game and the `bake` tool for Windows. It puts them beside the content,
+`world_authoring/`, a baked `world/` and `server.ron`, in
+`dist/Venture-editor-windows-x64.zip` (about 220 MB), with a readme. It needs
+MinGW-w64 (`brew install mingw-w64`) and `rustup target add x86_64-pc-windows-gnu`.
+
+Unzipped anywhere and double-clicked, the editor edits the files beside it.
+It runs the `bake.exe` and `venture_client.exe` beside it, for **Save and
+bake** and **Save and play here**, instead of `cargo run`. It does that
+whenever there's a `content` folder beside its own program, which is never
+the case in a checkout (see `program` in `crates/editor/src/main.rs`). The
+game it starts plays locally, so no server is needed. The server address,
+if given, is where `venture_client.exe` connects on its own.
