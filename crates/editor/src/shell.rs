@@ -917,8 +917,8 @@ fn world_action(world: &mut World, shell: &mut Shell, document: &mut Document, a
 /// admin, on a profile of its own.
 fn play_here(project: &Project, (x, y): (f32, f32)) -> Result<(), String> {
     let world = project.world.to_string_lossy().to_string();
-    std::process::Command::new("cargo")
-        .args(["run", "-p", "venture_client", "--", "--local", "--new-character", "--admin", "--world", &world])
+    crate::program("venture_client", &["run", "-p", "venture_client"])
+        .args(["--local", "--new-character", "--admin", "--world", &world])
         .env("VENTURE_PROFILE", "editor")
         .env("VENTURE_CAMERA", format!("{x},{y},0.6,0.4,14"))
         .stdout(std::process::Stdio::null())

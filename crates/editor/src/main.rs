@@ -62,6 +62,38 @@ impl Project {
     }
 }
 
+/// A command running one of the game's own programs (`venture_client`, or
+/// the `bake` tool): the one beside the editor, in a packaged editor (one
+/// with a `content` folder beside it: see `docs/editor.md`), or else through
+/// `cargo run` (in a checkout of the source), with `cargo_args` choosing it.
+pub fn program(name: &str, cargo_args: &[&str]) -> std::process::Command {
+    let packaged = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf))
+        .filter(|folder| folder.join("content").is_dir())
+        .map(|folder| folder.join(format!("{name}{}", std::env::consts::EXE_SUFFIX)))
+        .filter(|program| program.is_file());
+    match packaged {
+        Some(program) => {
+            #[allow(unused_mut)]
+            let mut command = std::process::Command::new(program);
+            // (On Windows, without a console window of its own.)
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                command.creation_flags(CREATE_NO_WINDOW);
+            }
+            command
+        }
+        None => {
+            let mut command = std::process::Command::new("cargo");
+            command.args(cargo_args).arg("--");
+            command
+        }
+    }
+}
+
 fn main() {
     let project = Project::from_arguments();
     let document = match document::Document::load_with_authoring(&project.content, Some(&project.authoring)) {

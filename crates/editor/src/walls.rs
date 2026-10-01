@@ -675,9 +675,9 @@ pub fn save_and_bake(tool: &mut WallTool, document: &mut Document, project: &Pro
         tool.status = format!("Couldn't save: {error}");
         return;
     }
-    let mut command = std::process::Command::new("cargo");
-    // (Only the chunks walls touch, unless the world there was baked differently.)
-    command.args(["run", "--release", "-p", "venture_worldgen", "--bin", "bake", "--", "--walls"]);
+    let mut command = crate::program("bake", &["run", "--release", "-p", "venture_worldgen", "--bin", "bake"]);
+    // (Only the chunks walls, buildings and bridges touch, unless the world there was baked differently.)
+    command.arg("--structures");
     command.arg(&project.world).arg(seed.unwrap_or_default().to_string()).arg(&project.authoring);
     command.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     match command.spawn() {
